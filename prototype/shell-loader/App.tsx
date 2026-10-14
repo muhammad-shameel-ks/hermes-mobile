@@ -27,7 +27,7 @@ export const MONO_BOLD = 'JetBrainsMono_700Bold'
 export default function App() {
   const [fontsLoaded] = useFonts({ JetBrainsMono_400Regular, JetBrainsMono_700Bold })
   const [mode, setMode] = useState<Mode>('dark')
-  const [kind, setKind] = useState<LoaderKind>('rose-curve')
+  const [kind, setKind] = useState<LoaderKind>('glyph')
   const [engine, setEngine] = useState<LoaderEngine>('animated')
   const [drawerOpen, setDrawerOpen] = useState(false)
 

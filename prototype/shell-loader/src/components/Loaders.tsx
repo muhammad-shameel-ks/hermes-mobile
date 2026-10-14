@@ -339,12 +339,18 @@ function GlyphLoader({ color, size }: { color: string; size: number }) {
     transform: [{ translateY: offset.value }],
   }))
 
+  // The travel is N frame-heights over N steps, so at the end of a cycle the sampling lands on
+  // position N: one line past the last glyph. With only N frames the viewport flashes blank there
+  // before the loop restarts; appending a copy of the first glyph makes position N and the restart
+  // render the same thing, so the wrap is invisible.
+  const strip = [...BRAILLE_FRAMES, BRAILLE_FRAMES[0]]
+
   return (
     <View style={{ height: size, overflow: 'hidden', width: size }}>
       <Animated.View style={stripStyle}>
-        {BRAILLE_FRAMES.map(frame => (
+        {strip.map((frame, index) => (
           <Text
-            key={frame}
+            key={`${index}-${frame}`}
             style={{
               color,
               fontFamily: MONO,
