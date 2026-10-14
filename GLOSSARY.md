@@ -105,3 +105,29 @@ _Avoid_: autoscroll, follow mode
 **Receiver**:
 The one transcript that consumes a session's event stream on a phone; the desktop's per-pane mirrors have no mobile counterpart.
 _Avoid_: subscriber, listener, client
+
+## Surfaces
+
+**Files root**:
+The single server directory the phone's Files surface is rooted at - the dashboard's files root, never a session's workspace.
+_Avoid_: workspace, home directory, uploads folder
+
+**Files surface**:
+The phone's full-screen surface over the files root: browse, read, preview, download, share, upload and new folder; no host-filesystem tree.
+_Avoid_: file browser, files pane, explorer
+
+**Preview viewer**:
+The phone's full-screen renderer for file and artifact targets; static SVG renders, HTML shows source.
+_Avoid_: preview pane, preview tiles, right rail
+
+**Review surface**:
+The phone's read-only full-screen view of a working tree's changes: file list, scope and unified diffs.
+_Avoid_: diff pane, review pane, changes rail
+
+**Agent-process tail**:
+The read-only live output of an agent's background process - the desktop's read-only terminal tab; the phone's only terminal-family surface, deferred to a later phase.
+_Avoid_: terminal, agent terminal, console
+
+**Coding row**:
+The desktop's composer row carrying branch, worktree and diff counts and opening the review pane; not ported to the phone.
+_Avoid_: git row, git status bar, coding rail
