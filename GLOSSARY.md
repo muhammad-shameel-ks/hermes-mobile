@@ -131,3 +131,7 @@ _Avoid_: terminal, agent terminal, console
 **Coding row**:
 The desktop's composer row carrying branch, worktree and diff counts and opening the review pane; not ported to the phone.
 _Avoid_: git row, git status bar, coding rail
+
+**Memory graph**:
+The profile's learned skills and memory chunks, read on the phone as a list or timeline screen.
+_Avoid_: starmap, star map, memory map, constellation, learning
