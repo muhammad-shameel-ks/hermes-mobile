@@ -106,6 +106,38 @@ _Avoid_: autoscroll, follow mode
 The one transcript that consumes a session's event stream on a phone; the desktop's per-pane mirrors have no mobile counterpart.
 _Avoid_: subscriber, listener, client
 
+## Connections and profiles
+
+**Connection**:
+A saved way to reach one gateway: a label, a base URL with an explicit scheme and port, an auth mode, and the credentials minted for it.
+_Avoid_: server, host, instance
+
+**Profile**:
+A Hermes-side identity that owns its own sessions and configuration; the phone presents a gateway's profiles as its bots.
+_Avoid_: account, user, agent
+
+**Active profile**:
+The profile the phone is currently acting as: it scopes requests, the sessions list and new sessions, and it follows the bot whose chat is open.
+_Avoid_: current profile, selected profile
+
+## Bot Mode
+
+**Bot**:
+A Hermes profile the phone presents as a chat partner: the profile carries its name, avatar and description, and every bot owns exactly one Bot Chat.
+_Avoid_: agent, assistant, persona
+
+**Bot Chat**:
+A bot's one continuous conversation, identified by its title on the bot's profile rather than a stored pointer, and held out of the sessions list.
+_Avoid_: bot session, bot thread, bot channel
+
+**Side-chat**:
+A bot's ordinary session other than its Bot Chat - a scratch conversation that stays visible in the sessions list.
+_Avoid_: side thread, sub-chat
+
+**Bot roster**:
+The drawer's BOTS tab: bot rows of avatar, name, last-message preview and time, with hidden bots behind a disclosure.
+_Avoid_: bots list, bot drawer
+
 ## Surfaces
 
 **Files root**:
