@@ -33,7 +33,26 @@
       "expo-secure-store",
       "expo-web-browser",
       "./plugins/with-ios-scene-lifecycle.js",
-      "expo-font"
+      "expo-font",
+      "expo-sqlite",
+      "expo-video",
+      "expo-audio",
+      "expo-sharing",
+      "expo-asset",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Hermes uses the microphone for dictation.",
+          "speechRecognitionPermission": "Hermes uses speech recognition for dictation."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Hermes attaches photos you choose to your messages.",
+          "cameraPermission": "Hermes attaches photos you take to your messages."
+        }
+      ]
     ]
   }
 }
