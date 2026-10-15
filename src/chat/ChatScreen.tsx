@@ -344,6 +344,7 @@ function Composer({
   onModelPicker: () => void;
 }) {
   const [text, setText] = useState('');
+  const [focused, setFocused] = useState(false);
   const [seed] = useState(() => Math.floor(Math.random() * 100000));
   const canSend = text.trim() !== '' && !disabled;
   const showStop = running && text.trim() === '';
@@ -360,7 +361,7 @@ function Composer({
   return (
     <View style={styles.composerDock}>
       <View
-        style={[styles.composer, { backgroundColor: t.uiBgEditor, borderColor: t.uiStrokeSecondary, borderRadius: t.radius['2xl'] }]}
+        style={[styles.composer, { backgroundColor: t.uiBgEditor, borderColor: focused ? t.dtComposerRing : t.uiComposerBorder, borderRadius: t.radius['2xl'] }]}
       >
         <Pressable
           accessibilityRole="button"
@@ -375,6 +376,8 @@ function Composer({
           <TextInput
             value={text}
             onChangeText={setText}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             multiline
             style={[styles.input, { color: t.uiTextPrimary, fontSize: t.type.text, lineHeight: t.type.text * 1.5 }]}
             selectionColor={t.uiAccent}
@@ -488,7 +491,7 @@ const styles = StyleSheet.create({
   runStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SIDE_INSET - 6, paddingBottom: 4 },
   // desktop composer tokens: control 24, primary 26, gap 4, surface padding 8 × 5, input 26–150
   composerDock: { paddingHorizontal: 16, paddingTop: COMPOSER_DOCK_TOP, paddingBottom: 6 },
-  composer: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5 },
+  composer: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, paddingVertical: 5 },
   ghostButton: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
   menuCell: { alignSelf: 'flex-start', marginTop: 3 },
   inputCell: { flex: 1, justifyContent: 'center' },

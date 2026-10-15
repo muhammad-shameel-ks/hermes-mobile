@@ -175,6 +175,8 @@ function resolve({ skin = DEFAULT_SKIN, mode, accent = null, chatTextScale = CHA
     dtPrimarySolid: ensureContrast(palette.primary, PRIMARY_SOLID_FOREGROUND, 4.5),
     dtPrimarySolidForeground: PRIMARY_SOLID_FOREGROUND,
     dtComposerRing: palette.composerRing ?? midground,
+    /** the composer's resting outline: the ring at `--dt-input-border` (7% light, 4% dark); focus paints the ring itself */
+    uiComposerBorder: mixPct(palette.composerRing ?? midground, isDark ? 0.04 : 0.07, 'transparent'),
     // `oklch(from midground l 0 h)`, evaluated at resolve time
     dtScrollbarThumb: thumb ? oklchToHex({ l: thumb.l, c: 0, h: thumb.h }) : midground,
     dtDestructive: palette.destructive,
