@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.1] - 2026-10-15
+
+- Redeem the sign-in code only once the app is back in the foreground ([847b51e](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/847b51e))
+
 ## [0.1.0] - 2026-10-15
 
 - End the generated changelog with a single newline ([dee59f8](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/dee59f8))
