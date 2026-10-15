@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.17] - 2026-10-15
+
+- Add README, license, contributing guide and CI so the project is ready for contributors ([4280697](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/4280697))
+
 ## [0.1.16] - 2026-10-15
 
 - No user-facing changes.
