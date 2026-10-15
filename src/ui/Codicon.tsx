@@ -19,6 +19,7 @@ const GLYPHS = {
   'chevron-left': 0xeab5,
   close: 0xea76,
   discard: 0xeae2,
+  mic: 0xec12,
   file: 0xea7b,
   pulse: 0xeb31,
   'settings-gear': 0xeb51,
