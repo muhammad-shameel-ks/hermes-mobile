@@ -77,7 +77,7 @@ import { busySendAction } from './queue.ts';
 import { QueueDriver } from './queueDrain.ts';
 import { emptyStack, persistedStack, restoreStack, StatusSync, type PersistedStack, type SessionStack, type StackStore } from './statusSync.ts';
 import { RequestRouter } from './requestRouter.ts';
-import { emptyRequests, hasBlockingPrompt, type Requests } from './requests.ts';
+import { awaitingInput, emptyRequests, hasBlockingPrompt, type Requests } from './requests.ts';
 import {
   addSystemNotice,
   addUserMessage,
@@ -365,7 +365,7 @@ export class ChatController {
         this.buffered.has(key) ||
         entry.transcript.running ||
         entry.stack.queue.entries.length > 0 ||
-        hasBlockingPrompt(entry.requests) ||
+        awaitingInput(entry.requests) ||
         entry.transcript.messages.some((m) => m.status === 'streaming')
       );
     };
