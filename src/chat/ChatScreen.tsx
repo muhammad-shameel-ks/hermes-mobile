@@ -32,6 +32,9 @@ import { MessageView } from './MessageView.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
 import { modelPillLabel, type ModelSelection } from './models.ts';
 import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
+import { StackIcon } from './StatusRows.tsx';
+import { StatusStack } from './StatusStack.tsx';
+import { StickyPrompt, useStickyPrompt } from './StickyPrompt.tsx';
 import type { Message } from './transcript.ts';
 import { useJumpToBottom } from './useJumpToBottom.tsx';
 
@@ -99,6 +102,7 @@ export default function ChatScreen({
   );
   const runtime = useExternalStoreRuntime({ messages, isRunning: running, convertMessage, onNew });
   const jump = useJumpToBottom(entry.key, messages);
+  const sticky = useStickyPrompt(entry.key, messages, jump.frames);
 
   const title = entry.isBotChat && bot ? bot.label : entry.title || (entry.key === 'draft' ? 'New session' : 'Untitled session');
   const subtitle = entry.isBotChat ? 'Bot Chat' : profileLabel;
@@ -122,9 +126,15 @@ export default function ChatScreen({
                   keyboardDismissMode="interactive"
                   keyboardShouldPersistTaps="handled"
                   CellRendererComponent={jump.Cell}
-                  onScroll={jump.onScroll}
+                  onScroll={(event) => {
+                    jump.onScroll(event);
+                    sticky.onScroll(event);
+                  }}
                   onScrollBeginDrag={jump.onDrag}
-                  onContentSizeChange={jump.onContentSize}
+                  onContentSizeChange={(_width, height) => {
+                    jump.onContentSize();
+                    sticky.onContentSize(height);
+                  }}
                 >
                   {({ message }) => {
                     const ours = byId.get(message.id);
@@ -135,12 +145,15 @@ export default function ChatScreen({
                     ) : null;
                   }}
                 </ThreadPrimitive.MessagesFlatList>
+                <StickyPrompt sticky={sticky} messages={messages} />
                 <ScrollToBottomButton visible={jump.visible} count={jump.count} onPress={jump.toBottom} />
               </View>
             )}
             {running ? <RunStatus t={t} status={entry.transcript.status} /> : null}
           </View>
         </AssistantRuntimeProvider>
+
+        <StatusStack controller={controller} entry={entry} busy={running} />
 
         <View
           onLayout={(e) => {
@@ -156,6 +169,7 @@ export default function ChatScreen({
             followUp={messages.length > 0}
             modelLabel={modelPillLabel(currentModel?.model)}
             onSend={(text) => void controller.send(text)}
+            onQueue={(text) => controller.queueMessage(text)}
             onStop={() => void controller.stop()}
             onAttach={() => controller.notify('Attachments are not on the phone yet.')}
             onModelPicker={() => {
@@ -324,6 +338,7 @@ function Composer({
   followUp,
   modelLabel,
   onSend,
+  onQueue,
   onStop,
   onAttach,
   onModelPicker,
@@ -335,6 +350,7 @@ function Composer({
   followUp: boolean;
   modelLabel: string;
   onSend: (text: string) => void;
+  onQueue: (text: string) => void;
   onStop: () => void;
   onAttach: () => void;
   onModelPicker: () => void;
@@ -350,6 +366,12 @@ function Composer({
   const submit = () => {
     if (!canSend) return;
     onSend(text);
+    setText('');
+  };
+  // desktop controls.tsx: the secondary mid-turn action, while the primary button steers
+  const queue = () => {
+    if (!canSend) return;
+    onQueue(text);
     setText('');
   };
 
@@ -401,6 +423,17 @@ function Composer({
           </Text>
           <Codicon name="chevron-down" size={10} color={t.uiTextTertiary} style={{ opacity: 0.5 }} />
         </Pressable>
+        {running && canSend ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Queue message"
+            onPress={queue}
+            hitSlop={6}
+            style={({ pressed }) => [styles.ghostButton, { borderRadius: t.radius.md }, pressed && { backgroundColor: t.uiControlHoverBackground }]}
+          >
+            <StackIcon name="layers" size={14} color={t.uiTextTertiary} />
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={showStop ? 'Stop' : running ? 'Steer' : 'Send'}
