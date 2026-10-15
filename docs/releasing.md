@@ -27,6 +27,20 @@ no release and no version change — the next push retries the same version.
 
 You can also run it by hand from **Actions → Android Release → Run workflow**.
 
+## Branch protection
+
+`main` is protected by the **Protect main** ruleset: changes land only through a
+pull request that passes the `Typecheck and test` check and is squash-merged;
+force pushes and deletion are blocked.
+
+The release workflow pushes its version-bump commit straight to `main`, so it needs
+a way past that rule. On a personal repository the built-in `GITHUB_TOKEN` cannot
+bypass a ruleset, so the workflow checks out with an SSH **deploy key** with write
+access (secret `RELEASE_DEPLOY_KEY`), and the ruleset lets deploy keys bypass it.
+To rotate the key, generate a new pair, replace the deploy key under **Settings →
+Deploy keys** (write access) and update the secret. If the organisation ever owns
+the repo, replace this with the GitHub Actions app as a bypass actor.
+
 ## Versioning
 
 The latest `vX.Y.Z` tag is the source of truth:

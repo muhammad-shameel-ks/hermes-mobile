@@ -1,7 +1,17 @@
 {
   "name": "hermes-mobile",
   "version": "0.1.16",
+  "description": "A native mobile client for the Hermes agent, built with Expo and React Native.",
+  "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/muhammad-shameel-ks/hermes-mobile.git"
+  },
+  "bugs": {
+    "url": "https://github.com/muhammad-shameel-ks/hermes-mobile/issues"
+  },
+  "homepage": "https://github.com/muhammad-shameel-ks/hermes-mobile#readme",
   "main": "index.ts",
   "scripts": {
     "start": "expo start --dev-client",

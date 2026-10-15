@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in the app is broken or behaves unexpectedly
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not paste tokens, passwords or private gateway addresses.
+        Security problems go through [SECURITY.md](https://github.com/muhammad-shameel-ks/hermes-mobile/security/policy), not here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Settings → About, or the release you installed.
+      placeholder: "0.1.16"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android
+        - iOS
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS version
+      placeholder: Pixel 8, Android 15
+    validations:
+      required: true
+  - type: input
+    id: gateway
+    attributes:
+      label: Hermes gateway version
+      description: If you know it.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots, recordings or logs

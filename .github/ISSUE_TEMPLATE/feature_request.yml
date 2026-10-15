@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest a feature, or something the desktop app does that the phone does not
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: The problem or use case, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: desktop
+    attributes:
+      label: Desktop behaviour
+      description: If the desktop app already does this, describe it or point at where it lives.
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: Optional. How you imagine it working on a phone.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to work on this myself

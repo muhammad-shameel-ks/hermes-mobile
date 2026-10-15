@@ -36,6 +36,10 @@ jobs:
           ref: main
           # Tags drive the version bump, so the whole history is needed.
           fetch-depth: 0
+          # `main` is protected by a ruleset that only a deploy key may bypass
+          # (the GITHUB_TOKEN cannot, on a personal repository). Checking out
+          # with the key makes the version-bump push below use it.
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
 
       - name: Set up Node
         uses: actions/setup-node@v5

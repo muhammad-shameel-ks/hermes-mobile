@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/muhammad-shameel-ks/hermes-mobile/security/advisories/new
+    about: Report security problems privately, never in a public issue.
+  - name: Problem with the Hermes gateway or desktop app
+    url: https://github.com/NousResearch/hermes-agent/issues
+    about: This repository only covers the mobile app.
