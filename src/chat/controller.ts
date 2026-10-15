@@ -385,10 +385,9 @@ export class ChatController {
     void this.refreshPersonality();
   }
 
-  /** a roster tap: the active profile follows the bot, and its one Bot Chat opens (or is created) */
+  /** a roster tap: its one Bot Chat opens (or is created) and the active profile follows; a failed lookup changes nothing */
   async openBot(bot: Pick<Bot, 'name' | 'label'>, options: { kickoff?: boolean } = {}) {
     if (this.snapshot.openingBot) return;
-    this.setProfile(bot.name);
     this.set({ openingBot: bot.name });
     try {
       const found = await this.findBotChat(bot.name);
@@ -405,6 +404,7 @@ export class ChatController {
   }
 
   private openBotChat(botName: string, storedId: string) {
+    this.setProfile(botName);
     const existing = this.entry(storedId);
     if (!existing) this.putEntry(newEntry(storedId, botName, { title: BOT_CHAT_TITLE, isBotChat: true, bot: botName }));
     this.set({ openKey: storedId });
@@ -435,6 +435,7 @@ export class ChatController {
       throw error;
     }
     const key = created.stored_session_id;
+    this.setProfile(profile);
     this.putEntry(newEntry(key, profile, { title: BOT_CHAT_TITLE, isBotChat: true, bot: profile, model: selectionFromInfo(created.info, null) }));
     this.bindRuntime(key, created.session_id);
     this.set({ openKey: key });

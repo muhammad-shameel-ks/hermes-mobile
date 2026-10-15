@@ -145,6 +145,36 @@ test('a bot without a Bot Chat gets one created hidden and titled', async () => 
   controller.dispose();
 });
 
+test('a failed Bot Chat lookup fails closed: no profile switch, the screen stays put', async () => {
+  const { gateway, controller, snap } = await setup();
+  gateway.handlers['session.list'] = () => {
+    throw new Error('registry unavailable');
+  };
+
+  await controller.openBot({ name: 'scout', label: 'Scout' });
+  await flush();
+  assert.equal(snap().profile, 'default');
+  assert.equal(snap().openKey, DRAFT_KEY);
+  assert.equal(snap().openingBot, null);
+  assert.equal(gateway.called('session.create').length, 0, 'a failed lookup never mints a second chat');
+  assert.match(snap().notice?.text ?? '', /Could not open Scout.s chat.*registry unavailable/);
+  controller.dispose();
+});
+
+test('a failed Bot Chat creation leaves the active profile alone', async () => {
+  const { gateway, controller, snap } = await setup();
+  gateway.handlers['session.list'] = () => ({ sessions: [] });
+  gateway.handlers['session.create'] = () => {
+    throw new Error('no model');
+  };
+
+  await controller.openBot({ name: 'scout', label: 'Scout' });
+  await flush();
+  assert.equal(snap().profile, 'default');
+  assert.equal(snap().openKey, DRAFT_KEY);
+  controller.dispose();
+});
+
 test('/new in a Bot Chat compacts instead of resetting', async () => {
   const { gateway, controller, snap } = await setup();
   gateway.handlers['session.list'] = () => ({ sessions: [{ id: 'bc', title: 'Bot Chat' }] });
