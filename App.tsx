@@ -11,6 +11,7 @@ import { JetBrainsMono_400Regular_Italic } from '@expo-google-fonts/jetbrains-mo
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
 import { JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono/700Bold';
 import { useFonts } from 'expo-font';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -28,7 +29,7 @@ import { ThemedSafeAreaView, ThemedStatusBar, ThemeProvider } from './src/ui/The
 const restore = () =>
   restoreSession({ loadConnection, loadCredentials, saveCredentials, refreshCredentials, probeGateway, isStale, nowSeconds });
 
-export default function App() {
+function Root() {
   const [state, setState] = useState<AppState>({ kind: 'starting' });
   // fonts load in the background; text falls back to the platform faces until they arrive
   useFonts({
@@ -115,5 +116,13 @@ export default function App() {
         </KeyboardProvider>
       </ThemeProvider>
     </SafeAreaProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <Root />
+    </GestureHandlerRootView>
   );
 }
