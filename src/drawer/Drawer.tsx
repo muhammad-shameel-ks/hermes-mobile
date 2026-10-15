@@ -11,9 +11,12 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
+import { useOverlay } from '../app/overlay.tsx';
 import { BotAvatar } from '../bots/BotAvatar.tsx';
 import { compactAge, filterBots, type Bot } from '../bots/roster.ts';
 import type { ChatSnapshot, SessionInfo } from '../chat/controller.ts';
+import { FileGlyph } from '../files/glyphs.tsx';
+import { openFiles } from '../files/open.tsx';
 import type { LinkState } from '../gateway/link.ts';
 import { Codicon } from '../ui/Codicon.tsx';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
@@ -163,6 +166,7 @@ function NavRow({ t, label, onPress, icon }: { t: Tokens; label: string; onPress
 const sessionTime = (s: SessionInfo) => s.last_active || s.started_at;
 
 function SessionsPane({ t, snapshot, onClose, onNewSession, onOpenSession, onSessionActions }: Props & { t: Tokens }) {
+  const overlay = useOverlay();
   const [query, setQuery] = useState('');
   const routes = useDrawerRoutes(onClose);
   const now = Math.floor(Date.now() / 1000);
@@ -214,6 +218,15 @@ function SessionsPane({ t, snapshot, onClose, onNewSession, onOpenSession, onSes
             <Path d="M7 2.5v9M2.5 7h9" stroke={t.uiTextSecondary} strokeWidth={1.5} strokeLinecap="round" />
           </Svg>
         }
+      />
+      <NavRow
+        t={t}
+        label="Files"
+        onPress={() => {
+          onClose();
+          openFiles(overlay);
+        }}
+        icon={<FileGlyph name="folder" size={14} color={t.uiTextSecondary} />}
       />
       <NavRow t={t} label="Capabilities" onPress={routes.openCapabilities} icon={<Codicon name="tools" size={14} color={t.uiTextSecondary} />} />
       <SearchField t={t} value={query} onChange={setQuery} placeholder="Search sessions…" />

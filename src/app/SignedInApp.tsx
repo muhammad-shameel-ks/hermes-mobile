@@ -20,6 +20,7 @@ import ChatScreen from '../chat/ChatScreen.tsx';
 import { ChatController } from '../chat/controller.ts';
 import Drawer, { type DrawerTab } from '../drawer/Drawer.tsx';
 import { useSessionActions } from '../drawer/useSessionActions.tsx';
+import { bindGateway } from '../files/gateway.ts';
 import { createGatewayApi } from '../gateway/api.ts';
 import { gatewaySocketUrl, GatewayLink } from '../gateway/link.ts';
 import { createPersistence } from '../store/index.ts';
@@ -55,7 +56,9 @@ function useController({ connection, credentials, onReauthRequired }: Props) {
       },
       onAuthRejected: onReauthRequired,
     });
-    return new ChatController(link, api, undefined, createPersistence(connection.id));
+    const controller = new ChatController(link, api, undefined, createPersistence(connection.id));
+    bindGateway({ auth, api, profile: () => controller.getSnapshot().profile });
+    return controller;
   }, [connection.id]);
 }
 
