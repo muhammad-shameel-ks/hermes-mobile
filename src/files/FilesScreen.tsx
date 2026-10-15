@@ -12,9 +12,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { OverlayScreen } from '../app/overlay.tsx';
+import { Codicon } from '../ui/Codicon.tsx';
 import { ActionSheet, Sheet, type SheetAction } from '../ui/Sheet.tsx';
 import { MONO, useTokens } from '../ui/tokens.ts';
-import { FileGlyph } from './glyphs.tsx';
 import { gateway } from './gateway.ts';
 import { baseName, displayPath, folderNameError, formatBytes, formatModified, joinPath } from './path.ts';
 import { createFilesRest, errorMessage, type ManagedFileEntry, type ManagedFilesResponse } from './rest.ts';
@@ -142,7 +142,7 @@ export default function FilesScreen({ root, path, onClose, onOpenDirectory, onOp
         style={({ pressed }) => [styles.row, { borderBottomColor: t.uiStrokeQuaternary }, pressed && { backgroundColor: t.uiRowActiveBackground }]}
       >
         <View style={styles.lead}>
-          <FileGlyph name={item.is_directory ? 'folder' : broken ? 'warning' : 'file'} size={16} color={item.is_directory ? t.uiYellow : broken ? t.uiRed : t.uiTextTertiary} />
+          <Codicon name={item.is_directory ? 'folder' : broken ? 'warning' : 'file'} size={16} color={item.is_directory ? t.uiYellow : broken ? t.uiRed : t.uiTextTertiary} />
         </View>
         <View style={styles.rowText}>
           <Text numberOfLines={1} style={mono}>
@@ -154,7 +154,7 @@ export default function FilesScreen({ root, path, onClose, onOpenDirectory, onOp
         </View>
         {!broken ? (
           <Pressable onPress={() => setRowActions(item)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Actions for ${item.name}`} style={styles.more}>
-            <FileGlyph name="ellipsis" size={16} color={t.uiTextTertiary} />
+            <Codicon name="ellipsis" size={16} color={t.uiTextTertiary} />
           </Pressable>
         ) : null}
       </Pressable>

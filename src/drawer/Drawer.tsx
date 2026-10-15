@@ -16,7 +16,6 @@ import { BotAvatar } from '../bots/BotAvatar.tsx';
 import { faceMood } from '../bots/face.ts';
 import { compactAge, filterBots, type Bot } from '../bots/roster.ts';
 import type { ChatSnapshot, SessionInfo } from '../chat/controller.ts';
-import { FileGlyph } from '../files/glyphs.tsx';
 import { openFiles } from '../files/open.tsx';
 import type { LinkState } from '../gateway/link.ts';
 import { Codicon } from '../ui/Codicon.tsx';
@@ -229,7 +228,7 @@ function SessionsPane({ t, snapshot, onClose, onNewSession, onOpenSession, onSes
           onClose();
           openFiles(overlay);
         }}
-        icon={<FileGlyph name="folder" size={14} color={t.uiTextSecondary} />}
+        icon={<Codicon name="folder" size={14} color={t.uiTextSecondary} />}
       />
       <NavRow t={t} label="Capabilities" onPress={routes.openCapabilities} icon={<Codicon name="tools" size={14} color={t.uiTextSecondary} />} />
       <SearchField t={t} value={query} onChange={setQuery} placeholder="Search sessions…" />

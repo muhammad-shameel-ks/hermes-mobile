@@ -12,10 +12,10 @@ import Svg, { Path } from 'react-native-svg';
 
 import { mixPct } from '../ui/color.ts';
 import { useTokens } from '../ui/tokens.ts';
-import { FileGlyph, type FileGlyphName } from './glyphs.tsx';
+import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
-export function HeaderAction({ icon, label, onPress, busy, disabled }: { icon: FileGlyphName; label: string; onPress: () => void; busy?: boolean; disabled?: boolean }) {
+export function HeaderAction({ icon, label, onPress, busy, disabled }: { icon: CodiconName; label: string; onPress: () => void; busy?: boolean; disabled?: boolean }) {
   const t = useTokens();
   return (
     <Pressable
@@ -26,7 +26,7 @@ export function HeaderAction({ icon, label, onPress, busy, disabled }: { icon: F
       accessibilityLabel={label}
       style={({ pressed }) => [styles.headerAction, (pressed || disabled) && { opacity: 0.5 }]}
     >
-      {busy ? <GlyphSpinner size={14} color={t.uiTextTertiary} /> : <FileGlyph name={icon} size={16} color={t.uiTextSecondary} />}
+      {busy ? <GlyphSpinner size={14} color={t.uiTextTertiary} /> : <Codicon name={icon} size={16} color={t.uiTextSecondary} />}
     </Pressable>
   );
 }

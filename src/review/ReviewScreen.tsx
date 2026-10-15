@@ -10,11 +10,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { OverlayScreen } from '../app/overlay.tsx';
-import { FileGlyph } from '../files/glyphs.tsx';
 import { gateway } from '../files/gateway.ts';
 import { displayPath, joinPath } from '../files/path.ts';
 import { createFilesRest, createReviewRest, errorMessage, type RepoStatus } from '../files/rest.ts';
 import { EmptyState, ErrorBanner, HeaderAction, Loading } from '../files/ui.tsx';
+import { Codicon } from '../ui/Codicon.tsx';
 import { ActionSheet, type SheetAction } from '../ui/Sheet.tsx';
 import { mixPct } from '../ui/color.ts';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
@@ -145,7 +145,7 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
           accessibilityState={{ expanded: isOpen }}
           style={({ pressed }) => [styles.row, { paddingLeft: indent }, pressed && { backgroundColor: t.uiRowActiveBackground }]}
         >
-          <FileGlyph name={isOpen ? 'folder-opened' : 'folder'} size={14} color={t.uiTextTertiary} />
+          <Codicon name={isOpen ? 'folder-opened' : 'folder'} size={14} color={t.uiTextTertiary} />
           <Text numberOfLines={1} style={[styles.name, { color: t.uiTextSecondary }]}>
             {node.name}
           </Text>
@@ -166,7 +166,7 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
         accessibilityHint="Long press for more actions"
         style={({ pressed }) => [styles.row, { paddingLeft: indent }, pressed && { backgroundColor: t.uiRowActiveBackground }]}
       >
-        <FileGlyph name={glyph.icon} size={14} color={tint} />
+        <Codicon name={glyph.icon} size={14} color={tint} />
         <View style={styles.fileText}>
           <Text numberOfLines={1} style={[styles.name, { color: t.uiTextSecondary, flexShrink: 0, maxWidth: '100%' }]}>
             {node.name}
@@ -197,7 +197,7 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
       }
     >
       <View style={[styles.info, { borderBottomColor: t.uiStrokeQuaternary }]}>
-        <FileGlyph name="git-branch" size={13} color={t.uiTextTertiary} />
+        <Codicon name="git-branch" size={13} color={t.uiTextTertiary} />
         <Text numberOfLines={1} style={{ flex: 1, color: t.uiTextSecondary, fontFamily: MONO, fontSize: 11 }}>
           {subtitle || displayPath(cwd) || 'Loading'}
         </Text>
