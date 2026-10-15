@@ -38,8 +38,25 @@ import {
 import type { GatewayApi } from '../gateway/api.ts';
 import { errorText } from '../gateway/http.ts';
 import type { GatewayLink, LinkState } from '../gateway/link.ts';
+import { applyReaction } from './actionBar.ts';
 import { normalizePersonality } from './intro.ts';
 import type { ModelSelection } from './models.ts';
+import {
+  durableRowIds,
+  isDeepTruncateRefusal,
+  isSessionBusyError,
+  isStaleTargetError,
+  matchDurableRowId,
+  planRewind,
+  RecentInterrupts,
+  rebindRowIds,
+  retryWhileBusy,
+  rewindOptimistic,
+  stampUserRowId,
+  survivorRowIdsFrom,
+  truncateParams,
+  type RewindPlan,
+} from './rewind.ts';
 import {
   addSystemNotice,
   addUserMessage,
@@ -111,7 +128,12 @@ export type ChatSnapshot = {
   personality: string;
   /** the profile's `agent.reasoning_effort`, the effort a session starts with unless picked */
   defaultEffort: string | null;
+  /** `display.message_reactions`: whether the action bar offers the reaction slot */
+  reactionsEnabled: boolean;
 };
+
+/** a rewind's answer: `confirm` is the gateway refusing a cut that archives later user turns until the reader agrees */
+export type RewindOutcome = 'ok' | 'confirm' | 'failed';
 
 export type BotDraft = { label: string; description: string };
 
@@ -151,6 +173,7 @@ export class ChatController {
   private readonly unsubscribe: Array<() => void> = [];
   private readonly rpc: Rpc;
   private listTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly interrupts = new RecentInterrupts();
   private readonly link: GatewayLink;
   private readonly api: GatewayApi;
 
@@ -171,6 +194,7 @@ export class ChatController {
       models: { profile: initialProfile, providers: [], current: null, loading: false, error: null },
       personality: '',
       defaultEffort: null,
+      reactionsEnabled: false,
     };
     this.unsubscribe.push(
       link.onState((state) => this.set({ link: state })),
@@ -569,7 +593,8 @@ export class ChatController {
       if (!entry.runtimeId) await this.resume(key, { rebind: false });
       const runtimeId = this.entry(key)?.runtimeId;
       if (!runtimeId) throw new Error('The session is not attached to the gateway.');
-      await this.rpc('prompt.submit', { session_id: runtimeId, profile: entry.profile, text }, PROMPT_TIMEOUT_MS);
+      const result = await this.rpc('prompt.submit', { session_id: runtimeId, profile: entry.profile, text }, PROMPT_TIMEOUT_MS);
+      if (typeof result?.user_row_id === 'number') this.updateTranscript(key, (t) => stampUserRowId(t, result.user_row_id as number));
     } catch (error) {
       this.updateTranscript(key, (t) => ({ ...addSystemNotice(t, `The message was not sent: ${errorText(error)}`), running: false, liveId: null }));
     }
@@ -578,6 +603,7 @@ export class ChatController {
   async stop() {
     const entry = this.entry(this.snapshot.openKey);
     if (!entry?.runtimeId || !entry.transcript.running) return;
+    this.interrupts.mark(entry.runtimeId);
     try {
       const result = await this.rpc('session.interrupt', { session_id: entry.runtimeId, profile: entry.profile });
       if (result.status === 'not_interrupted') {
@@ -585,6 +611,113 @@ export class ChatController {
       }
     } catch (error) {
       this.notify(`Could not stop the turn: ${errorText(error)}`);
+    }
+  }
+
+  // ─── message actions ───────────────────────────────────────────────────────
+
+  /** the reader's Tapback on a message of the open chat: painted at once, then persisted, rolled back if refused */
+  async react(messageId: string, emoji: string | null) {
+    const key = this.snapshot.openKey;
+    const entry = this.entry(key);
+    const message = entry?.transcript.messages.find((m) => m.id === messageId);
+    if (!entry || !message || key === DRAFT_KEY) return;
+    const previous = message.reactions;
+    const paint = (reactions: typeof previous, rowId?: number) =>
+      this.updateTranscript(key, (t) => ({
+        ...t,
+        messages: t.messages.map((m) => (m.id === messageId ? { ...m, reactions, ...(rowId !== undefined ? { rowId } : {}) } : m)),
+      }));
+    paint(applyReaction(previous, emoji, 'user'));
+    try {
+      if (!entry.runtimeId) await this.resume(key, { rebind: false });
+      const result = await this.rpc('message.react', {
+        session_id: this.entry(key)?.runtimeId ?? key,
+        profile: entry.profile,
+        ...(message.rowId === undefined ? { newest_role: message.role } : { row_id: message.rowId }),
+        emoji,
+        author: 'user',
+      });
+      paint(result.reactions ?? [], result.row_id);
+    } catch (error) {
+      paint(previous);
+      this.notify(`Could not react. ${errorText(error)}`);
+    }
+  }
+
+  /**
+   * Rewind the open chat to the user turn at (or answered by) `messageId` and run it again:
+   * retry and restore resubmit the same prompt, edit submits `options.text`. Everything after
+   * the turn is dropped, interrupting a live turn first.
+   */
+  async rewind(messageId: string, options: { text?: string; confirmDeep?: boolean } = {}, retried = false): Promise<RewindOutcome> {
+    const key = this.snapshot.openKey;
+    const entry = this.entry(key);
+    if (!entry || key === DRAFT_KEY) return 'failed';
+    const plan = planRewind(entry.transcript.messages, messageId, options.text);
+    if (!plan) {
+      this.notify('Could not find the message to restore.');
+      return 'failed';
+    }
+    const before = entry.transcript;
+    try {
+      if (!entry.runtimeId) await this.resume(key, { rebind: false });
+      const runtimeId = this.entry(key)?.runtimeId;
+      if (!runtimeId) throw new Error('The session is not attached to the gateway.');
+      const interruptFirst = this.interrupts.shouldInterruptFirst({ busy: before.running, sessionId: runtimeId });
+      this.updateTranscript(key, (t) => rewindOptimistic(t, plan));
+      const result = await this.submitRewind(entry, runtimeId, plan, interruptFirst, options.confirmDeep === true);
+      const survivors = survivorRowIdsFrom(result);
+      if (survivors) this.updateTranscript(key, (t) => ({ ...t, messages: rebindRowIds(t.messages, survivors) }));
+      if (typeof result.user_row_id === 'number') this.updateTranscript(key, (t) => stampUserRowId(t, result.user_row_id as number));
+      return 'ok';
+    } catch (error) {
+      this.updateTranscript(key, () => before);
+      if (isDeepTruncateRefusal(error) && !options.confirmDeep) return 'confirm';
+      if (isStaleTargetError(error) && !retried) {
+        // the row ids went stale (a compaction or another client): re-read the history and aim once more
+        await this.load(key);
+        return this.rewind(messageId, options, true);
+      }
+      this.notify(`Could not rewind the conversation. ${errorText(error)}`);
+      return 'failed';
+    }
+  }
+
+  private async submitRewind(entry: ChatEntry, runtimeId: string, plan: RewindPlan, interruptFirst: boolean, confirmDeep: boolean) {
+    const profile = entry.profile;
+    let rowId = plan.rowId;
+    if (rowId === undefined) {
+      try {
+        const history = await this.rpc('session.history', { session_id: runtimeId, profile });
+        rowId = matchDurableRowId(history.messages ?? [], plan.sourceText, plan.targetIsLast);
+      } catch {
+        // no durable address: the prompt is resubmitted plainly, never with a guessed cut
+      }
+    }
+    const rebind = durableRowIds(entry.transcript.messages);
+    const params = {
+      session_id: runtimeId,
+      profile,
+      text: plan.text,
+      ...(rowId !== undefined ? { ...truncateParams(rowId, confirmDeep), ...(rebind.length ? { rebind_survivor_row_ids: rebind } : {}) } : {}),
+    };
+    const interrupt = async () => {
+      this.interrupts.mark(runtimeId);
+      try {
+        await this.rpc('session.interrupt', { session_id: runtimeId, profile });
+      } catch {
+        // best effort: the submit still gates on the gateway's own state
+      }
+    };
+    const submit = () => this.rpc('prompt.submit', params, PROMPT_TIMEOUT_MS);
+    if (interruptFirst) await interrupt();
+    try {
+      return await submit();
+    } catch (error) {
+      if (!isSessionBusyError(error)) throw error;
+      await interrupt();
+      return retryWhileBusy(submit);
     }
   }
 
@@ -633,12 +766,13 @@ export class ChatController {
   private async refreshPersonality() {
     const profile = this.snapshot.profile;
     try {
-      const config = await this.api.get<{ display?: { personality?: unknown }; agent?: { reasoning_effort?: unknown } }>('/api/config', { profile });
+      const config = await this.api.get<{ display?: { personality?: unknown; message_reactions?: unknown }; agent?: { reasoning_effort?: unknown } }>('/api/config', { profile });
       if (profile !== this.snapshot.profile) return;
       const effort = config?.agent?.reasoning_effort;
       this.set({
         personality: normalizePersonality(config?.display?.personality),
         defaultEffort: typeof effort === 'string' && effort.trim() ? effort.trim().toLowerCase() : null,
+        reactionsEnabled: config?.display?.message_reactions === true,
       });
     } catch {
       // the intro falls back to the neutral copy
