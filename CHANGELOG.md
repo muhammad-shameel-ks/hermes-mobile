@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.7] - 2026-10-15
+
+- Offer new GitHub releases in an update sheet and under Settings → About ([8b841a3](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/8b841a3))
+
 ## [0.1.6] - 2026-10-15
 
 - Shimmer live transcript rows and paint memory writes gold to purple ([1119c3a](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/1119c3a))
