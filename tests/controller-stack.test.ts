@@ -224,7 +224,7 @@ test('resuming a session hydrates its todos and reads the goal from the session 
   controller.dispose();
 });
 
-test('a restored queue is parked until the session is idle, then drains once it has loaded', async () => {
+test('a restored queue drains once its session has loaded and is idle', async () => {
   const { gateway, controller, snap } = await setup();
   gateway.handlers['prompt.submit'] = () => ({ status: 'streaming' });
   controller.stackStore = {
