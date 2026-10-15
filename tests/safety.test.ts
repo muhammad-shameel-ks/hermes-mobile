@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { displayToggleParams, reactionsParams } from '../src/settings/display-toggles.ts';
 import {
   allowlistWith,
   allowlistWithout,
@@ -9,7 +10,6 @@ import {
   describeTimeout,
   normalizeApprovalMode,
   parseTimeout,
-  reactionsParams,
   readAllowlist,
   readPath,
   readSafety,
@@ -130,4 +130,8 @@ test('the allowlist adds a trimmed entry once and removes by value', () => {
 test('message reactions go to the gateway as the display toggle the desktop writes', () => {
   assert.deepEqual(reactionsParams(true, 'work'), { key: 'display.message_reactions', value: 'true', profile: 'work' });
   assert.deepEqual(reactionsParams(false, 'default'), { key: 'display.message_reactions', value: 'false', profile: 'default' });
+});
+
+test('any display toggle is spelled the way the gateway parses it', () => {
+  assert.deepEqual(displayToggleParams('display.in_app_tips', true, 'default'), { key: 'display.in_app_tips', value: 'true', profile: 'default' });
 });

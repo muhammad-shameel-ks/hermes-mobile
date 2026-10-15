@@ -153,8 +153,3 @@ export function describeTimeout(seconds: number): string {
   if (minutes === 0) return `${rest} s`;
   return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
 }
-
-/** `display.message_reactions` over `config.set`: the gateway takes the toggle as the word `true` or `false` */
-export function reactionsParams(enabled: boolean, profile: string): { key: string; value: string; profile: string } {
-  return { key: 'display.message_reactions', value: enabled ? 'true' : 'false', profile };
-}
