@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView, useKeyboardState } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -24,6 +24,10 @@ import { BotAvatar } from '../bots/BotAvatar.tsx';
 import { BOT_CHAT_EMPTY, type Bot } from '../bots/roster.ts';
 import type { LinkState } from '../gateway/link.ts';
 import { Codicon } from '../ui/Codicon.tsx';
+import { mixPct } from '../ui/color.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
+import { ThreadLoader } from '../ui/loaders/presets.tsx';
+import { StatusPulse } from '../ui/loaders/StatusPulse.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { Wordmark } from '../ui/Wordmark.tsx';
 import type { ChatController, ChatEntry, ModelCatalog } from './controller.ts';
@@ -240,7 +244,7 @@ function LinkBanner({ link, onRetry }: { link: LinkState; onRetry: () => void })
         : link.detail;
   return (
     <View style={[styles.banner, { backgroundColor: t.uiBgSecondary, borderBottomColor: t.uiStrokeQuaternary }]}>
-      {link.kind === 'connecting' ? <ActivityIndicator size="small" color={t.uiTextTertiary} /> : null}
+      {link.kind === 'connecting' ? <GlyphSpinner size={12} label="Connecting" /> : null}
       <Text style={{ color: t.uiTextSecondary, fontSize: 12, flex: 1 }} numberOfLines={2}>
         {text}
       </Text>
@@ -272,7 +276,7 @@ function EmptyState({
   if (opening || entry.loading) {
     return (
       <View style={styles.empty}>
-        <ActivityIndicator color={t.uiTextTertiary} />
+        <ThreadLoader />
       </View>
     );
   }
@@ -308,7 +312,7 @@ function EmptyState({
 function RunStatus({ t, status }: { t: Tokens; status: string | null }) {
   return (
     <View style={styles.runStatus} accessibilityLiveRegion="polite">
-      <ActivityIndicator size="small" color={t.uiTextTertiary} style={{ transform: [{ scale: 0.75 }] }} />
+      <StatusPulse kind="opacity" style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: mixPct(t.uiAccent, 0.8, 'transparent') }} />
       <Text style={{ color: t.uiTextTertiary, fontSize: t.type.tool }} numberOfLines={1}>
         {status || 'Working…'}
       </Text>

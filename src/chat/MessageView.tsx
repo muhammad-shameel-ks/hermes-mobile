@@ -9,8 +9,9 @@
  */
 
 import { memo, useMemo, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
 
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { DisclosureCaret, EnterView } from '../ui/motion.tsx';
 import { MONO, SCAFFOLD_OPACITY, useTokens, type Tokens } from '../ui/tokens.ts';
 import { AlertGlyph, ToolIcon } from '../ui/ToolIcon.tsx';
@@ -210,7 +211,7 @@ function ToolGlyph({ view, color }: { view: ToolView; color: string }) {
   const t = useTokens();
   let glyph: ReactNode = null;
   if (view.status === 'running') {
-    glyph = <ActivityIndicator size="small" color={t.uiTextTertiary} style={styles.spinner} />;
+    glyph = <GlyphSpinner spinner="breathe" size={GLYPH} label="Running" />;
   } else if (view.status === 'error' || view.status === 'warning') {
     glyph = <AlertGlyph size={GLYPH} color={color} />;
   } else if (view.icon) {
@@ -281,7 +282,6 @@ const styles = StyleSheet.create({
   scaffoldContent: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 6 },
   caret: { width: 12, alignItems: 'center', justifyContent: 'center' },
   glyph: { width: GLYPH, height: GLYPH, alignItems: 'center', justifyContent: 'center' },
-  spinner: { transform: [{ scale: 0.6 }] },
   reasoningText: { marginTop: 2, paddingBottom: 4 },
   toolBlock: { gap: 6 },
   toolShell: { borderWidth: 1, borderRadius: 5 },
