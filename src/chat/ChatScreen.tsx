@@ -51,7 +51,6 @@ import { ShowEarlier } from './ShowEarlier.tsx';
 import { uiSlash, type SlashUi } from './slash.ts';
 import { StackIcon } from './StatusRows.tsx';
 import { StatusStack } from './StatusStack.tsx';
-import { StickyPrompt, useStickyPrompt } from './StickyPrompt.tsx';
 import type { Message } from './transcript.ts';
 import { useAttachments } from './useAttachments.ts';
 import { useComposerDraft } from './useComposerDraft.ts';
@@ -145,7 +144,6 @@ export default function ChatScreen({
   const jump = useJumpToBottom(entry.key, messages);
   const reactionsEnabled = useSyncExternalStore(controller.subscribe, () => controller.getSnapshot().reactionsEnabled);
   const chrome = useMessageChrome(controller, entry, reactionsEnabled);
-  const sticky = useStickyPrompt(entry.key, messages, jump.frames);
 
   const title = entry.isBotChat && bot ? bot.label : entry.title || (entry.key === 'draft' ? 'New session' : 'Untitled session');
   // the registry's "Bot Chat" title is plumbing, not chrome: a bot's app bar is its face and name
@@ -175,15 +173,9 @@ export default function ChatScreen({
                   keyboardDismissMode="interactive"
                   keyboardShouldPersistTaps="handled"
                   CellRendererComponent={jump.Cell}
-                  onScroll={(event) => {
-                    jump.onScroll(event);
-                    sticky.onScroll(event);
-                  }}
+                  onScroll={jump.onScroll}
                   onScrollBeginDrag={jump.onDrag}
-                  onContentSizeChange={(_width, height) => {
-                    jump.onContentSize();
-                    sticky.onContentSize(height);
-                  }}
+                  onContentSizeChange={jump.onContentSize}
                   ListHeaderComponent={
                     entry.history.more ? <ShowEarlier loading={entry.history.loadingEarlier} onPress={() => void controller.showEarlier(entry.key)} /> : null
                   }
@@ -200,7 +192,6 @@ export default function ChatScreen({
                     ) : null;
                   }}
                 </ThreadPrimitive.MessagesFlatList>
-                <StickyPrompt sticky={sticky} messages={messages} />
                 <ScrollToBottomButton visible={jump.visible} count={jump.count} onPress={jump.toBottom} />
               </View>
             )}

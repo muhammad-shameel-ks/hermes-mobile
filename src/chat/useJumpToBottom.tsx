@@ -110,5 +110,5 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
     [schedule],
   );
 
-  return { listRef, Cell, visible, count, onScroll, onDrag, onContentSize, toBottom, frames };
+  return { listRef, Cell, visible, count, onScroll, onDrag, onContentSize, toBottom };
 }
