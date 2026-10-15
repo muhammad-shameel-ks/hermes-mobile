@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { contrastRatio } from '../vendor/hermes-shared/src/color.ts';
 import { THEME_PRESET_PALETTES } from '../vendor/hermes-shared/src/theme-presets.ts';
 import { DEFAULT_PREFS, normalizeChatTextScale, normalizePrefs, parsePrefs } from '../src/ui/appearance.ts';
-import { ensureContrastOklch, hexToOklch, mixOklab, mixPct, normalizeHex, oklchToHex, readableInk, withHue } from '../src/ui/color.ts';
+import { ensureContrastOklch, hexToOklch, mixOklab, mixPct, normalizeHex, oklchToHex, readableInk, transparentOf, withHue } from '../src/ui/color.ts';
 import { retintPalette } from '../src/ui/retint.ts';
 import { accentsFor, baseColors, normalizeModePreference, normalizeSkin, paletteWithAccent, renderedModeFor, resolveMode, SKINS } from '../src/ui/skins.ts';
 import { resolveTheme, resolveTokens } from '../src/ui/tokens.ts';
@@ -191,4 +191,10 @@ test('colour helpers', () => {
   assert.equal(readableInk('#ffffff'), '#161616');
   assert.equal(readableInk('#0d1117'), '#ffffff');
   assert.equal(mixPct('#ffffff', 0.5, 'transparent'), '#ffffff80');
+});
+
+test('a fade target keeps the surface colour at zero alpha', () => {
+  assert.equal(transparentOf('#0d1015'), '#0d101500');
+  assert.equal(transparentOf('#0d1015f0'), '#0d101500');
+  assert.equal(transparentOf('nope'), '#00000000');
 });

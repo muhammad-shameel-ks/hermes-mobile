@@ -40,6 +40,12 @@ export function normalizeHex(input: string | undefined | null, backdrop = '#0000
   return toHex([base[0] + (rgb[0] - base[0]) * alpha, base[1] + (rgb[1] - base[1]) * alpha, base[2] + (rgb[2] - base[2]) * alpha]);
 }
 
+/** The same colour at zero alpha, so a gradient into it fades without passing through grey. */
+export function transparentOf(color: string): string {
+  const rgb = parseColor(color.slice(0, 7));
+  return rgb ? `${toHex(rgb)}00` : '#00000000';
+}
+
 /** Perceptual-ish luminance in 0..1 (naive, for light/dark bucketing). */
 export function luminance(hex: string): number {
   const rgb = parseColor(hex);
