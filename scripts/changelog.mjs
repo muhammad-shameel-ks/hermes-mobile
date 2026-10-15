@@ -120,7 +120,9 @@ const firstSection = existing.search(/^## \[/m);
 const preamble = (firstSection === -1 ? existing : existing.slice(0, firstSection)).trimEnd();
 const older = firstSection === -1 ? "" : existing.slice(firstSection).trimStart();
 
-const changelog = [preamble, "", section.trimEnd(), older ? `\n${older.trimEnd()}` : "", ""].join("\n");
+const changelog = older
+  ? `${preamble}\n\n${section.trimEnd()}\n\n${older.trimEnd()}\n`
+  : `${preamble}\n\n${section.trimEnd()}\n`;
 writeFileSync(CHANGELOG, changelog);
 
 console.log(`wrote ${CHANGELOG} and ${RELEASE_NOTES} for ${version} (${commits.length} commits)`);
