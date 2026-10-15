@@ -3,6 +3,11 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.13] - 2026-10-15
+
+- Enlarge the message action bar icons for touch ([bc51679](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/bc51679))
+- Let the model picker set the thinking level, with a reasoning pill beside the model pill ([ec073df](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/ec073df))
+
 ## [0.1.12] - 2026-10-15
 
 - Show what a tool call did: name session searches by query and subtitle untitled tools ([6ee63d8](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/6ee63d8))
