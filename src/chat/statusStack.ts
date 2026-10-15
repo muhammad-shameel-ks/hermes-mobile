@@ -12,6 +12,8 @@
  * so the caller only needs `statusNextExpiry` to know when to look again.
  */
 
+import { isRecord, parseObject, type Json } from './json.ts';
+
 // ─── todos (desktop lib/todos.ts) ────────────────────────────────────────────
 
 export type TodoStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
@@ -26,10 +28,9 @@ export type TodoItem = {
 
 type TodoPatch = { id: string; status: TodoStatus; content?: string };
 
-type Rec = Record<string, unknown>;
+type Rec = Json;
 
 const STATUSES: readonly string[] = ['pending', 'in_progress', 'completed', 'cancelled'];
-const isRecord = (value: unknown): value is Rec => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const isStatus = (value: unknown): value is TodoStatus => STATUSES.includes(value as string);
 const str = (value: unknown) => (typeof value === 'string' ? value : '');
 const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
@@ -425,28 +426,16 @@ const pruneDelegateFallbacks = (state: StatusState): StatusState => {
 
 const firstString = (...candidates: unknown[]) => candidates.find((v): v is string => typeof v === 'string' && v !== '') ?? '';
 
-function parseMaybeRecord(value: unknown): Rec {
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return isRecord(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-  return isRecord(value) ? value : {};
-}
-
 /**
  * Older gateways emit no `subagent.*` frames: a `delegate_task` tool call stands in,
  * one placeholder per task, until the first native frame retires them.
  */
 export function delegateTaskPayloads(payload: Rec, phase: 'running' | 'complete', sourceEventType: string): Rec[] {
   if (payload.name !== 'delegate_task') return [];
-  const args = parseMaybeRecord(payload.args ?? payload.input);
-  const result = parseMaybeRecord(payload.result);
+  const args = parseObject(payload.args ?? payload.input);
+  const result = parseObject(payload.result);
   const rawTasks = Array.isArray(args.tasks) ? args.tasks : [];
-  const tasks = rawTasks.length ? rawTasks.map(parseMaybeRecord) : [args];
+  const tasks = rawTasks.length ? rawTasks.map(parseObject) : [args];
   const resultStatus = typeof result.status === 'string' ? result.status.toLowerCase() : '';
   const failed = Boolean(payload.error) || ['timeout', 'error', 'failed', 'failure'].includes(resultStatus);
   const status = phase === 'complete' ? (failed ? 'failed' : 'completed') : 'running';

@@ -9,6 +9,7 @@
  * keeps them. What lives here is what the cards draw from.
  */
 
+import { isRecord, parseObject, type Json } from './json.ts';
 import type { Message, Part, ToolPart, Transcript } from './transcript.ts';
 
 // ─── copy (desktop en.ts assistant.approval / prompts, en_clarify.ts) ────────
@@ -199,29 +200,14 @@ export function parseClarify(params: Record<string, unknown>, requestId: string,
   return { requestId, receivedAt: now, questions, lockedAnswers };
 }
 
-type Json = Record<string, unknown>;
-
-const isRecord = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
-
-function parseMaybeObject(value: unknown): Json {
-  if (isRecord(value)) return value;
-  if (typeof value !== 'string' || !value.trim()) return {};
-  try {
-    const parsed = JSON.parse(value);
-    return isRecord(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 export type ClarifyArgs = { questions?: Array<{ question: string; choices: string[] | null; multiSelect: boolean }> };
 
 /** the questions as the tool call carried them: display only, with no qids to answer under */
 export function readClarifyArgs(args: unknown): ClarifyArgs {
-  const row = parseMaybeObject(args);
+  const row = parseObject(args);
   if (!Array.isArray(row.questions)) return {};
   const questions = row.questions.flatMap((entry) => {
-    const item = parseMaybeObject(entry);
+    const item = parseObject(entry);
     if (typeof item.question !== 'string' || !item.question) return [];
     const choices = normalizeChoices(item.choices);
     return [{ question: item.question, choices: choices.length > 0 ? choices : null, multiSelect: item.multi_select === true && choices.length > 0 }];
@@ -233,11 +219,11 @@ export type ClarifyResponse = { question?: string; answer?: string | string[]; u
 
 /** the clarify tool's JSON result: an `outcome` and one `responses` row per question */
 export function readClarifyResult(result: unknown): { outcome?: string; responses: ClarifyResponse[] } {
-  const row = parseMaybeObject(result);
+  const row = parseObject(result);
   if (!Array.isArray(row.responses)) return { responses: [] };
   const outcome = typeof row.outcome === 'string' ? row.outcome : undefined;
   const responses = row.responses.map((entry): ClarifyResponse => {
-    const item = parseMaybeObject(entry);
+    const item = parseObject(entry);
     const answer = item.user_response;
     return {
       answer: Array.isArray(answer) ? answer.map(String) : typeof answer === 'string' ? answer : undefined,
