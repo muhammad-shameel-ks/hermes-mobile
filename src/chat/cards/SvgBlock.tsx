@@ -1,6 +1,6 @@
 /**
  * Inline SVG, drawn natively by react-native-svg: no WebView, so the markup is
- * cut down to a static picture first (see ../svg.ts). Left-aligned and capped on
+ * cut down to a static picture first (see src/ui/svg.ts). Left-aligned and capped on
  * both axes, so a large intrinsic graphic scales down rather than filling the
  * column.
  */
@@ -9,7 +9,7 @@ import { memo, useMemo, useState } from 'react';
 import { useWindowDimensions, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 
-import { fitSvgToBox, sanitizeSvg, svgAspectRatio } from '../svg.ts';
+import { fitSvgToBox, sanitizeSvg, svgAspectRatio } from '../../ui/svg.ts';
 
 const DEFAULT_RATIO = 1.5;
 

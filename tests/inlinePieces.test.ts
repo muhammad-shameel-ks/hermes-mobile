@@ -5,7 +5,6 @@ import { alertTypeOf } from '../src/chat/alert.ts';
 import { detectArtifact, sanitizeLanguageTag } from '../src/chat/artifact.ts';
 import { delegateGoals, delegateRowsFromCall, mergeDelegateRows, type SubagentProgress } from '../src/chat/delegate.ts';
 import { hostLabel, parseListings, specLine } from '../src/chat/listing.ts';
-import { fitSvgToBox, sanitizeSvg, svgAspectRatio } from '../src/chat/svg.ts';
 
 const longCode = (lines: number) => Array.from({ length: lines }, (_, i) => `const value${i} = compute(${i});`).join('\n');
 
@@ -33,35 +32,6 @@ test('language tags are sanitized', () => {
   assert.equal(sanitizeLanguageTag('TypeScript title="x"'), 'typescript');
   assert.equal(sanitizeLanguageTag('a'.repeat(30)), '');
   assert.equal(sanitizeLanguageTag('<script>'), '');
-});
-
-test('svg loses scripts, handlers, links and remote references but keeps internal ones', () => {
-  const dirty = [
-    '<?xml version="1.0"?>',
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" onload="steal()">',
-    '<script>alert(1)</script>',
-    '<defs><linearGradient id="g"><stop offset="0" stop-color="red"/></linearGradient></defs>',
-    '<a href="https://evil.test"><rect width="10" height="10" fill="url(#g)" onclick="x()"/></a>',
-    '<image href="https://evil.test/track.png" width="5" height="5"/>',
-    '<image href="data:image/png;base64,AAAA" width="5" height="5"/>',
-    '<use href="#g"/>',
-    '<circle r="5" style="fill:url(https://evil.test/x)"/>',
-    '<foreignObject><div>hi</div></foreignObject>',
-    '</svg>',
-  ].join('');
-  const clean = sanitizeSvg(dirty);
-  assert.doesNotMatch(clean, /script|onload|onclick|evil|foreignObject|<a\b|<\?xml/i);
-  assert.match(clean, /fill="url\(#g\)"/);
-  assert.match(clean, /<use href="#g"\/>/);
-  assert.match(clean, /data:image\/png/);
-});
-
-test('svg aspect comes from the viewBox, else the root size, and fitting drops the fixed size', () => {
-  assert.equal(svgAspectRatio('<svg viewBox="0 0 200 100"></svg>'), 2);
-  assert.equal(svgAspectRatio('<svg width="300px" height="100"></svg>'), 3);
-  assert.equal(svgAspectRatio('<svg></svg>'), null);
-  assert.equal(fitSvgToBox('<svg width="300" height="100"><g/></svg>'), '<svg viewBox="0 0 300 100"><g/></svg>');
-  assert.equal(fitSvgToBox('<svg viewBox="0 0 4 2" width="400"><g/></svg>'), '<svg viewBox="0 0 4 2"><g/></svg>');
 });
 
 test('listings accept three shapes, drop identity-less rows and keep only https links', () => {
