@@ -19,8 +19,12 @@ import { botLabel, type Bot } from '../bots/roster.ts';
 import ChatScreen from '../chat/ChatScreen.tsx';
 import { ChatController } from '../chat/controller.ts';
 import Drawer, { type DrawerTab } from '../drawer/Drawer.tsx';
+import { useSessionActions } from '../drawer/useSessionActions.tsx';
 import { createGatewayApi } from '../gateway/api.ts';
 import { gatewaySocketUrl, GatewayLink } from '../gateway/link.ts';
+import ColdBootOverlay from '../screens/ColdBootOverlay.tsx';
+import { SettingsProvider } from '../settings/context.tsx';
+import { useSeedActiveProfile } from '../settings/useSeedActiveProfile.ts';
 import { ActionSheet, type SheetAction } from '../ui/Sheet.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { OverlayProvider } from './overlay.tsx';
@@ -64,6 +68,8 @@ export default function SignedInApp(props: Props) {
   const [actionsFor, setActionsFor] = useState<Bot | null>(null);
   const [profileSheet, setProfileSheet] = useState(false);
   const [form, setForm] = useState<{ bot: Bot | null } | null>(null);
+  const sessionActions = useSessionActions(controller);
+  useSeedActiveProfile(controller);
 
   useEffect(() => {
     controller.start();
@@ -131,6 +137,7 @@ export default function SignedInApp(props: Props) {
   }));
 
   return (
+    <SettingsProvider value={{ controller, snapshot, connection: props.connection, onSignOut: props.onSignOut }}>
     <OverlayProvider>
       <View style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground, paddingTop: insets.top }]}>
         <ChatScreen
@@ -167,6 +174,7 @@ export default function SignedInApp(props: Props) {
             closeDrawer();
             controller.openSession(session);
           }}
+          onSessionActions={sessionActions.open}
           onOpenBot={(bot) => {
             closeDrawer();
             void controller.openBot(bot);
@@ -204,8 +212,11 @@ export default function SignedInApp(props: Props) {
           }}
           loadImage={controller.avatarDataFn}
         />
+        {sessionActions.element}
+        <ColdBootOverlay link={snapshot.link} onRetry={() => controller.retryLink()} onSignOut={props.onSignOut} />
       </View>
     </OverlayProvider>
+    </SettingsProvider>
   );
 }
 
