@@ -2,7 +2,7 @@
  * The drawer's footer chips (issue #12): the gateway's health and the active profile, where the desktop's
  * statusbar keeps its connection and profile switchers (apps/desktop/src/app/chat/sidebar/
  * connection-switcher.tsx, profile-dropdown-switcher.tsx, components/ui/profile-glyph.tsx), then
- * Settings and Sign out. Ghost chips at 13pt, a lead glyph and a trailing chevron where a menu
+ * Settings (Sign out lives in Settings > Connection). Ghost chips at 13pt, a lead glyph and a trailing chevron where a menu
  * opens. Parity deviation (touch): 40dp tall.
  */
 
@@ -26,7 +26,6 @@ type Props = {
   /** desktop statusbar `profile-switcher`: shown only while the sessions list is, never in Bot Mode */
   showProfile: boolean;
   onProfileChip: () => void;
-  onSignOut: () => void;
   onClose: () => void;
 };
 
@@ -50,7 +49,7 @@ function ProfileGlyph({ name, label }: { name: string; label: string }) {
   );
 }
 
-export function Footer({ link, connectionLabel, connectionUrl, profileName, profileLabel, showProfile, onProfileChip, onSignOut, onClose }: Props) {
+export function Footer({ link, connectionLabel, connectionUrl, profileName, profileLabel, showProfile, onProfileChip, onClose }: Props) {
   const t = useTokens();
   const routes = useDrawerRoutes(onClose);
   const healthy = link.kind === 'open';
@@ -84,9 +83,6 @@ export function Footer({ link, connectionLabel, connectionUrl, profileName, prof
           <Codicon name="settings-gear" size={15} color={t.uiTextSecondary} />
         </View>
         <Text style={[styles.chipText, { color: t.uiTextSecondary }]}>Settings</Text>
-      </Pressable>
-      <Pressable onPress={onSignOut} accessibilityRole="button" style={chip}>
-        <Text style={[styles.chipText, { color: t.uiTextTertiary }]}>Sign out</Text>
       </Pressable>
     </View>
   );

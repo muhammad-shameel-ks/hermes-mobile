@@ -41,7 +41,6 @@ type Props = {
   onNewBot: () => void;
   onRetryRoster: () => void;
   onProfileChip: () => void;
-  onSignOut: () => void;
   loadImage: (name: string) => Promise<string | null>;
 };
 
@@ -125,7 +124,6 @@ export default function Drawer(props: Props) {
           profileLabel={props.profileLabel}
           showProfile={props.tab === 'sessions'}
           onProfileChip={props.onProfileChip}
-          onSignOut={props.onSignOut}
           onClose={onClose}
         />
       </Animated.View>

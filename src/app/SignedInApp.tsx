@@ -202,7 +202,6 @@ export default function SignedInApp(props: Props) {
           onNewBot={() => openForm.current?.(null)}
           onRetryRoster={() => void controller.refreshRoster()}
           onProfileChip={() => setProfileSheet(true)}
-          onSignOut={props.onSignOut}
           loadImage={controller.avatarDataFn}
         />
 
