@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { toBot } from '../src/bots/roster.ts';
 import { createAvatarApi, PET_THUMB_TIMEOUT_MS, rankPets, type AvatarRequest } from '../src/bots/avatarApi.ts';
 import {
   avatarColor,
@@ -264,4 +265,17 @@ test('pets rank installed, then curated, then the rest, and search matches name 
   assert.deepEqual(rankPets(pets, ' CAT ').map((p) => p.slug), ['cur']);
   assert.deepEqual(rankPets(pets, 'plain').map((p) => p.slug), ['plain']);
   assert.deepEqual(rankPets(pets, 'nope'), []);
+});
+
+test('a live worker session reads as working, a merely recent chat only as active', () => {
+  const row = (extra: Record<string, unknown>) => ({ name: 'scout', path: '/p', ...extra }) as Parameters<typeof toBot>[0];
+  const now = 10_000;
+  const worker = toBot(row({ worker_session: { id: 'w', last_active: now - 100 } }), now);
+  assert.equal(worker.working, true);
+  assert.equal(worker.active, true);
+  const stale = toBot(row({ worker_session: { id: 'w', last_active: now - 200 } }), now);
+  assert.equal(stale.working, false);
+  const chatty = toBot(row({ last_session: { id: 's', last_active: now - 30 } }), now);
+  assert.equal(chatty.working, false);
+  assert.equal(chatty.active, true);
 });
