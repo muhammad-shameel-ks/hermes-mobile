@@ -75,3 +75,13 @@ test('a missing session is the caller’s error, not a fallback', async () => {
 test('the delete confirmation names the session', () => {
   assert.equal(deleteSessionDescription('Trip plan'), 'This will permanently delete “Trip plan”. This cannot be undone.');
 });
+
+test('opening a session reads it: unread=false goes through the fenced write', async () => {
+  const { api, calls } = fakeApi();
+  await createSessionActions(api).setUnread('s1', false, 'work');
+  assert.equal(calls[1]!.method, 'PATCH');
+  const body = calls[1]!.body as Record<string, unknown>;
+  assert.equal(body.unread, false);
+  assert.equal(body.profile, 'work');
+  assert.equal(body.expected_revision, 7);
+});

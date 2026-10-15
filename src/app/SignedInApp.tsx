@@ -20,7 +20,7 @@ import { CardEnvBridge } from '../chat/cards/CardEnvBridge.tsx';
 import ChatScreen from '../chat/ChatScreen.tsx';
 import { ChatController } from '../chat/controller.ts';
 import { createMediaResolver } from '../chat/mediaResolver.ts';
-import Drawer, { type DrawerTab } from '../drawer/Drawer.tsx';
+import Drawer, { type DrawerTab, type SessionsListApi } from '../drawer/Drawer.tsx';
 import { useSessionActions } from '../drawer/useSessionActions.tsx';
 import { bindGateway } from '../files/gateway.ts';
 import { createGatewayApi } from '../gateway/api.ts';
@@ -99,6 +99,16 @@ export default function SignedInApp(props: Props) {
   const profileBot = allBots.find((b) => b.name === snapshot.profile);
   const profileLabel = profileBot ? profileBot.label : botLabel({ name: snapshot.profile });
 
+  const sessionsList = useMemo<SessionsListApi>(
+    () => ({
+      loadMore: () => void controller.loadMoreSessions(),
+      loadMoreMessaging: () => void controller.loadMoreMessaging(),
+      retry: () => void controller.refreshSessions(),
+      search: (query) => controller.searchSessions(query),
+    }),
+    [controller],
+  );
+
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);
@@ -168,6 +178,8 @@ export default function SignedInApp(props: Props) {
           onClose={closeDrawer}
           snapshot={snapshot}
           connectionLabel={props.connection.label}
+          connectionUrl={props.connection.baseUrl}
+          list={sessionsList}
           profileLabel={profileLabel}
           tab={tab}
           onTab={setTab}
@@ -178,6 +190,8 @@ export default function SignedInApp(props: Props) {
           onOpenSession={(session) => {
             closeDrawer();
             controller.openSession(session);
+            // opening reads it: the backend's watermark moves so the unread dot does not return
+            if (session.unread) void sessionActions.markRead(session);
           }}
           onSessionActions={sessionActions.open}
           onOpenBot={(bot) => {
