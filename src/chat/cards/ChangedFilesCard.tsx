@@ -14,7 +14,6 @@ import { useTokens } from '../../ui/tokens.ts';
 import { deriveChangedFiles, filesChangedLabel, type ChangedFile } from '../changedFiles.ts';
 import type { Part } from '../transcript.ts';
 import { copyPath } from './copyPath.ts';
-import { diffColors } from './diffColors.ts';
 import { cardEnv } from './env.ts';
 import { widgetShell } from './widgetShell.ts';
 
@@ -23,7 +22,6 @@ const FOLDED_ROWS = 5;
 
 function ChangedFilesCardImpl({ parts }: { parts: readonly Part[] }) {
   const t = useTokens();
-  const colors = useMemo(() => diffColors(t.renderedMode), [t.renderedMode]);
   const files = useMemo(() => deriveChangedFiles(parts), [parts]);
   const [all, setAll] = useState(false);
   const openReview = cardEnv().openReview;
@@ -59,8 +57,8 @@ function ChangedFilesCardImpl({ parts }: { parts: readonly Part[] }) {
               {file.name}
             </Text>
             <View style={styles.counts}>
-              {file.added > 0 ? <Text style={[styles.count, { color: colors.green, fontSize: t.type.tool }]}>{`+${file.added}`}</Text> : null}
-              {file.removed > 0 ? <Text style={[styles.count, { color: colors.red, fontSize: t.type.tool }]}>{`−${file.removed}`}</Text> : null}
+              {file.added > 0 ? <Text style={[styles.count, { color: t.uiGreen, fontSize: t.type.tool }]}>{`+${file.added}`}</Text> : null}
+              {file.removed > 0 ? <Text style={[styles.count, { color: t.uiRed, fontSize: t.type.tool }]}>{`−${file.removed}`}</Text> : null}
             </View>
           </Pressable>
         ))}

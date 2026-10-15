@@ -11,7 +11,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { MONO, useTokens } from '../../ui/tokens.ts';
 import { inlineDiffRows, type DiffKind } from '../../review/diff.ts';
-import { diffColors } from './diffColors.ts';
 
 const FONT_SIZE = 11.2;
 const LINE_HEIGHT = FONT_SIZE * 1.625;
@@ -23,7 +22,6 @@ const MAX_ROWS = 800;
 
 function DiffViewImpl({ diff }: { diff: string }) {
   const t = useTokens();
-  const colors = useMemo(() => diffColors(t.renderedMode), [t.renderedMode]);
   const lines = useMemo(() => inlineDiffRows(diff), [diff]);
   const [open, setOpen] = useState(false);
   const [width, setWidth] = useState(0);
@@ -34,11 +32,11 @@ function DiffViewImpl({ diff }: { diff: string }) {
 
   const tint = (kind: DiffKind) =>
     kind === 'add'
-      ? { borderLeftColor: colors.addBorder, backgroundColor: colors.addBackground }
+      ? { borderLeftColor: t.uiDiffAddBorder, backgroundColor: t.uiDiffAddBackground }
       : kind === 'remove'
-        ? { borderLeftColor: colors.removeBorder, backgroundColor: colors.removeBackground }
+        ? { borderLeftColor: t.uiDiffRemoveBorder, backgroundColor: t.uiDiffRemoveBackground }
         : { borderLeftColor: 'transparent' };
-  const ink = (kind: DiffKind) => (kind === 'add' ? colors.addForeground : kind === 'remove' ? colors.removeForeground : t.uiTextSecondary);
+  const ink = (kind: DiffKind) => (kind === 'add' ? t.uiDiffAddForeground : kind === 'remove' ? t.uiDiffRemoveForeground : t.uiTextSecondary);
 
   return (
     <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>

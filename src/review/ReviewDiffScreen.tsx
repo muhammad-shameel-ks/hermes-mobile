@@ -9,7 +9,6 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { OverlayScreen } from '../app/overlay.tsx';
 import { gateway } from '../files/gateway.ts';
-import { paletteFor } from '../files/palette.ts';
 import { baseName, displayPath, joinPath } from '../files/path.ts';
 import { createReviewRest, errorMessage } from '../files/rest.ts';
 import { copyText } from '../files/transfer.ts';
@@ -34,7 +33,6 @@ export default function ReviewDiffScreen({
   onOpenFile: (absolutePath: string, cwd: string) => void;
 }) {
   const t = useTokens();
-  const palette = paletteFor(t);
   const [diff, setDiff] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sheet, setSheet] = useState(false);
@@ -65,8 +63,8 @@ export default function ReviewDiffScreen({
         <Text numberOfLines={1} ellipsizeMode="head" style={{ flex: 1, color: t.uiTextSecondary, fontFamily: MONO, fontSize: 10.56 }}>
           {displayPath(file.path)}
         </Text>
-        <DiffCount added={file.added} removed={file.removed} palette={palette} size={10.24} />
-        {file.staged ? <Text style={{ color: palette.green, fontSize: 10 }}>Staged</Text> : null}
+        <DiffCount added={file.added} removed={file.removed} size={10.24} />
+        {file.staged ? <Text style={{ color: t.uiGreen, fontSize: 10 }}>Staged</Text> : null}
       </View>
       {error ? <ErrorBanner text={error} /> : null}
       {diff === null ? (

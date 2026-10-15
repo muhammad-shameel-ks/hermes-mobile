@@ -16,7 +16,6 @@ import { ActionSheet, Sheet, type SheetAction } from '../ui/Sheet.tsx';
 import { MONO, useTokens } from '../ui/tokens.ts';
 import { FileGlyph } from './glyphs.tsx';
 import { gateway } from './gateway.ts';
-import { paletteFor } from './palette.ts';
 import { baseName, displayPath, folderNameError, formatBytes, formatModified, joinPath } from './path.ts';
 import { createFilesRest, errorMessage, type ManagedFileEntry, type ManagedFilesResponse } from './rest.ts';
 import { copyText, downloadToCache, downloadToFolder, shareFile, uploadFile, type UploadSource } from './transfer.ts';
@@ -35,7 +34,6 @@ export type FilesScreenProps = {
 
 export default function FilesScreen({ root, path, onClose, onOpenDirectory, onOpenFile }: FilesScreenProps) {
   const t = useTokens();
-  const palette = paletteFor(t);
   const rest = useMemo(() => createFilesRest(gateway().api, gateway().profile), []);
   const version = useFilesVersion();
   const toast = useToast();
@@ -144,7 +142,7 @@ export default function FilesScreen({ root, path, onClose, onOpenDirectory, onOp
         style={({ pressed }) => [styles.row, { borderBottomColor: t.uiStrokeQuaternary }, pressed && { backgroundColor: t.uiRowActiveBackground }]}
       >
         <View style={styles.lead}>
-          <FileGlyph name={item.is_directory ? 'folder' : broken ? 'warning' : 'file'} size={16} color={item.is_directory ? palette.yellow : broken ? palette.red : t.uiTextTertiary} />
+          <FileGlyph name={item.is_directory ? 'folder' : broken ? 'warning' : 'file'} size={16} color={item.is_directory ? t.uiYellow : broken ? t.uiRed : t.uiTextTertiary} />
         </View>
         <View style={styles.rowText}>
           <Text numberOfLines={1} style={mono}>

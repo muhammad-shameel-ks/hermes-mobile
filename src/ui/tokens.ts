@@ -155,6 +155,9 @@ function resolve({ skin = DEFAULT_SKIN, mode, accent = null, chatTextScale = CHA
     uiDiffRemoveBorder: semantic.red,
     uiDiffRemoveBackground: mixPct(semantic.red, 0.12, 'transparent'),
     uiDiffRemoveForeground: isDark ? mixPct(semantic.red, 0.62, '#ffffff') : mixPct(semantic.red, 0.7, '#000000'),
+    // review rows tint modified and renamed files with tailwind's amber-500 / sky-500 at 85%
+    uiStatusModified: mixPct('#f59e0b', 0.85, 'transparent'),
+    uiStatusRenamed: mixPct('#0ea5e9', 0.85, 'transparent'),
 
     dtCard: uiBgEditor,
     dtMuted: uiBgTertiary,

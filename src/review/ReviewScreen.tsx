@@ -12,7 +12,6 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'rea
 import { OverlayScreen } from '../app/overlay.tsx';
 import { FileGlyph } from '../files/glyphs.tsx';
 import { gateway } from '../files/gateway.ts';
-import { paletteFor } from '../files/palette.ts';
 import { displayPath, joinPath } from '../files/path.ts';
 import { createFilesRest, createReviewRest, errorMessage, type RepoStatus } from '../files/rest.ts';
 import { EmptyState, ErrorBanner, HeaderAction, Loading } from '../files/ui.tsx';
@@ -62,7 +61,6 @@ const BASE_INSET = 14;
 
 export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: givenBase, focusPath, onClose, onOpenDiff, onOpenFile }: ReviewScreenProps) {
   const t = useTokens();
-  const palette = paletteFor(t);
   const { api, profile } = gateway();
   const files = useMemo(() => createFilesRest(api, profile), [api, profile]);
   const review = useMemo(() => createReviewRest(api), [api]);
@@ -151,13 +149,13 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
           <Text numberOfLines={1} style={[styles.name, { color: t.uiTextSecondary }]}>
             {node.name}
           </Text>
-          {!isOpen ? <DiffCount added={node.added} removed={node.removed} palette={palette} /> : null}
+          {!isOpen ? <DiffCount added={node.added} removed={node.removed} /> : null}
         </Pressable>
       );
     }
     const file = node.file!;
     const glyph = STATUS_GLYPH[file.status] ?? STATUS_GLYPH.M;
-    const tint = glyph.tone === 'green' ? palette.green : glyph.tone === 'red' ? palette.red : glyph.tone === 'yellow' ? palette.statusModified : glyph.tone === 'blue' ? palette.statusRenamed : t.uiTextQuaternary;
+    const tint = glyph.tone === 'green' ? t.uiGreen : glyph.tone === 'red' ? t.uiRed : glyph.tone === 'yellow' ? t.uiStatusModified : glyph.tone === 'blue' ? t.uiStatusRenamed : t.uiTextQuaternary;
     return (
       <Pressable
         onPress={() => cwd && onOpenDiff(file, target(cwd))}
@@ -179,8 +177,8 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
             </Text>
           ) : null}
         </View>
-        <DiffCount added={node.added} removed={node.removed} palette={palette} />
-        {file.staged ? <View accessibilityLabel="Staged" style={[styles.staged, { backgroundColor: mixPct(palette.green, 0.7, 'transparent') }]} /> : null}
+        <DiffCount added={node.added} removed={node.removed} />
+        {file.staged ? <View accessibilityLabel="Staged" style={[styles.staged, { backgroundColor: mixPct(t.uiGreen, 0.7, 'transparent') }]} /> : null}
       </Pressable>
     );
   };
