@@ -49,7 +49,7 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
   const trimmed = query.trim();
   const { matches, pending } = useSessionSearch(trimmed, list.search);
 
-  const { items, messaging, loading, loaded, loadingMore, error, hasMore, hasMoreMessaging, corrupt } = snapshot.sessions;
+  const { items, messaging, loaded, loadingMore, error, hasMore, hasMoreMessaging, corrupt } = snapshot.sessions;
   const minute = Math.floor(Date.now() / 60_000) * 60;
   const split = useMemo(() => splitPinned(items, messaging), [items, messaging]);
   const platforms = useMemo(() => messagingGroups(split.messaging, hasMoreMessaging), [split.messaging, hasMoreMessaging]);
