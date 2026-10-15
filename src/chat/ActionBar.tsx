@@ -24,8 +24,8 @@ import type { Message } from './transcript.ts';
 
 /** desktop styles.css `[data-slot='aui_msg-actions'] button`: the controls' resting opacity */
 const REST_OPACITY = 0.5;
-const GLYPH = 14;
-const HIT = { top: 9, bottom: 9, left: 4, right: 4 } as const;
+const GLYPH = 20;
+const HIT = { top: 8, bottom: 8, left: 5, right: 5 } as const;
 
 function BarButton({ label, onPress, children }: { label: string; onPress: () => void; children: ReactNode }) {
   return (
@@ -192,14 +192,14 @@ function ActionBarImpl({ message, plan }: { message: Message; plan: BarPlan }) {
 export const ActionBar = memo(ActionBarImpl);
 
 const styles = StyleSheet.create({
-  // desktop: `flex min-h-6 items-center justify-end gap-1.5 py-1.5`
-  bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, minHeight: 24, paddingVertical: 6 },
+  // desktop: `flex min-h-6 items-center justify-end gap-1.5 py-1.5`; the phone's glyphs and gap are larger for touch
+  bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10, minHeight: 24, paddingVertical: 6 },
   hidden: { opacity: 0 },
   glyph: { width: GLYPH, height: GLYPH, alignItems: 'center', justifyContent: 'center' },
   // desktop: text-[0.6875rem] leading-5 tabular-nums, mr-1 on the stamp, mr-auto on the duration
   time: { fontSize: 11, lineHeight: 20, marginRight: 4, fontVariant: ['tabular-nums'] },
   duration: { marginRight: 'auto', paddingHorizontal: 2, fontSize: 11, lineHeight: 20, fontVariant: ['tabular-nums'] },
-  stop: { width: 10, height: 10, borderRadius: 2 },
+  stop: { width: 14, height: 14, borderRadius: 3 },
   // a landed reaction is content, not a dimmed control: gap-0.5, 0.8125rem, full strength
   reactions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   emoji: { fontSize: 13, lineHeight: 16 },
