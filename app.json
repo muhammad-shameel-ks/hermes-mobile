@@ -52,6 +52,13 @@
           "photosPermission": "Hermes attaches photos you choose to your messages.",
           "cameraPermission": "Hermes attaches photos you take to your messages."
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "Hermes saves images you choose to your photo library.",
+          "isAccessMediaLocationEnabled": false
+        }
       ]
     ]
   }
