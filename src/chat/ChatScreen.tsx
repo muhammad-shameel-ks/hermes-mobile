@@ -47,6 +47,9 @@ import { RestoredDraftNotice } from './RestoredDraftNotice.tsx';
 import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
 import { ShowEarlier } from './ShowEarlier.tsx';
 import { uiSlash, type SlashUi } from './slash.ts';
+import { StackIcon } from './StatusRows.tsx';
+import { StatusStack } from './StatusStack.tsx';
+import { StickyPrompt, useStickyPrompt } from './StickyPrompt.tsx';
 import type { Message } from './transcript.ts';
 import { useAttachments } from './useAttachments.ts';
 import { useComposerDraft } from './useComposerDraft.ts';
@@ -140,6 +143,7 @@ export default function ChatScreen({
   const jump = useJumpToBottom(entry.key, messages);
   const reactionsEnabled = useSyncExternalStore(controller.subscribe, () => controller.getSnapshot().reactionsEnabled);
   const chrome = useMessageChrome(controller, entry, reactionsEnabled);
+  const sticky = useStickyPrompt(entry.key, messages, jump.frames);
 
   const title = entry.isBotChat && bot ? bot.label : entry.title || (entry.key === 'draft' ? 'New session' : 'Untitled session');
   // the registry's "Bot Chat" title is plumbing, not chrome: a bot's app bar is its face and name
@@ -168,9 +172,15 @@ export default function ChatScreen({
                   keyboardDismissMode="interactive"
                   keyboardShouldPersistTaps="handled"
                   CellRendererComponent={jump.Cell}
-                  onScroll={jump.onScroll}
+                  onScroll={(event) => {
+                    jump.onScroll(event);
+                    sticky.onScroll(event);
+                  }}
                   onScrollBeginDrag={jump.onDrag}
-                  onContentSizeChange={jump.onContentSize}
+                  onContentSizeChange={(_width, height) => {
+                    jump.onContentSize();
+                    sticky.onContentSize(height);
+                  }}
                   ListHeaderComponent={
                     entry.history.more ? <ShowEarlier loading={entry.history.loadingEarlier} onPress={() => void controller.showEarlier(entry.key)} /> : null
                   }
@@ -186,12 +196,15 @@ export default function ChatScreen({
                     ) : null;
                   }}
                 </ThreadPrimitive.MessagesFlatList>
+                <StickyPrompt sticky={sticky} messages={messages} />
                 <ScrollToBottomButton visible={jump.visible} count={jump.count} onPress={jump.toBottom} />
               </View>
             )}
             {running ? <RunStatus t={t} status={entry.transcript.status} /> : null}
           </View>
         </AssistantRuntimeProvider>
+
+        <StatusStack controller={controller} entry={entry} busy={running} />
 
         <View
           onLayout={(e) => {
@@ -211,6 +224,7 @@ export default function ChatScreen({
             edit={chrome.edit}
             modelLabel={modelPillLabel(currentModel?.model)}
             onSheet={setSheet}
+            onQueue={(text) => controller.queueMessage(text)}
             onSend={(text, attachments) => {
               const ui = attachments.length === 0 ? uiSlash(text) : null;
               if (ui) openUi(ui);
@@ -410,6 +424,7 @@ function Composer({
   modelLabel,
   onSend,
   onSheet,
+  onQueue,
   onStop,
   onNotice,
   onModelPicker,
@@ -426,6 +441,7 @@ function Composer({
   modelLabel: string;
   onSend: (text: string, attachments: ComposerAttachment[]) => void;
   onSheet: (sheet: ComposerSheet | null) => void;
+  onQueue: (text: string) => void;
   onStop: () => void;
   onNotice: (text: string) => void;
   onModelPicker: () => void;
@@ -460,6 +476,12 @@ function Composer({
     onSend(text, attachments.items);
     clear();
     attachments.clear();
+  };
+  // desktop controls.tsx: the secondary mid-turn action, while the primary button steers
+  const queue = () => {
+    if (!canSend) return;
+    onQueue(text);
+    clear();
   };
 
   return (
@@ -525,6 +547,17 @@ function Composer({
           <Codicon name="chevron-down" size={10} color={t.uiTextTertiary} style={{ opacity: 0.5 }} />
         </Pressable>
         {dictation.available ? <MicButton dictation={dictation} disabled={disabled} /> : null}
+        {running && canSend ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Queue message"
+            onPress={queue}
+            hitSlop={6}
+            style={({ pressed }) => [styles.ghostButton, { borderRadius: t.radius.md }, pressed && { backgroundColor: t.uiControlHoverBackground }]}
+          >
+            <StackIcon name="layers" size={14} color={t.uiTextTertiary} />
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={showStop ? 'Stop' : edit.target ? 'Send edited message' : running ? 'Steer' : 'Send'}

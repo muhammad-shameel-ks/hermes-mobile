@@ -73,6 +73,9 @@ import {
   truncateParams,
   type RewindPlan,
 } from './rewind.ts';
+import { busySendAction } from './queue.ts';
+import { QueueDriver } from './queueDrain.ts';
+import { emptyStack, persistedStack, restoreStack, StatusSync, type PersistedStack, type SessionStack, type StackStore } from './statusSync.ts';
 import {
   addSystemNotice,
   addUserMessage,
@@ -118,6 +121,8 @@ export type ChatEntry = {
   model: ModelSelection | null;
   /** how far back the history has been paged */
   history: HistoryState;
+  /** the status stack's rows, the queue and the stack's folded choice */
+  stack: SessionStack;
 };
 
 export type ModelCatalog = {
@@ -151,6 +156,14 @@ export type ChatSnapshot = {
   reactionsEnabled: boolean;
 };
 
+/** the stack's durable copy rides the store's per-session queue row, as a one-element list */
+function stackStoreOver(persistence: Persistence, profileOf: (key: string) => string): StackStore {
+  return {
+    load: async (key) => (await persistence.queue.load<PersistedStack>(profileOf(key), key))[0] ?? null,
+    save: (key, stack) => void persistence.queue.save(profileOf(key), key, stack.queue.length || stack.hidden ? [stack] : []),
+  };
+}
+
 /** a rewind's answer: `confirm` is the gateway refusing a cut that archives later user turns until the reader agrees */
 export type RewindOutcome = 'ok' | 'confirm' | 'failed';
 
@@ -174,6 +187,7 @@ const newEntry = (key: string, profile: string, extra: Partial<ChatEntry> = {}):
   error: null,
   model: null,
   history: NO_HISTORY,
+  stack: emptyStack(),
   ...extra,
 });
 
@@ -204,12 +218,17 @@ export class ChatController {
   private readonly saved = new Map<string, unknown>();
   readonly drafts: DraftStore;
   private creatingBot: Promise<boolean> | null = null;
+  readonly queue: QueueDriver;
+  readonly status: StatusSync;
+  /** where queued prompts and the folded choice survive an app kill; set by the app shell */
+  stackStore: StackStore | null = null;
 
   constructor(link: GatewayLink, api: GatewayApi, initialProfile = 'default', persistence: Persistence | null = null) {
     this.link = link;
     this.api = api;
     this.persistence = persistence;
     this.drafts = persistence?.drafts ?? new DraftStore(null, '');
+    if (persistence) this.stackStore = stackStoreOver(persistence, (key) => this.entry(key)?.profile ?? this.snapshot.profile);
     this.rpc = (method, params, timeoutMs) =>
       this.link.client.request(method, params as unknown as Record<string, unknown>, timeoutMs);
     this.snapshot = {
@@ -226,6 +245,49 @@ export class ChatController {
       defaultEffort: null,
       reactionsEnabled: false,
     };
+    const after = (ms: number, run: () => void) => {
+      const timer = setTimeout(run, ms);
+      return () => clearTimeout(timer);
+    };
+    this.status = new StatusSync({
+      get: (key) => this.entry(key)?.stack.status,
+      set: (key, update) => {
+        const entry = this.entry(key);
+        if (!entry) return;
+        const status = update(entry.stack.status);
+        if (status !== entry.stack.status) this.putEntry({ ...entry, stack: { ...entry.stack, status } });
+      },
+      runtimeId: (key) => this.entry(key)?.runtimeId ?? null,
+      profile: (key) => this.entry(key)?.profile ?? this.snapshot.profile,
+      ready: () => this.link.current.kind === 'open',
+      request: this.rpc,
+      notify: (text) => this.notify(text),
+      after,
+      now: Date.now,
+    });
+    this.queue = new QueueDriver({
+      queue: (key) => this.entry(key)?.stack.queue,
+      setQueue: (key, update) => {
+        const entry = this.entry(key);
+        if (!entry) return;
+        const queue = update(entry.stack.queue);
+        if (queue === entry.stack.queue) return;
+        const stack = { ...entry.stack, queue };
+        this.putEntry({ ...entry, stack });
+        if (key !== DRAFT_KEY) this.stackStore?.save(key, persistedStack(stack));
+      },
+      busy: (key) => this.entry(key)?.transcript.running ?? false,
+      ready: (key) => {
+        const entry = this.entry(key);
+        return Boolean(entry && key !== DRAFT_KEY && !entry.loading && this.link.current.kind === 'open');
+      },
+      send: (key, text) => this.submitQueued(key, text),
+      steer: (key, text) => this.steerRunning(key, text),
+      interrupt: (key) => this.interrupt(key),
+      notify: (text) => this.notify(text),
+      after,
+      now: Date.now,
+    });
     this.unsubscribe.push(
       link.onState((state) => this.set({ link: state })),
       link.onOpen(() => this.onLinkOpen()),
@@ -246,6 +308,8 @@ export class ChatController {
   private set(patch: Partial<ChatSnapshot>) {
     this.snapshot = { ...this.snapshot, ...patch };
     for (const listener of this.listeners) listener();
+    // the queue drains whenever its session is idle, not only on the edge a turn ends
+    for (const entry of Object.values(this.snapshot.entries)) if (entry.stack.queue.entries.length) this.queue.sweep(entry.key);
   }
 
   private entry(key: string): ChatEntry | undefined {
@@ -281,6 +345,7 @@ export class ChatController {
         entry.loading ||
         this.buffered.has(key) ||
         entry.transcript.running ||
+        entry.stack.queue.entries.length > 0 ||
         entry.transcript.messages.some((m) => m.status === 'streaming')
       );
     };
@@ -332,6 +397,8 @@ export class ChatController {
   dispose() {
     for (const off of this.unsubscribe) off();
     if (this.listTimer) clearTimeout(this.listTimer);
+    this.queue.dispose();
+    this.status.dispose();
     this.link.pause();
     void this.persistence?.flush();
   }
@@ -368,6 +435,7 @@ export class ChatController {
     }
     const key = event.session_id ? this.runtimeToKey.get(event.session_id) : undefined;
     if (!key) return;
+    this.status.observe(key, event);
     if (this.buffered.has(key)) {
       this.buffered.get(key)!.push(event);
       return;
@@ -572,7 +640,8 @@ export class ChatController {
       if (gap) transcript = addSystemNotice(transcript, REPLAY_GAP_NOTICE);
       if (resumed?.running) transcript = withInflight(transcript, resumed);
       for (const event of this.buffered.get(key) ?? []) transcript = applyEvent(transcript, event);
-      this.updateEntry(key, (e) => ({ ...e, transcript, history, loading: false }));
+      const saved = await this.stackStore?.load(key).catch(() => null);
+      this.updateEntry(key, (e) => ({ ...e, transcript, history, loading: false, ...(saved ? { stack: restoreStack(e.stack, saved) } : {}) }));
     } catch (error) {
       if (isSessionGone(error)) {
         this.dropGone(key);
@@ -653,6 +722,7 @@ export class ChatController {
         source: 'desktop',
       });
       this.bindRuntime(key, result.session_id);
+      this.status.hydrate(key, result);
       if (result.info?.model) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(result.info, e.model) }));
       if (rebind && !result.running && entry.transcript.running) {
         this.updateTranscript(key, (t) => applyEvent(t, { type: 'session.info', payload: { running: false } }));
@@ -682,15 +752,8 @@ export class ChatController {
       this.notify(ATTACH_WHILE_RUNNING);
       return;
     }
-    if (entry.transcript.running && entry.runtimeId) {
-      // Send while busy steers the running turn (issue "Transcript and composer parity on touch")
-      this.updateTranscript(key, (t) => addUserMessage(t, text));
-      try {
-        const result = await this.rpc('session.redirect', { session_id: entry.runtimeId, profile: entry.profile, text });
-        if (result.status === 'rejected') this.updateTranscript(key, (t) => addSystemNotice(t, 'The running turn could not take that message.'));
-      } catch (error) {
-        this.updateTranscript(key, (t) => addSystemNotice(t, `Could not steer the running turn: ${errorText(error)}`));
-      }
+    if (entry.transcript.running) {
+      await this.sendWhileRunning(key, entry, text);
       return;
     }
 
@@ -699,6 +762,62 @@ export class ChatController {
       return;
     }
     await this.submit(key, text, { attachments });
+  }
+
+  /** Send mid-turn steers; text a steer cannot carry, or that the turn declines, queues so no words are lost. */
+  private async sendWhileRunning(key: string, entry: ChatEntry, text: string) {
+    if (busySendAction({ text, runtimeBound: Boolean(entry.runtimeId) }) === 'steer' && (await this.steerRunning(key, text))) return;
+    this.queue.enqueue(key, text);
+  }
+
+  /** the queue control: hold the text until the running turn ends */
+  queueMessage(text: string) {
+    const key = this.snapshot.openKey;
+    if (!this.entry(key)?.transcript.running) return void this.send(text);
+    this.queue.enqueue(key, text);
+  }
+
+  /** redirect the running turn; the correction shows as a user message only once the turn accepts it */
+  private async steerRunning(key: string, text: string): Promise<boolean> {
+    const entry = this.entry(key);
+    if (!entry?.runtimeId) return false;
+    this.updateTranscript(key, (t) => addUserMessage(t, text));
+    const messageId = this.entry(key)?.transcript.messages.at(-1)?.id;
+    try {
+      const result = await this.rpc('session.redirect', { session_id: entry.runtimeId, profile: entry.profile, text });
+      if (result.status !== 'rejected') return true;
+    } catch {
+      // the caller queues it
+    }
+    this.updateTranscript(key, (t) => ({ ...t, messages: t.messages.filter((m) => m.id !== messageId) }));
+    return false;
+  }
+
+  /** a queued prompt as a new turn; a refusal leaves nothing behind so the drain can try again */
+  private async submitQueued(key: string, text: string): Promise<boolean> {
+    const entry = this.entry(key);
+    if (!entry || key === DRAFT_KEY) return false;
+    this.updateTranscript(key, (t) => addUserMessage(t, text));
+    const messageId = this.entry(key)?.transcript.messages.at(-1)?.id;
+    try {
+      if (!entry.runtimeId) await this.resume(key, { rebind: false });
+      const runtimeId = this.entry(key)?.runtimeId;
+      if (!runtimeId) throw new Error('The session is not attached to the gateway.');
+      await this.rpc('prompt.submit', { session_id: runtimeId, profile: entry.profile, text }, PROMPT_TIMEOUT_MS);
+      return true;
+    } catch {
+      this.updateTranscript(key, (t) => ({ ...t, messages: t.messages.filter((m) => m.id !== messageId), running: false, liveId: null }));
+      return false;
+    }
+  }
+
+  /** fold the status stack away or bring it back; the choice outlives the session being closed */
+  setStackHidden(key: string, hidden: boolean) {
+    const entry = this.entry(key);
+    if (!entry || entry.stack.hidden === hidden) return;
+    const stack = { ...entry.stack, hidden };
+    this.putEntry({ ...entry, stack });
+    if (key !== DRAFT_KEY) this.stackStore?.save(key, persistedStack(stack));
   }
 
   private async sendFromDraft(draft: ChatEntry, text: string, attachments: ComposerAttachment[] = []) {
@@ -763,8 +882,16 @@ export class ChatController {
     return { prompt: promptText(text, staged, attachments.some((attachment) => attachment.kind === 'image')), imagePaths: staged.imagePaths };
   }
 
+  /** Stop: parks the queue, so the end of the turn does not roll into the next prompt, then interrupts */
   async stop() {
     const entry = this.entry(this.snapshot.openKey);
+    if (!entry?.runtimeId || !entry.transcript.running) return;
+    this.queue.park(entry.key);
+    await this.interrupt(entry.key);
+  }
+
+  private async interrupt(key: string) {
+    const entry = this.entry(key);
     if (!entry?.runtimeId || !entry.transcript.running) return;
     this.interrupts.mark(entry.runtimeId);
     try {
