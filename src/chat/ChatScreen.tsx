@@ -494,6 +494,7 @@ function Composer({
     if (!canSend) return;
     if (edit.target) {
       void edit.submit(text);
+      Keyboard.dismiss();
       return;
     }
     if (running && attachments.items.length > 0) {
@@ -504,6 +505,7 @@ function Composer({
     onSend(text, attachments.items);
     clear();
     attachments.clear();
+    Keyboard.dismiss();
   };
   // desktop controls.tsx: the secondary mid-turn action, while the primary button steers
   const queue = () => {
