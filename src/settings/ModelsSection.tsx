@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 
 import { buildModelGroups, modelDisplayParts, type ModelSelection } from '../chat/models.ts';
 import { errorText } from '../gateway/http.ts';
@@ -16,6 +16,7 @@ import { useTokens } from '../ui/tokens.ts';
 import { useSettings } from './context.tsx';
 import { assignmentRequest, interpretAssignment, MODEL_ASSIGNMENT_COPY, type ModelAssignmentResponse } from './model-default.ts';
 import { ActionButton, ListRow, SettingsContent, SettingsSection } from './primitives.tsx';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 /** desktop `settings.model*` */
 const COPY = {
@@ -80,7 +81,7 @@ export default function ModelsSection() {
         <Text style={{ color: t.uiTextTertiary, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight, marginBottom: 4 }}>{COPY.applies}</Text>
         {models.loading && !models.providers.length ? (
           <View style={styles.loading}>
-            <ActivityIndicator size="small" color={t.uiTextTertiary} />
+            <GlyphSpinner size={14} color={t.uiTextTertiary} />
             <Text style={{ color: t.uiTextTertiary, fontSize: t.type.caption }}>{COPY.loading}</Text>
           </View>
         ) : models.error && !models.providers.length ? (
@@ -97,7 +98,7 @@ export default function ModelsSection() {
               description={display ? (display.tag ? `${display.name} · ${display.tag}` : display.name) : 'No model'}
               onPress={() => setPicking(true)}
               disabled={busy}
-              trailing={busy ? <ActivityIndicator size="small" color={t.uiTextTertiary} /> : <Codicon name="chevron-right" size={14} color={t.uiTextQuaternary} />}
+              trailing={busy ? <GlyphSpinner size={14} color={t.uiTextTertiary} /> : <Codicon name="chevron-right" size={14} color={t.uiTextQuaternary} />}
             />
           </>
         )}

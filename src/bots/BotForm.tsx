@@ -7,8 +7,9 @@
  */
 
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { Sheet } from '../ui/Sheet.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { BotAvatar } from './BotAvatar.tsx';
@@ -111,7 +112,7 @@ export default function BotForm({ visible, bot, onClose, onSubmit, loadImage }: 
               pressed && { opacity: 0.75 },
             ]}
           >
-            {busy ? <ActivityIndicator size="small" color={t.dtPrimarySolidForeground} /> : null}
+            {busy ? <GlyphSpinner size={14} color={t.dtPrimarySolidForeground} /> : null}
             <Text style={{ color: t.dtPrimarySolidForeground, fontSize: 14, fontWeight: '600' }}>
               {bot ? 'Save' : busy ? 'Creating…' : 'Create bot'}
             </Text>

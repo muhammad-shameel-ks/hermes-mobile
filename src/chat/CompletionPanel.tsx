@@ -9,11 +9,12 @@
  */
 
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { mixPct } from '../ui/color.ts';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 /** desktop reference-kinds.ts: the glyph each kind of reference draws */
 const KIND_GLYPH: Record<string, CodiconName> = {
@@ -118,7 +119,7 @@ export function Empty({ loading, title, hint }: { loading: boolean; title: strin
   if (loading) {
     return (
       <View style={styles.empty}>
-        <ActivityIndicator size="small" color={t.uiTextTertiary} />
+        <GlyphSpinner size={14} color={t.uiTextTertiary} />
       </View>
     );
   }

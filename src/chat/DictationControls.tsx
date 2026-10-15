@@ -4,13 +4,14 @@
  * (voice-activity.tsx `VoiceActivity`).
  */
 
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Codicon } from '../ui/Codicon.tsx';
 import { mixPct } from '../ui/color.ts';
 import { MONO, useTokens } from '../ui/tokens.ts';
 import type { Dictation } from './dictation.ts';
 import { formatElapsed } from './dictationText.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 const BAR_WEIGHTS = [0.5, 0.78, 1, 0.78, 0.5];
 
@@ -39,7 +40,7 @@ export function MicButton({ dictation, disabled }: { dictation: Dictation; disab
       {status === 'recording' ? (
         <View style={[styles.stopGlyph, { backgroundColor: primary }]} />
       ) : status === 'transcribing' ? (
-        <ActivityIndicator size="small" color={primary} style={styles.spinner} />
+        <GlyphSpinner size={14} color={primary} style={styles.spinner} />
       ) : (
         <Codicon name="mic" size={14} color={t.uiTextTertiary} />
       )}
@@ -63,7 +64,7 @@ export function DictationActivity({ dictation }: { dictation: Dictation }) {
         {recording ? (
           <Codicon name="mic" size={12} color={primary} />
         ) : (
-          <ActivityIndicator size="small" color={primary} style={styles.badgeSpinner} />
+          <GlyphSpinner size={14} color={primary} style={styles.badgeSpinner} />
         )}
       </View>
       <View style={styles.activityText}>

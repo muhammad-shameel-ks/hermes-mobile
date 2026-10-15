@@ -11,10 +11,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 import { Codicon } from '../ui/Codicon.tsx';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import type { ModelCatalog, ModelSwitchOutcome } from './controller.ts';
 import { buildModelGroups, EFFORT_OPTIONS, effortShortLabel, type ModelRow, type ModelSelection } from './models.ts';
@@ -149,7 +150,7 @@ export function ModelPicker({ visible, bottom, available, catalog, current, onCl
               {groups.length === 0 ? (
                 <View style={styles.emptyList}>
                   {catalog.loading ? (
-                    <ActivityIndicator size="small" color={t.uiTextTertiary} />
+                    <GlyphSpinner size={14} />
                   ) : (
                     <Text style={[styles.rowText, { color: t.uiTextTertiary }]}>
                       {catalog.error ? `Could not load models. ${catalog.error}` : query ? 'No models match.' : 'No models configured.'}
@@ -300,7 +301,7 @@ function FooterRow({ t, icon, label, busy, onPress }: { t: Tokens; icon: React.R
       accessibilityRole="menuitem"
       style={({ pressed }) => [styles.row, pressed && { backgroundColor: t.uiControlActiveBackground }]}
     >
-      {busy ? <ActivityIndicator size="small" color={t.uiTextTertiary} style={{ width: 12, transform: [{ scale: 0.6 }] }} /> : icon}
+      {busy ? <GlyphSpinner size={12} /> : icon}
       <Text style={[styles.rowText, { color: t.uiTextTertiary }]}>{label}</Text>
     </Pressable>
   );

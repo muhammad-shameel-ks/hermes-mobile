@@ -1,15 +1,50 @@
 /**
  * The desktop-only colour helpers the token resolver needs, beside the shared
- * sRGB primitives in vendor/hermes-shared. `luminance`, the OKLCH subset and
- * `harmonize` are verbatim from apps/desktop/src/themes/color.ts; `mixPct`
- * stands in for CSS `color-mix(in srgb, …)`, which React Native does not have.
+ * sRGB primitives in vendor/hermes-shared. The OKLCH toolkit, `luminance`,
+ * `normalizeHex` and `readableInk` are verbatim from
+ * apps/desktop/src/themes/color.ts; `mixPct` stands in for CSS
+ * `color-mix(in srgb, …)`, which React Native does not have.
  */
 
-import { parseColor, toHex } from '../../vendor/hermes-shared/src/color.ts';
+import { contrastRatio, parseColor, readableOn, relativeLuminance, toHex } from '../../vendor/hermes-shared/src/color.ts';
 
 type Rgba = readonly [number, number, number, number];
 
 const clampChannel = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+
+/** The desktop's ink pair: its near-black text colour, not pure black. */
+const DESKTOP_INKS = ['#161616', '#ffffff'] as const;
+
+/** A readable foreground (`#161616` or `#ffffff`) for a background hex. */
+export const readableInk = (bg: string): string => readableOn(bg, DESKTOP_INKS);
+
+/**
+ * Coerce a CSS hex colour (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `#` optional)
+ * into a flat `#rrggbb`, compositing alpha over `backdrop`. Null for anything else.
+ */
+export function normalizeHex(input: string | undefined | null, backdrop = '#000000'): string | null {
+  if (typeof input !== 'string') return null;
+  let clean = input.trim().replace(/^#/, '');
+  if (clean.length === 3 || clean.length === 4) {
+    clean = clean
+      .split('')
+      .map((ch) => ch + ch)
+      .join('');
+  }
+  if (!/^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(clean)) return null;
+  const rgb = parseColor(`#${clean.slice(0, 6)}`);
+  if (!rgb) return null;
+  if (clean.length === 6) return toHex(rgb);
+  const alpha = parseInt(clean.slice(6, 8), 16) / 255;
+  const base = parseColor(backdrop) ?? [0, 0, 0];
+  return toHex([base[0] + (rgb[0] - base[0]) * alpha, base[1] + (rgb[1] - base[1]) * alpha, base[2] + (rgb[2] - base[2]) * alpha]);
+}
+
+/** The same colour at zero alpha, so a gradient into it fades without passing through grey. */
+export function transparentOf(color: string): string {
+  const rgb = parseColor(color.slice(0, 7));
+  return rgb ? `${toHex(rgb)}00` : '#00000000';
+}
 
 /** Perceptual-ish luminance in 0..1 (naive, for light/dark bucketing). */
 export function luminance(hex: string): number {
@@ -58,7 +93,8 @@ export function mixPct(a: string, p: number, b: string): string {
 const linearize01 = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 const delinearize01 = (c: number): number => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055);
 
-type Oklch = { l: number; c: number; h: number };
+/** Perceptual lightness 0..1, chroma (~0..0.37), hue 0..360. */
+export type Oklch = { l: number; c: number; h: number };
 
 function rgbToOklab([r255, g255, b255]: readonly number[]): [number, number, number] {
   const [r, g, b] = [r255, g255, b255].map((v) => linearize01(v / 255));
@@ -72,11 +108,15 @@ function rgbToOklab([r255, g255, b255]: readonly number[]): [number, number, num
   ];
 }
 
-function hexToOklch(hex: string): Oklch | null {
+export function hexToOklch(hex: string): Oklch | null {
   const rgb = parseColor(hex);
   if (!rgb) return null;
   const [okL, okA, okB] = rgbToOklab(rgb);
   return { l: okL, c: Math.hypot(okA, okB), h: ((Math.atan2(okB, okA) * 180) / Math.PI + 360) % 360 };
+}
+
+function oklabToHex([okL, okA, okB]: readonly number[]): string {
+  return oklchToHex({ l: okL, c: Math.hypot(okA, okB), h: ((Math.atan2(okB, okA) * 180) / Math.PI + 360) % 360 });
 }
 
 function oklchToRgbRaw({ l: okL, c, h }: Oklch): [number, number, number] {
@@ -95,7 +135,7 @@ function oklchToRgbRaw({ l: okL, c, h }: Oklch): [number, number, number] {
 
 const inSrgbGamut = (rgb: readonly number[]): boolean => rgb.every((c) => c >= -0.001 && c <= 1.001);
 
-function oklchToHex(color: Oklch): string {
+export function oklchToHex(color: Oklch): string {
   const toSrgb = (raw: readonly number[]) => toHex(raw.map((c) => delinearize01(c) * 255) as [number, number, number]);
   if (inSrgbGamut(oklchToRgbRaw(color))) return toSrgb(oklchToRgbRaw(color));
   let lo = 0;
@@ -108,7 +148,7 @@ function oklchToHex(color: Oklch): string {
   return toSrgb(oklchToRgbRaw({ ...color, c: lo }));
 }
 
-function maxChroma(l: number, h: number): number {
+export function maxChroma(l: number, h: number): number {
   let lo = 0;
   let hi = 0.4;
   for (let i = 0; i < 20; i += 1) {
@@ -119,7 +159,8 @@ function maxChroma(l: number, h: number): number {
   return lo;
 }
 
-const hueDelta = (from: number, to: number): number => ((to - from + 540) % 360) - 180;
+/** Signed shortest angular distance from `from` to `to`, in degrees (-180..180). */
+export const hueDelta = (from: number, to: number): number => ((to - from + 540) % 360) - 180;
 
 /** Bend a semantic colour toward the accent along the shortest hue arc. */
 export function harmonize(hex: string, accent: string, strength: number): string {
@@ -128,4 +169,48 @@ export function harmonize(hex: string, accent: string, strength: number): string
   if (!base || !target) return hex;
   const h = (base.h + hueDelta(base.h, target.h) * Math.min(1, Math.max(0, strength)) + 360) % 360;
   return oklchToHex({ ...base, c: Math.min(Math.max(base.c, target.c * 0.85), maxChroma(base.l, h)), h });
+}
+
+/** OKLCH → 0–255 sRGB, or `null` when the colour is outside the display's gamut. */
+export function oklchToSrgb255(color: Oklch): [number, number, number] | null {
+  const raw = oklchToRgbRaw(color);
+  if (!inSrgbGamut(raw)) return null;
+  return raw.map((c) => Math.round(Math.min(1, Math.max(0, delinearize01(c))) * 255)) as [number, number, number];
+}
+
+/** Blend two colours in OKLab, the hue-stable counterpart to sRGB mixing; use it for anything derived from the brand seed. */
+export function mixOklab(a: string, b: string, amount: number): string {
+  const ra = parseColor(a);
+  const rb = parseColor(b);
+  if (!ra || !rb) return a;
+  const la = rgbToOklab(ra);
+  const lb = rgbToOklab(rb);
+  const t = Math.min(1, Math.max(0, amount));
+  return oklabToHex([la[0] + (lb[0] - la[0]) * t, la[1] + (lb[1] - la[1]) * t, la[2] + (lb[2] - la[2]) * t]);
+}
+
+/** Re-hue a colour, holding its perceived lightness and colourfulness. */
+export function withHue(hex: string, hue: number): string {
+  const lch = hexToOklch(hex);
+  return lch ? oklchToHex({ ...lch, h: ((hue % 360) + 360) % 360 }) : hex;
+}
+
+/**
+ * Make `hex` clear `min` contrast against `bg` by moving its OKLCH lightness only,
+ * keeping hue and chroma. Returns the original when it already passes.
+ */
+export function ensureContrastOklch(hex: string, bg: string, min: number): string {
+  const ratio = contrastRatio(hex, bg);
+  if (ratio === null || ratio >= min) return hex;
+  const lch = hexToOklch(hex);
+  if (!lch) return hex;
+  const up = (relativeLuminance(bg) ?? 0) < 0.5;
+  let best = hex;
+  for (let step = 1; step <= 40; step += 1) {
+    const l = lch.l + (up ? step : -step) * 0.02;
+    if (l <= 0 || l >= 1) break;
+    best = oklchToHex({ ...lch, l });
+    if ((contrastRatio(best, bg) ?? 0) >= min) return best;
+  }
+  return best;
 }

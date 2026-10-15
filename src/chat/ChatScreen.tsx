@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -25,6 +25,10 @@ import { BOT_CHAT_EMPTY, type Bot } from '../bots/roster.ts';
 import type { LinkState } from '../gateway/link.ts';
 import type { DraftStore } from '../store/drafts.ts';
 import { Codicon } from '../ui/Codicon.tsx';
+import { mixPct } from '../ui/color.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
+import { ThreadLoader } from '../ui/loaders/presets.tsx';
+import { StatusPulse } from '../ui/loaders/StatusPulse.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { Wordmark } from '../ui/Wordmark.tsx';
 import { AttachMenu, AttachmentChips } from './AttachmentChips.tsx';
@@ -288,7 +292,7 @@ function LinkBanner({ link, onRetry }: { link: LinkState; onRetry: () => void })
         : link.detail;
   return (
     <View style={[styles.banner, { backgroundColor: t.uiBgSecondary, borderBottomColor: t.uiStrokeQuaternary }]}>
-      {link.kind === 'connecting' ? <ActivityIndicator size="small" color={t.uiTextTertiary} /> : null}
+      {link.kind === 'connecting' ? <GlyphSpinner size={12} label="Connecting" /> : null}
       <Text style={{ color: t.uiTextSecondary, fontSize: 12, flex: 1 }} numberOfLines={2}>
         {text}
       </Text>
@@ -320,7 +324,7 @@ function EmptyState({
   if (opening || entry.loading) {
     return (
       <View style={styles.empty}>
-        <ActivityIndicator color={t.uiTextTertiary} />
+        <ThreadLoader />
       </View>
     );
   }
@@ -356,7 +360,7 @@ function EmptyState({
 function RunStatus({ t, status }: { t: Tokens; status: string | null }) {
   return (
     <View style={styles.runStatus} accessibilityLiveRegion="polite">
-      <ActivityIndicator size="small" color={t.uiTextTertiary} style={{ transform: [{ scale: 0.75 }] }} />
+      <StatusPulse kind="opacity" style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: mixPct(t.uiAccent, 0.8, 'transparent') }} />
       <Text style={{ color: t.uiTextTertiary, fontSize: t.type.tool }} numberOfLines={1}>
         {status || 'Working…'}
       </Text>
@@ -404,6 +408,7 @@ function Composer({
   const [attachOpen, setAttachOpen] = useState(false);
   const attachments = useAttachments(onNotice);
   const dictation = useDictation({ getText: () => text, setText, onNotice });
+  const [focused, setFocused] = useState(false);
   const [seed] = useState(() => Math.floor(Math.random() * 100000));
   const hasPayload = text.trim() !== '' || attachments.items.length > 0;
   const canSend = hasPayload && !disabled;
@@ -438,7 +443,7 @@ function Composer({
         </View>
       ) : null}
       <View
-        style={[styles.composer, { backgroundColor: t.uiBgEditor, borderColor: t.uiStrokeSecondary, borderRadius: t.radius['2xl'] }]}
+        style={[styles.composer, { backgroundColor: t.uiBgEditor, borderColor: focused ? t.dtComposerRing : t.uiComposerBorder, borderRadius: t.radius['2xl'] }]}
       >
         <AttachmentChips items={attachments.items} onRemove={attachments.remove} />
         <View style={styles.composerRow}>
@@ -457,6 +462,8 @@ function Composer({
             value={text}
             onChangeText={triggers.onChangeText}
             onSelectionChange={triggers.onSelectionChange}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             multiline
             editable={dictation.status === 'idle'}
             style={[styles.input, { color: t.uiTextPrimary, fontSize: t.type.text, lineHeight: t.type.text * 1.5 }]}
@@ -574,7 +581,7 @@ const styles = StyleSheet.create({
   runStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SIDE_INSET - 6, paddingBottom: 4 },
   // desktop composer tokens: control 24, primary 26, gap 4, surface padding 8 × 5, input 26–150
   composerDock: { paddingHorizontal: 16, paddingTop: COMPOSER_DOCK_TOP, paddingBottom: 6 },
-  composer: { borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5 },
+  composer: { borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, paddingVertical: 5 },
   composerRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   dictationRow: { paddingBottom: 6 },
   ghostButton: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },

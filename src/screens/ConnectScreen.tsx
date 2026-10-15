@@ -7,9 +7,8 @@
  * unsupported flow list, or unreachable. There is no password form, by decision.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   LayoutAnimation,
   Platform,
@@ -28,7 +27,8 @@ import type { Credentials } from '../auth/tokens.ts';
 import type { GatewayAddress } from '../gateway/address.ts';
 import { createAutoProbe, type AutoProbe, type AutoProbeState } from '../gateway/auto-probe.ts';
 import { probeGateway, type GatewayProbe, type GatewayStatus } from '../gateway/status.ts';
-import { theme } from '../ui/theme.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
+import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
 
 type Problem = { title: string; detail?: string; hint?: string; retryable: boolean };
 
@@ -109,6 +109,8 @@ export type ConnectScreenProps = {
 };
 
 export default function ConnectScreen({ initialAddress, notice, existing, onSignedIn }: ConnectScreenProps) {
+  const t = useTokens();
+  const styles = useStyles();
   const [address, setAddress] = useState(initialAddress);
   const [view, setView] = useState<FieldState>({ kind: 'empty' });
   const [focused, setFocused] = useState(false);
@@ -222,7 +224,7 @@ export default function ConnectScreen({ initialAddress, notice, existing, onSign
                 onBlur={() => setFocused(false)}
                 editable={!signing}
                 placeholder="192.168.1.20:9119"
-                placeholderTextColor={theme.muted}
+                placeholderTextColor={t.uiTextQuaternary}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="off"
@@ -231,7 +233,7 @@ export default function ConnectScreen({ initialAddress, notice, existing, onSign
                 textContentType="URL"
                 returnKeyType={view.kind === 'ready' ? 'go' : 'done'}
                 onSubmitEditing={onSubmit}
-                selectionColor={theme.text}
+                selectionColor={t.uiAccent}
                 accessibilityLabel="Gateway address"
                 accessibilityLabelledBy="gateway-address-label"
               />
@@ -259,7 +261,7 @@ export default function ConnectScreen({ initialAddress, notice, existing, onSign
               >
                 {signing ? (
                   <View style={styles.inline}>
-                    <ActivityIndicator size="small" color={theme.primaryText} />
+                    <GlyphSpinner size={14} color={t.dtPrimarySolidForeground} label="Signing in" />
                     <Text style={styles.primaryText}>Waiting for the browser…</Text>
                   </View>
                 ) : (
@@ -295,10 +297,11 @@ export default function ConnectScreen({ initialAddress, notice, existing, onSign
 }
 
 function FieldIndicator({ view }: { view: FieldState }) {
+  const styles = useStyles();
   if (view.kind === 'checking') {
     return (
       <View style={styles.indicator} accessibilityLabel="Checking gateway">
-        <ActivityIndicator size="small" color={theme.muted} />
+        <GlyphSpinner size={14} label="Checking gateway" />
       </View>
     );
   }
@@ -320,6 +323,7 @@ function FieldIndicator({ view }: { view: FieldState }) {
 }
 
 function StatusLine({ view }: { view: FieldState }) {
+  const styles = useStyles();
   let text: string;
   let style: TextStyle = styles.statusMuted;
   switch (view.kind) {
@@ -350,6 +354,7 @@ function StatusLine({ view }: { view: FieldState }) {
 }
 
 function ReadyCard({ address, status }: { address: GatewayAddress; status: GatewayStatus }) {
+  const styles = useStyles();
   return (
     <View style={styles.card}>
       <Row label="endpoint" value={address.baseUrl} />
@@ -360,6 +365,7 @@ function ReadyCard({ address, status }: { address: GatewayAddress; status: Gatew
 }
 
 function ProblemCard({ problem, onRetry }: { problem: Problem; onRetry: () => void }) {
+  const styles = useStyles();
   return (
     <View style={[styles.card, styles.problemCard]} accessibilityRole="alert">
       <Text style={styles.problemTitle}>{problem.title}</Text>
@@ -384,6 +390,7 @@ function ProblemCard({ problem, onRetry }: { problem: Problem; onRetry: () => vo
 }
 
 function Row({ label, value }: { label: string; value: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -394,93 +401,99 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.background },
-  scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 48 },
-  content: { gap: 16, maxWidth: 480, width: '100%', alignSelf: 'center' },
-  header: { gap: 6, marginBottom: 8 },
-  wordmark: { color: theme.text, fontSize: 32, fontWeight: '700', fontFamily: theme.font },
-  subtitle: { color: theme.muted, fontSize: 14, fontFamily: theme.font, lineHeight: 20 },
-  notice: {
-    borderLeftWidth: 2,
-    borderLeftColor: theme.muted,
-    paddingLeft: 12,
-    paddingVertical: 4,
-  },
-  noticeText: { color: theme.text, fontSize: 13, fontFamily: theme.font, lineHeight: 18 },
-  field: { gap: 8 },
-  label: { color: theme.muted, fontSize: 12, fontFamily: theme.font, letterSpacing: 0.3 },
-  inputShell: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 10,
-    backgroundColor: theme.surface,
-    minHeight: 50,
-    paddingRight: 12,
-  },
-  inputFocused: { borderColor: theme.muted },
-  inputGood: { borderColor: theme.success },
-  inputBad: { borderColor: theme.danger },
-  input: {
-    flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: theme.text,
-    fontFamily: theme.font,
-    fontSize: 16,
-  },
-  indicator: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
-  badge: { borderRadius: 11, borderWidth: 1 },
-  badgeGood: { borderColor: theme.success },
-  badgeBad: { borderColor: theme.danger },
-  badgeGlyph: { fontSize: 12, fontWeight: '700', fontFamily: theme.font, lineHeight: 14 },
-  badgeGlyphGood: { color: theme.success },
-  badgeGlyphBad: { color: theme.danger },
-  status: { fontSize: 12, fontFamily: theme.font, lineHeight: 17, minHeight: 34 },
-  statusMuted: { color: theme.muted },
-  statusGood: { color: theme.success },
-  statusBad: { color: theme.danger },
-  card: {
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    gap: 8,
-  },
-  problemCard: { borderColor: theme.danger },
-  problemTitle: { color: theme.danger, fontSize: 14, fontWeight: '700', fontFamily: theme.font, lineHeight: 19 },
-  detail: { color: theme.text, fontSize: 12, fontFamily: theme.font, lineHeight: 17 },
-  hint: { color: theme.muted, fontSize: 12, fontFamily: theme.font, lineHeight: 17 },
-  retry: {
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginTop: 4,
-  },
-  retryText: { color: theme.text, fontSize: 13, fontFamily: theme.font },
-  actions: { gap: 12, marginTop: 4 },
-  primary: {
-    backgroundColor: theme.primarySurface,
-    borderRadius: 10,
-    minHeight: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryBusy: { opacity: 0.6 },
-  primaryText: { color: theme.primaryText, fontSize: 16, fontWeight: '700', fontFamily: theme.font },
-  textButton: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 12 },
-  textButtonText: { color: theme.text, fontSize: 14, fontFamily: theme.font },
-  caption: { color: theme.muted, fontSize: 12, fontFamily: theme.font, textAlign: 'center', lineHeight: 17 },
-  disabled: { opacity: 0.5 },
-  pressed: { opacity: 0.7 },
-  inline: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  row: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  rowLabel: { color: theme.muted, fontSize: 12, fontFamily: theme.font, minWidth: 76 },
-  rowValue: { color: theme.text, fontSize: 12, fontFamily: theme.font, flexShrink: 1 },
-});
+const makeStyles = (t: Tokens) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: t.uiBgChrome },
+    scroll: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 48 },
+    content: { gap: 16, maxWidth: 480, width: '100%', alignSelf: 'center' },
+    header: { gap: 6, marginBottom: 8 },
+    wordmark: { color: t.uiTextPrimary, fontSize: 32, fontWeight: '700' },
+    subtitle: { color: t.uiTextTertiary, fontSize: 14, lineHeight: 20 },
+    notice: {
+      borderLeftWidth: 2,
+      borderLeftColor: t.uiTextTertiary,
+      paddingLeft: 12,
+      paddingVertical: 4,
+    },
+    noticeText: { color: t.uiTextPrimary, fontSize: 13, lineHeight: 18 },
+    field: { gap: 8 },
+    label: { color: t.uiTextTertiary, fontSize: 12, letterSpacing: 0.3 },
+    inputShell: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: t.uiStrokeSecondary,
+      borderRadius: t.radius['3xl'],
+      backgroundColor: t.uiBgEditor,
+      minHeight: 50,
+      paddingRight: 12,
+    },
+    inputFocused: { borderColor: t.uiComposerRing },
+    inputGood: { borderColor: t.uiSuccess },
+    inputBad: { borderColor: t.dtDestructive },
+    input: {
+      flex: 1,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      color: t.uiTextPrimary,
+     
+      fontSize: 16,
+    },
+    indicator: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
+    badge: { borderRadius: 11, borderWidth: 1 },
+    badgeGood: { borderColor: t.uiSuccess },
+    badgeBad: { borderColor: t.dtDestructive },
+    badgeGlyph: { fontSize: 12, fontWeight: '700', lineHeight: 14 },
+    badgeGlyphGood: { color: t.uiSuccess },
+    badgeGlyphBad: { color: t.dtDestructive },
+    status: { fontSize: 12, lineHeight: 17, minHeight: 34 },
+    statusMuted: { color: t.uiTextTertiary },
+    statusGood: { color: t.uiSuccess },
+    statusBad: { color: t.dtDestructive },
+    card: {
+      backgroundColor: t.uiBgEditor,
+      borderColor: t.uiStrokeSecondary,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderRadius: t.radius['3xl'],
+      padding: 14,
+      gap: 8,
+    },
+    problemCard: { borderColor: t.dtDestructive },
+    problemTitle: { color: t.dtDestructive, fontSize: 14, fontWeight: '700', lineHeight: 19 },
+    detail: { color: t.uiTextPrimary, fontSize: 12, lineHeight: 17 },
+    hint: { color: t.uiTextTertiary, fontSize: 12, lineHeight: 17 },
+    retry: {
+      alignSelf: 'flex-start',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: t.uiStrokeSecondary,
+      borderRadius: t.radius.xl,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      marginTop: 4,
+    },
+    retryText: { color: t.uiTextPrimary, fontSize: 13 },
+    actions: { gap: 12, marginTop: 4 },
+    primary: {
+      backgroundColor: t.dtPrimarySolid,
+      borderRadius: t.radius['3xl'],
+      minHeight: 50,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    primaryBusy: { opacity: 0.6 },
+    primaryText: { color: t.dtPrimarySolidForeground, fontSize: 16, fontWeight: '700' },
+    textButton: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 12 },
+    textButtonText: { color: t.uiTextPrimary, fontSize: 14 },
+    caption: { color: t.uiTextTertiary, fontSize: 12, textAlign: 'center', lineHeight: 17 },
+    disabled: { opacity: 0.5 },
+    pressed: { opacity: 0.7 },
+    inline: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    row: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+    rowLabel: { color: t.uiTextTertiary, fontSize: 12, fontFamily: MONO, minWidth: 76 },
+    rowValue: { color: t.uiTextPrimary, fontSize: 12, fontFamily: MONO, flexShrink: 1 },
+  });
+
+function useStyles() {
+  const t = useTokens();
+  return useMemo(() => makeStyles(t), [t]);
+}

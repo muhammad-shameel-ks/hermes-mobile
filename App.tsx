@@ -6,13 +6,13 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono/400Regular';
+import { JetBrainsMono_400Regular_Italic } from '@expo-google-fonts/jetbrains-mono/400Regular_Italic';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
+import { JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono/700Bold';
 import { useFonts } from 'expo-font';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { refreshCredentials } from './src/auth/native-flow.ts';
 import { clearCredentials, loadConnection, loadCredentials, saveCredentials, type SavedConnection } from './src/auth/store.ts';
@@ -23,11 +23,7 @@ import SignedInApp from './src/app/SignedInApp.tsx';
 import { ConnectingScreen, SignInAgainScreen, UnreachableScreen } from './src/screens/BootScreens.tsx';
 import ConnectScreen from './src/screens/ConnectScreen.tsx';
 import { wipeConnection } from './src/store/index.ts';
-import { theme } from './src/ui/theme.ts';
-import { resolveTokens, TokensContext } from './src/ui/tokens.ts';
-
-// One skin and one appearance until the appearance settings land: the desktop's `nous` dark.
-const tokens = resolveTokens('dark');
+import { ThemedSafeAreaView, ThemedStatusBar, ThemeProvider } from './src/ui/ThemeProvider.tsx';
 
 const restore = () =>
   restoreSession({ loadConnection, loadCredentials, saveCredentials, refreshCredentials, probeGateway, isStale, nowSeconds });
@@ -38,6 +34,8 @@ export default function App() {
   useFonts({
     JetBrainsMono_400Regular,
     JetBrainsMono_500Medium,
+    JetBrainsMono_700Bold,
+    JetBrainsMono_400Regular_Italic,
     'Collapse-Bold': require('./assets/fonts/Collapse-Bold.ttf'),
     codicon: require('./assets/fonts/codicon.ttf'),
   });
@@ -71,14 +69,13 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <TokensContext.Provider value={tokens}>
+      <ThemeProvider>
         <KeyboardProvider>
-          <SafeAreaView
-            style={styles.root}
+          <ThemedSafeAreaView
             // the signed-in app lays out its own insets so the drawer can run edge to edge
             edges={state.kind === 'signed-in' ? ['left', 'right'] : ['top', 'bottom', 'left', 'right']}
           >
-            <StatusBar style="light" />
+            <ThemedStatusBar />
             {state.kind === 'starting' ? <ConnectingScreen /> : null}
             {state.kind === 'unreachable' ? (
               <UnreachableScreen
@@ -114,13 +111,9 @@ export default function App() {
                 onReauthRequired={(reason) => leave(state.connection, reason)}
               />
             ) : null}
-          </SafeAreaView>
+          </ThemedSafeAreaView>
         </KeyboardProvider>
-      </TokensContext.Provider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.background },
-});

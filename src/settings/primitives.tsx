@@ -8,11 +8,12 @@
  */
 
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { MONO, useTokens } from '../ui/tokens.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 /** `SettingsContent`: the scrolling page body */
 export function SettingsContent({ children }: { children: ReactNode }) {
@@ -146,7 +147,7 @@ export function ActionButton({
 }) {
   const t = useTokens();
   const fill =
-    variant === 'default' ? t.dtPrimarySolid : variant === 'secondary' ? t.uiBgTertiary : variant === 'destructive' ? t.dtDestructive : 'transparent';
+    variant === 'default' ? t.dtPrimarySolid : variant === 'secondary' ? t.uiBgQuaternary : variant === 'destructive' ? t.dtDestructive : 'transparent';
   const color =
     variant === 'default' ? t.dtPrimarySolidForeground : variant === 'destructive' ? '#ffffff' : variant === 'secondary' ? t.uiTextPrimary : t.uiTextSecondary;
   return (
@@ -163,7 +164,7 @@ export function ActionButton({
         style,
       ]}
     >
-      {busy ? <ActivityIndicator size="small" color={color} /> : icon ? <Codicon name={icon} size={14} color={color} /> : null}
+      {busy ? <GlyphSpinner size={14} color={color} /> : icon ? <Codicon name={icon} size={14} color={color} /> : null}
       <Text style={{ color, fontSize: 12, lineHeight: 16, fontWeight: '500' }}>{label}</Text>
     </Pressable>
   );

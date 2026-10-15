@@ -4,9 +4,10 @@
  * hairline-bordered `text-xs` button, centred above the first row.
  */
 
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTokens } from '../ui/tokens.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 export function ShowEarlier({ loading, onPress }: { loading: boolean; onPress: () => void }) {
   const t = useTokens();
@@ -24,7 +25,7 @@ export function ShowEarlier({ loading, onPress }: { loading: boolean; onPress: (
         ]}
       >
         <Text style={{ color: t.uiTextTertiary, fontSize: t.type.caption }}>Show earlier messages</Text>
-        {loading ? <ActivityIndicator size="small" color={t.uiTextTertiary} style={styles.spinner} /> : null}
+        {loading ? <GlyphSpinner size={14} color={t.uiTextTertiary} style={styles.spinner} /> : null}
       </Pressable>
     </View>
   );

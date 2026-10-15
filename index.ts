@@ -1,3 +1,4 @@
+import './src/ui/chromeText.ts';
 import { registerRootComponent } from 'expo';
 
 import App from './App';

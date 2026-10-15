@@ -17,13 +17,13 @@ export function Sheet({ visible, onClose, children }: { visible: boolean; onClos
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} onPress={onClose} accessibilityLabel="Close" />
+        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: t.scrim }]} onPress={onClose} accessibilityLabel="Close" />
         <View
           style={[
             styles.sheet,
             {
               backgroundColor: t.uiBgElevated,
-              borderColor: t.uiStrokeSecondary,
+              borderColor: t.strokeNous,
               borderTopLeftRadius: 14,
               borderTopRightRadius: 14,
               paddingBottom: Math.max(insets.bottom, 12),

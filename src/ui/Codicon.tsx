@@ -42,6 +42,7 @@ const GLYPHS = {
   'settings-gear': 0xeb51,
   'star-empty': 0xea6a,
   'star-full': 0xeb59,
+  'symbol-color': 0xeb5c,
   'symbol-misc': 0xeb63,
   sync: 0xea77,
   terminal: 0xea85,

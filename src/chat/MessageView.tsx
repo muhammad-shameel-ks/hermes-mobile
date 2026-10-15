@@ -9,8 +9,10 @@
  */
 
 import { memo, useMemo, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
 
+import { FadeText } from '../ui/Fade.tsx';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { DisclosureCaret, EnterView } from '../ui/motion.tsx';
 import { MONO, SCAFFOLD_OPACITY, useTokens, type Tokens } from '../ui/tokens.ts';
 import { AlertGlyph, ToolIcon } from '../ui/ToolIcon.tsx';
@@ -203,9 +205,9 @@ function ToolRun({ tools, live }: { tools: ToolPart[]; live: boolean }) {
     <View style={styles.toolBlock}>
       <View style={styles.scaffold}>
         <ScaffoldRow open={open} onToggle={() => setOpen((v) => !v)} caretRest={0} label={summary}>
-          <Text style={scaffoldLabel(t)} numberOfLines={1}>
+          <FadeText style={scaffoldLabel(t)} fadeColor={t.uiChatSurfaceBackground}>
             {summary}
-          </Text>
+          </FadeText>
         </ScaffoldRow>
       </View>
       {open ? tools.map((tool) => <ToolRow key={tool.id} tool={tool} />) : live ? <ToolRow tool={tools[tools.length - 1]} /> : null}
@@ -219,7 +221,7 @@ function ToolGlyph({ view, color }: { view: ToolView; color: string }) {
   const t = useTokens();
   let glyph: ReactNode = null;
   if (view.status === 'running') {
-    glyph = <ActivityIndicator size="small" color={t.uiTextTertiary} style={styles.spinner} />;
+    glyph = <GlyphSpinner spinner="breathe" size={GLYPH} label="Running" />;
   } else if (view.status === 'error' || view.status === 'warning') {
     glyph = <AlertGlyph size={GLYPH} color={color} />;
   } else if (view.icon) {
@@ -244,9 +246,9 @@ function ToolRow({ tool }: { tool: ToolPart }) {
       <View style={open ? [styles.toolShellHeader, { borderBottomColor: t.uiStrokeTertiary }] : undefined}>
         <ScaffoldRow open={open} onToggle={expandable ? () => setOpen((v) => !v) : undefined} caretRest={0} label={view.title}>
           <ToolGlyph view={view} color={view.status === 'warning' ? AMBER[t.renderedMode] : t.dtDestructive} />
-          <Text style={scaffoldLabel(t, titleColor)} numberOfLines={1}>
+          <FadeText style={scaffoldLabel(t, titleColor)} fadeColor={t.uiChatSurfaceBackground}>
             {view.title}
-          </Text>
+          </FadeText>
           {view.status !== 'running' && view.countLabel ? <Text style={scaffoldMeta(t)}>{view.countLabel}</Text> : null}
           {view.durationLabel ? <Text style={scaffoldMeta(t)}>{view.durationLabel}</Text> : null}
         </ScaffoldRow>
@@ -290,7 +292,6 @@ const styles = StyleSheet.create({
   scaffoldContent: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 6 },
   caret: { width: 12, alignItems: 'center', justifyContent: 'center' },
   glyph: { width: GLYPH, height: GLYPH, alignItems: 'center', justifyContent: 'center' },
-  spinner: { transform: [{ scale: 0.6 }] },
   reasoningText: { marginTop: 2, paddingBottom: 4 },
   toolBlock: { gap: 6 },
   toolShell: { borderWidth: 1, borderRadius: 5 },

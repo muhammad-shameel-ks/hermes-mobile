@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OverlayScreen } from '../app/overlay.tsx';
@@ -29,6 +29,7 @@ import {
 } from './capabilities.ts';
 import { useSettings } from './context.tsx';
 import { ActionButton, Pill } from './primitives.tsx';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 type Tab = 'skills' | 'toolsets' | 'connectors';
 
@@ -143,7 +144,7 @@ export default function CapabilitiesScreen({ onBack }: { onBack: () => void }) {
       />
       {active.kind === 'loading' ? (
         <View style={styles.center}>
-          <ActivityIndicator size="small" color={t.uiTextTertiary} />
+          <GlyphSpinner size={14} color={t.uiTextTertiary} />
           <Text style={{ color: t.uiTextTertiary, fontSize: t.type.caption, marginTop: 8 }}>{COPY.loading}</Text>
         </View>
       ) : active.kind === 'error' ? (
