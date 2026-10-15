@@ -40,8 +40,8 @@ export type QueueHost = {
   busy(key: string): boolean;
   /** a prompt can be sent now: the gateway is reachable and the session is loaded */
   ready(key: string): boolean;
-  /** send as a new turn; false when the gateway refused, in which case nothing is left in the transcript */
-  send(key: string, text: string): Promise<boolean>;
+  /** send as a new turn, or run it when it is a slash command; false when the gateway refused, in which case nothing is left in the transcript */
+  send(key: string, text: string, displayText?: string): Promise<boolean>;
   /** redirect the running turn; false when it declined */
   steer(key: string, text: string): Promise<boolean>;
   interrupt(key: string): Promise<void>;
@@ -67,10 +67,10 @@ export class QueueDriver {
     return this.host.queue(key)?.entries.find((entry) => entry.id === id);
   }
 
-  enqueue(key: string, text: string): string | null {
+  enqueue(key: string, text: string, displayText?: string): string | null {
     if (!text.trim()) return null;
     const id = nextQueueId();
-    this.change(key, (queue) => enqueue(queue, id, text, this.host.now()));
+    this.change(key, (queue) => enqueue(queue, id, text, this.host.now(), displayText));
     // the turn may have ended while the text was being typed: an idle queue drains at once
     this.sweep(key);
     return id;
@@ -183,7 +183,7 @@ export class QueueDriver {
       const queue = this.host.queue(key);
       const entry = queue && pick(queue);
       if (!entry) return null;
-      if (!(await this.host.send(key, entry.text))) return false;
+      if (!(await this.host.send(key, entry.text, entry.displayText))) return false;
       // a send that went through means the queue is flowing again: lift any park so the rest follow
       this.change(key, (q) => unpark(remove(q, entry.id)));
       return true;

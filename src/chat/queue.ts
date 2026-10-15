@@ -14,6 +14,8 @@ import { SLASH_COMMAND_RE } from '../../vendor/hermes-shared/src/slash.ts';
 export type QueueEntry = {
   id: string;
   text: string;
+  /** what the bubble and the panel read when it differs from `text`: a skill invocation queued behind a turn carries its expanded body as `text` */
+  displayText?: string;
   /** epoch ms */
   queuedAt: number;
   /** consecutive auto-drain attempts that were rejected */
@@ -35,11 +37,11 @@ export const emptyQueue = (): QueueState => ({ entries: [], parked: false, editi
 
 export const queueFrom = (entries: readonly QueueEntry[]): QueueState => ({ ...emptyQueue(), entries: [...entries] });
 
-export function enqueue(state: QueueState, id: string, text: string, now: number): QueueState {
+export function enqueue(state: QueueState, id: string, text: string, now: number, displayText?: string): QueueState {
   // Queueing is fresh intent to keep the conversation moving: it lifts a park and
   // the failure budget of the entries already waiting.
   const entries = state.entries.map((entry) => (entry.drainFailures ? { ...entry, drainFailures: undefined } : entry));
-  return { ...state, entries: [...entries, { id, text, queuedAt: now }], parked: false };
+  return { ...state, entries: [...entries, { id, text, ...(displayText ? { displayText } : {}), queuedAt: now }], parked: false };
 }
 
 export function remove(state: QueueState, id: string): QueueState {
@@ -55,7 +57,8 @@ export function edit(state: QueueState, id: string, text: string): QueueState {
   const entries = state.entries.map((entry) => {
     if (entry.id !== id || entry.text === text) return entry;
     changed = true;
-    return { ...entry, text, drainFailures: undefined };
+    // a rewrite is the reader's own words, so the projected invocation no longer describes it
+    return { ...entry, text, displayText: undefined, drainFailures: undefined };
   });
   return changed ? { ...state, entries } : state;
 }
@@ -135,7 +138,7 @@ export const QUEUE_COPY = {
 } as const;
 
 /** an entry's text on the panel */
-export const entryPreview = (entry: Pick<QueueEntry, 'text'>) => entry.text.trim() || QUEUE_COPY.emptyTurn;
+export const entryPreview = (entry: Pick<QueueEntry, 'text' | 'displayText'>) => (entry.displayText ?? entry.text).trim() || QUEUE_COPY.emptyTurn;
 
 /** a preview long enough (or multiline enough) that two lines may hide part of it */
 export const offersExpandedPreview = (preview: string) => preview.length > 140 || preview.includes('\n');

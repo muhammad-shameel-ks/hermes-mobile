@@ -23,6 +23,7 @@ import type {
 } from '../../vendor/hermes-shared/src/gateway-contract.generated.ts';
 import type { GatewayEvent } from '../../vendor/hermes-shared/src/json-rpc-gateway.ts';
 import type { ServerRequest } from '../../vendor/hermes-shared/src/json-rpc-channel.ts';
+import { looksLikeSlashCommand } from '../../vendor/hermes-shared/src/slash.ts';
 import {
   BOT_CHAT_TITLE,
   BOT_KICKOFF,
@@ -300,7 +301,7 @@ export class ChatController {
         const entry = this.entry(key);
         return Boolean(entry && key !== DRAFT_KEY && !entry.loading && this.link.current.kind === 'open');
       },
-      send: (key, text) => this.submitQueued(key, text),
+      send: (key, text, display) => this.submitQueued(key, text, display),
       steer: (key, text) => this.steerRunning(key, text),
       interrupt: (key) => this.interrupt(key),
       notify: (text) => this.notify(text),
@@ -808,10 +809,12 @@ export class ChatController {
   }
 
   /** a queued prompt as a new turn; a refusal leaves nothing behind so the drain can try again */
-  private async submitQueued(key: string, text: string): Promise<boolean> {
+  private async submitQueued(key: string, text: string, display?: string): Promise<boolean> {
     const entry = this.entry(key);
     if (!entry || key === DRAFT_KEY) return false;
-    this.updateTranscript(key, (t) => addUserMessage(t, text));
+    // a command parked with the Queue control runs when its turn comes, as the desktop's drain routes it through the slash dispatcher
+    if (!display && looksLikeSlashCommand(text) && (await runSlash(this.slashEnv(key), text.trim()))) return true;
+    this.updateTranscript(key, (t) => addUserMessage(t, display ?? text));
     const messageId = this.entry(key)?.transcript.messages.at(-1)?.id;
     try {
       if (!entry.runtimeId) await this.resume(key, { rebind: false });
@@ -1029,18 +1032,21 @@ export class ChatController {
   private async compact(key: string, focusTopic = '') {
     const entry = this.entry(key);
     if (!entry || key === DRAFT_KEY) return;
+    // mid-turn the gateway refuses (or defers) a compress, and the live turn's own running flag is not this method's to clear
+    let flagged = false;
     try {
       if (!entry.runtimeId) await this.resume(key, { rebind: false });
       const runtimeId = this.entry(key)?.runtimeId;
       if (!runtimeId) throw new Error('The session is not attached to the gateway.');
-      this.updateTranscript(key, (t) => ({ ...t, running: true, status: 'Compacting…' }));
+      flagged = !this.entry(key)?.transcript.running;
+      if (flagged) this.updateTranscript(key, (t) => ({ ...t, running: true, status: 'Compacting…' }));
       const result = await this.rpc('session.compress', { session_id: runtimeId, profile: entry.profile, ...(focusTopic ? { focus_topic: focusTopic } : {}) }, 600_000);
       const messages = Array.isArray(result.messages) ? fromHistory(result.messages as SessionMessage[]) : null;
-      this.updateTranscript(key, (t) => ({ ...t, messages: messages ?? t.messages, running: false, status: null }));
+      this.updateTranscript(key, (t) => ({ ...t, messages: messages ?? t.messages, ...(flagged ? { running: false, status: null } : {}) }));
       if (messages) this.updateEntry(key, (e) => ({ ...e, history: NO_HISTORY }));
       this.updateTranscript(key, (t) => addSystemNotice(t, result.message || 'Conversation compacted.'));
     } catch (error) {
-      this.updateTranscript(key, (t) => ({ ...addSystemNotice(t, `Compacting failed: ${errorText(error)}`), running: false, status: null }));
+      this.updateTranscript(key, (t) => ({ ...addSystemNotice(t, `Compacting failed: ${errorText(error)}`), ...(flagged ? { running: false, status: null } : {}) }));
     }
   }
 
@@ -1071,6 +1077,7 @@ export class ChatController {
       say: (text) => this.updateTranscript(key, (t) => addSystemNotice(t, text)),
       notify: (text) => this.notify(text),
       newChat: () => this.newChat(),
+      enqueue: (text, display) => this.queue.enqueue(key, text, display) !== null,
       compact: (focusTopic) => this.compact(key, focusTopic),
       stop: () => this.stop(),
       setEffort: (effort) => this.setEffort(effort),
