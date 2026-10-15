@@ -42,7 +42,7 @@ export async function listenForCallback(onCode: (callback: CallbackCode) => void
           return { statusCode: 400, headers: HEADERS, body: page('Hermes', 'No authorization code in this request.') };
         }
         onCode({ code, state: params.get('state') ?? '' });
-        return { statusCode: 200, headers: HEADERS, body: page('Hermes', 'Signed in — return to the app.') };
+        return { statusCode: 200, headers: HEADERS, body: page('Hermes', 'Almost done — return to the app to finish signing in.') };
       },
       { host: '127.0.0.1' },
     );

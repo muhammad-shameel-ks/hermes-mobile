@@ -6,14 +6,17 @@
  */
 
 import * as WebBrowser from 'expo-web-browser';
+import { AppState } from 'react-native';
 
-import { errorText, HttpTimeoutError, postJson, truncate } from '../gateway/http.ts';
+import { errorText, HttpTimeoutError, postJson, truncate, type HttpResult } from '../gateway/http.ts';
 import { CallbackPortBusyError, listenForCallback, type CallbackCode, type CallbackListener } from './callback-server.ts';
+import { ForegroundAbortedError, waitForForeground } from './foreground.ts';
 import { authorizeUrl, computeCodeChallenge, createCodeVerifier, createState } from './pkce.ts';
 import { parseTokenPayload, type Credentials } from './tokens.ts';
 
 export const GRANT_TIMEOUT_MS = 180_000;
 export const TOKEN_TIMEOUT_MS = 15000;
+export const EXCHANGE_RETRY_DELAY_MS = 1000;
 
 export type SignInFailure =
   | 'callback-port-busy'
@@ -74,6 +77,21 @@ function withDeadline<T>(promise: Promise<T>, timeoutMs: number, signal?: AbortS
   });
 }
 
+/**
+ * Redeems the code, retrying once on a network failure: the network can lag
+ * for a moment after the app returns to the foreground. A timeout is final.
+ */
+async function exchangeCode(url: string, payload: unknown, signal?: AbortSignal): Promise<HttpResult> {
+  try {
+    return await postJson(url, payload, { timeoutMs: TOKEN_TIMEOUT_MS, signal });
+  } catch (error) {
+    if (error instanceof HttpTimeoutError || signal?.aborted) throw error;
+    await new Promise((resolve) => setTimeout(resolve, EXCHANGE_RETRY_DELAY_MS));
+    if (signal?.aborted) throw new CancelledError();
+    return postJson(url, payload, { timeoutMs: TOKEN_TIMEOUT_MS, signal });
+  }
+}
+
 export async function signIn(baseUrl: string, signal?: AbortSignal): Promise<SignInResult> {
   let listener: CallbackListener | null = null;
   try {
@@ -87,14 +105,18 @@ export async function signIn(baseUrl: string, signal?: AbortSignal): Promise<Sig
     if (callback.state !== state) {
       return { kind: 'failed', reason: 'state-mismatch', detail: 'the redirect carried an unexpected state value' };
     }
-    let exchanged: { status: number; body: string };
+    // The callback arrives while the browser is still in front; a background
+    // app's requests are blocked on Android, so redeem only once the user is back.
+    await waitForForeground(AppState, signal);
+    let exchanged: HttpResult;
     try {
-      exchanged = await postJson(
+      exchanged = await exchangeCode(
         `${baseUrl}/auth/native/token`,
         { code: callback.code, code_verifier: verifier },
-        { timeoutMs: TOKEN_TIMEOUT_MS },
+        signal,
       );
     } catch (error) {
+      if (signal?.aborted) return { kind: 'failed', reason: 'cancelled', detail: '' };
       const detail = error instanceof HttpTimeoutError ? error.message : errorText(error);
       return { kind: 'failed', reason: 'unreachable', detail };
     }
@@ -110,7 +132,7 @@ export async function signIn(baseUrl: string, signal?: AbortSignal): Promise<Sig
     if (error instanceof GrantTimeoutError) {
       return { kind: 'failed', reason: 'grant-timeout', detail: 'the browser never returned a code' };
     }
-    if (error instanceof CancelledError) {
+    if (error instanceof CancelledError || error instanceof ForegroundAbortedError) {
       return { kind: 'failed', reason: 'cancelled', detail: '' };
     }
     return { kind: 'failed', reason: 'unexpected', detail: errorText(error) };
