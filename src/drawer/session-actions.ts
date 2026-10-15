@@ -12,7 +12,7 @@ import type { GatewayApi, Query } from '../gateway/api.ts';
 type Method = 'PATCH' | 'DELETE';
 
 /** desktop lib/gateway-rpc.ts `isUnroutedRestPath`: the route is absent, not the session */
-function isUnroutedRestPath(error: unknown): boolean {
+export function isUnroutedRestPath(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /no such api endpoint|endpoint is likely missing/i.test(message) || /404:.*headless backend \(hermes serve\): web ui disabled/i.test(message);
 }
