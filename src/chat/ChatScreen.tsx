@@ -26,11 +26,13 @@ import type { LinkState } from '../gateway/link.ts';
 import { Codicon } from '../ui/Codicon.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { Wordmark } from '../ui/Wordmark.tsx';
+import { PendingApprovals } from './ApprovalCard.tsx';
 import type { ChatController, ChatEntry, ModelCatalog } from './controller.ts';
 import { FOLLOW_UP_PLACEHOLDERS, introBody, NEW_SESSION_PLACEHOLDERS } from './intro.ts';
 import { MessageView } from './MessageView.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
 import { modelPillLabel, type ModelSelection } from './models.ts';
+import { RequestsProvider } from './RequestsProvider.tsx';
 import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
 import type { Message } from './transcript.ts';
 import { useJumpToBottom } from './useJumpToBottom.tsx';
@@ -110,6 +112,7 @@ export default function ChatScreen({
         <LinkBanner link={link} onRetry={() => controller.retryLink()} />
 
         <AssistantRuntimeProvider runtime={runtime}>
+          <RequestsProvider controller={controller} entry={entry}>
           <View style={styles.body}>
             {messages.length === 0 ? (
               <EmptyState t={t} entry={entry} bot={bot} opening={opening} personality={personality} loadImage={controller.avatarDataFn} />
@@ -125,6 +128,7 @@ export default function ChatScreen({
                   onScroll={jump.onScroll}
                   onScrollBeginDrag={jump.onDrag}
                   onContentSizeChange={jump.onContentSize}
+                  ListFooterComponent={<PendingApprovals />}
                 >
                   {({ message }) => {
                     const ours = byId.get(message.id);
@@ -140,6 +144,7 @@ export default function ChatScreen({
             )}
             {running ? <RunStatus t={t} status={entry.transcript.status} /> : null}
           </View>
+          </RequestsProvider>
         </AssistantRuntimeProvider>
 
         <View
