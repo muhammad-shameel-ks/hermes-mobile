@@ -1,13 +1,15 @@
 /**
  * One transcript message. User turns are bubbles; assistant turns render their
  * parts in order - a collapsed reasoning disclosure, markdown text, and tool calls,
- * where two or more consecutive calls collapse into one tool run row. Tool cards,
- * the action bar and the desktop's live tool ticker are later work.
+ * where two or more consecutive calls collapse into one tool run row. A turn that
+ * arrives live slides in with the desktop's enter motion. Tool cards, the action
+ * bar and the desktop's live tool ticker are later work.
  */
 
 import { memo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { DisclosureCaret, EnterView } from '../ui/motion.tsx';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
 import { Markdown } from './Markdown.tsx';
 import type { Message, Part, ToolPart } from './transcript.ts';
@@ -57,11 +59,24 @@ function MessageViewImpl({ message }: { message: Message }) {
   const streaming = message.status === 'streaming';
   const content = blocks(message.parts);
   return (
-    <View style={styles.assistant}>
+    <EnterView enabled={streaming} animationKey={`assistant-message:${message.id}`} style={styles.assistant}>
       {content.map((block, index) => {
         const last = index === content.length - 1;
-        if (block.kind === 'reasoning') return <Reasoning key={index} text={block.text} live={streaming && last} />;
-        if (block.kind === 'tools') return <ToolBlock key={index} tools={block.tools} />;
+        const key = `${message.id}:${index}`;
+        if (block.kind === 'reasoning') {
+          return (
+            <EnterView key={index} enabled={streaming} animationKey={`reasoning:${key}`}>
+              <Reasoning text={block.text} live={streaming && last} />
+            </EnterView>
+          );
+        }
+        if (block.kind === 'tools') {
+          return (
+            <EnterView key={index} enabled={streaming} animationKey={`tool-run:${key}`}>
+              <ToolBlock tools={block.tools} />
+            </EnterView>
+          );
+        }
         return <Markdown key={index} text={block.text} />;
       })}
       {message.status === 'error' ? (
@@ -72,14 +87,18 @@ function MessageViewImpl({ message }: { message: Message }) {
       {message.status === 'interrupted' ? (
         <Text style={[styles.footnote, { color: t.uiTextTertiary, fontSize: t.type.caption }]}>Stopped.</Text>
       ) : null}
-    </View>
+    </EnterView>
   );
 }
 
 export const MessageView = memo(MessageViewImpl);
 
 function Disclosure({ open, t }: { open: boolean; t: Tokens }) {
-  return <Text style={{ color: t.uiTextTertiary, fontSize: t.type.tool, width: 12 }}>{open ? '▾' : '▸'}</Text>;
+  return (
+    <View style={styles.caret}>
+      <DisclosureCaret open={open} size={12} color={t.uiTextTertiary} />
+    </View>
+  );
 }
 
 function Reasoning({ text, live }: { text: string; live: boolean }) {
@@ -157,7 +176,7 @@ function ToolRow({ tool, nested = false }: { tool: ToolPart; nested?: boolean })
         accessibilityState={{ expanded: open, disabled: !expandable }}
         style={styles.toolHeader}
       >
-        {expandable ? <Disclosure open={open} t={t} /> : <View style={{ width: 12 }} />}
+        {expandable ? <Disclosure open={open} t={t} /> : <View style={styles.caretSpacer} />}
         {tool.status === 'running' ? (
           <ActivityIndicator size="small" color={t.uiTextTertiary} style={styles.toolSpinner} />
         ) : null}
@@ -194,6 +213,8 @@ const styles = StyleSheet.create({
   block: { marginBottom: 8 },
   notice: { borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8 },
   footnote: { marginTop: 2 },
+  caret: { width: 12, marginRight: 4, alignItems: 'center', justifyContent: 'center' },
+  caretSpacer: { width: 16 },
   disclosureRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingVertical: 2 },
   reasoningText: { marginTop: 6, marginLeft: 5, paddingLeft: 10, borderLeftWidth: 1 },
   toolGroup: { borderWidth: 1, overflow: 'hidden' },

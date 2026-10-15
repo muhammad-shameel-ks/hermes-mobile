@@ -11,6 +11,7 @@ import { CODICON_FONT } from './tokens.ts';
 const GLYPHS = {
   account: 0xeb99,
   add: 0xea60,
+  'arrow-down': 0xea9a,
   'arrow-up': 0xeaa1,
   check: 0xeab2,
   'chevron-down': 0xeab4,

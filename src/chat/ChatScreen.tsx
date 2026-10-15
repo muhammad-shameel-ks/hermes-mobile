@@ -2,8 +2,9 @@
  * The chat root: app bar, transcript and composer for whichever chat is open.
  *
  * assistant-ui's FlatList owns stick-to-bottom (issue "Transcript and composer
- * parity on touch"); our transcript stays the source of truth - the external
- * store runtime only mirrors it, and each row renders our own message by id.
+ * parity on touch") and a floating pill jumps back to it; our transcript stays
+ * the source of truth - the external store runtime only mirrors it, and each
+ * row renders our own message by id.
  */
 
 import { useCallback, useMemo, useState } from 'react';
@@ -30,7 +31,9 @@ import { FOLLOW_UP_PLACEHOLDERS, introBody, NEW_SESSION_PLACEHOLDERS } from './i
 import { MessageView } from './MessageView.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
 import { modelPillLabel, type ModelSelection } from './models.ts';
+import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
 import type { Message } from './transcript.ts';
+import { useJumpToBottom } from './useJumpToBottom.tsx';
 
 const SIDE_INSET = 24;
 /** the composer dock's top padding: the picker sits on the surface, not the dock */
@@ -95,6 +98,7 @@ export default function ChatScreen({
     [controller],
   );
   const runtime = useExternalStoreRuntime({ messages, isRunning: running, convertMessage, onNew });
+  const jump = useJumpToBottom(entry.key, messages);
 
   const title = entry.isBotChat && bot ? bot.label : entry.title || (entry.key === 'draft' ? 'New session' : 'Untitled session');
   const subtitle = entry.isBotChat ? 'Bot Chat' : profileLabel;
@@ -110,21 +114,29 @@ export default function ChatScreen({
             {messages.length === 0 ? (
               <EmptyState t={t} entry={entry} bot={bot} opening={opening} personality={personality} loadImage={controller.avatarDataFn} />
             ) : (
-              <ThreadPrimitive.MessagesFlatList
-                style={styles.list}
-                contentContainerStyle={styles.listContent}
-                keyboardDismissMode="interactive"
-                keyboardShouldPersistTaps="handled"
-              >
-                {({ message }) => {
-                  const ours = byId.get(message.id);
-                  return ours ? (
-                    <View style={styles.row}>
-                      <MessageView message={ours} />
-                    </View>
-                  ) : null;
-                }}
-              </ThreadPrimitive.MessagesFlatList>
+              <View style={styles.list}>
+                <ThreadPrimitive.MessagesFlatList
+                  ref={jump.listRef}
+                  style={styles.list}
+                  contentContainerStyle={styles.listContent}
+                  keyboardDismissMode="interactive"
+                  keyboardShouldPersistTaps="handled"
+                  CellRendererComponent={jump.Cell}
+                  onScroll={jump.onScroll}
+                  onScrollBeginDrag={jump.onDrag}
+                  onContentSizeChange={jump.onContentSize}
+                >
+                  {({ message }) => {
+                    const ours = byId.get(message.id);
+                    return ours ? (
+                      <View style={styles.row}>
+                        <MessageView message={ours} />
+                      </View>
+                    ) : null;
+                  }}
+                </ThreadPrimitive.MessagesFlatList>
+                <ScrollToBottomButton visible={jump.visible} count={jump.count} onPress={jump.toBottom} />
+              </View>
             )}
             {running ? <RunStatus t={t} status={entry.transcript.status} /> : null}
           </View>
@@ -355,16 +367,28 @@ function Composer({
         >
           <Codicon name="add" size={14} color={t.uiTextTertiary} />
         </Pressable>
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          placeholder={placeholder}
-          placeholderTextColor={t.uiTextTertiary}
-          multiline
-          style={[styles.input, { color: t.uiTextPrimary, fontSize: t.type.text, lineHeight: t.type.text * 1.5 }]}
-          selectionColor={t.uiAccent}
-          accessibilityLabel="Message"
-        />
+        <View style={styles.inputCell}>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            multiline
+            style={[styles.input, { color: t.uiTextPrimary, fontSize: t.type.text, lineHeight: t.type.text * 1.5 }]}
+            selectionColor={t.uiAccent}
+            accessibilityLabel="Message"
+            accessibilityHint={placeholder}
+          />
+          {/* desktop composer-rich-input::before: the hint is one clipped line out of flow, so it never grows the box */}
+          {text === '' ? (
+            <Text
+              pointerEvents="none"
+              numberOfLines={1}
+              accessible={false}
+              style={[styles.placeholder, { color: t.uiTextTertiary, fontSize: t.type.text, lineHeight: t.type.text * 1.5 }]}
+            >
+              {placeholder}
+            </Text>
+          ) : null}
+        </View>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Model: ${modelLabel}`}
@@ -463,7 +487,9 @@ const styles = StyleSheet.create({
   composer: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5 },
   ghostButton: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
   menuCell: { alignSelf: 'flex-start', marginTop: 3 },
-  input: { flex: 1, minHeight: 26, maxHeight: 150, paddingTop: 4, paddingBottom: 4, paddingLeft: 0, paddingRight: 4, textAlignVertical: 'top' },
+  inputCell: { flex: 1, justifyContent: 'center' },
+  placeholder: { position: 'absolute', top: 4, left: 0, right: 4 },
+  input: { minHeight: 26, maxHeight: 150, paddingTop: 4, paddingBottom: 4, paddingLeft: 0, paddingRight: 4, textAlignVertical: 'top' },
   modelPill: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 24, paddingHorizontal: 8, maxWidth: 150, flexShrink: 1 },
   modelPillText: { fontSize: 12, flexShrink: 1 },
   primaryButton: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
