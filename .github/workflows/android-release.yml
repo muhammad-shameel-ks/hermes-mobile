@@ -63,7 +63,7 @@ jobs:
       # Caches Gradle's dependencies, wrapper and build cache between runs.
       # Only builds on main write to the cache, so every release reuses it.
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # The native modules' C++ is most of the build and Gradle cannot cache
       # CMake output, so ccache does it instead.
