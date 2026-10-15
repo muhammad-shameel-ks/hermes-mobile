@@ -139,7 +139,8 @@ export function ModeSwitcher<T extends string>({ modes, active, labels, onSelect
 export type ToastApi = { show: (text: string, tone?: 'success' | 'error') => void; node: ReactNode };
 
 /** A bottom pill that clears itself, for the outcome of an action (the dashboard's toasts). */
-export function useToast(): ToastApi {
+/** `lift` raises the toast clear of chrome pinned to the bottom edge */
+export function useToast(lift = 0): ToastApi {
   const t = useTokens();
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<{ id: number; text: string; tone: 'success' | 'error' } | null>(null);
@@ -164,7 +165,7 @@ export function useToast(): ToastApi {
       style={[
         styles.toast,
         {
-          bottom: insets.bottom + 16,
+          bottom: insets.bottom + 16 + lift,
           backgroundColor: t.uiBgElevated,
           borderColor: toast.tone === 'error' ? mixPct(t.dtDestructive, 0.4, 'transparent') : t.uiStrokeSecondary,
           borderRadius: t.radius['3xl'],

@@ -33,6 +33,7 @@ const GLYPHS = {
   'debug-pause': 0xead1,
   'device-camera': 0xeada,
   diff: 0xeae1,
+  download: 0xec74,
   'diff-added': 0xeadc,
   discard: 0xeae2,
   edit: 0xea73,
