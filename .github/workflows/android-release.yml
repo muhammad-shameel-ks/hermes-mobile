@@ -27,25 +27,25 @@ jobs:
       !startsWith(github.event.head_commit.message, 'chore(release):')
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Tags drive the version bump, so the whole history is needed.
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
       - name: Set up the Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
           # Versions Expo's Gradle plugin pins for this SDK. `packages` replaces
           # the action's default, so platform-tools is listed explicitly.
