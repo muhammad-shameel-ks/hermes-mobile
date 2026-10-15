@@ -38,6 +38,23 @@ To force a minor or major bump, edit `expo.version` in `app.json` and push; the
 next release will adopt it if it is ahead of the last tag. `versionCode` is
 derived from the version (`0.1.1` → `101`) so it always increases.
 
+## In-app updates
+
+Installed release builds check
+`https://api.github.com/repos/muhammad-shameel-ks/hermes-mobile/releases/latest`
+when the app opens and when it comes back to the foreground (at most once
+every 6 hours). If that release's `vX.Y.Z` tag is newer than the app's
+`expo.version`, a sheet offers to download the attached `.apk` and hands it to
+Android's package installer. You can also check by hand from **Settings →
+About → Updates**. Dev clients never check on their own, and iOS never shows
+updates. The code lives in `src/updates/`.
+
+This depends on two things in the workflow above: every release must attach
+exactly one `.apk`, and every build must be signed with the same key, because
+Android will not install an update signed with a different key. The first time
+someone installs an update, Android asks them to let Hermes "install unknown
+apps".
+
 ## Signing
 
 Release builds are currently signed with the debug keystore (`android/` is

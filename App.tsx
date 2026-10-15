@@ -24,6 +24,7 @@ import SignedInApp from './src/app/SignedInApp.tsx';
 import { ConnectingScreen, SignInAgainScreen, UnreachableScreen } from './src/screens/BootScreens.tsx';
 import ConnectScreen from './src/screens/ConnectScreen.tsx';
 import { wipeConnection } from './src/store/index.ts';
+import UpdatePrompt from './src/updates/UpdatePrompt.tsx';
 import { ThemedSafeAreaView, ThemedStatusBar, ThemeProvider } from './src/ui/ThemeProvider.tsx';
 
 const restore = () =>
@@ -112,6 +113,7 @@ function Root() {
                 onReauthRequired={(reason) => leave(state.connection, reason)}
               />
             ) : null}
+            <UpdatePrompt />
           </ThemedSafeAreaView>
         </KeyboardProvider>
       </ThemeProvider>

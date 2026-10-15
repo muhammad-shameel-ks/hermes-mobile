@@ -3,7 +3,8 @@
  * components/version-details.tsx): the app's version, and the build identity the
  * phone stamps in every gate receipt - the vendored Hermes commit, the gateway
  * contract hash and the live server's version, read from `/api/status`. The
- * desktop's update cards and uninstall have no phone counterpart.
+ * update card checks GitHub releases instead of the desktop's updater; uninstall
+ * has no phone counterpart.
  */
 
 import { useEffect, useState } from 'react';
@@ -12,6 +13,7 @@ import { Linking, StyleSheet, Text, View } from 'react-native';
 import app from '../../app.json';
 import manifest from '../../vendor/hermes-shared/MANIFEST.json';
 import { probeGateway } from '../gateway/status.ts';
+import UpdatesSection from '../updates/UpdatesSection.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { aboutRows, buildIdentity, REPO_COMMIT_URL, shortVersion } from './about.ts';
 import { useSettings } from './context.tsx';
@@ -51,6 +53,9 @@ export default function AboutSection() {
           />
         ))}
       </View>
+      <View style={styles.updates}>
+        <UpdatesSection />
+      </View>
     </SettingsContent>
   );
 }
@@ -58,4 +63,5 @@ export default function AboutSection() {
 const styles = StyleSheet.create({
   hero: { alignItems: 'center', paddingTop: 24, paddingBottom: 16 },
   details: { borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingVertical: 8 },
+  updates: { marginTop: 24 },
 });

@@ -29,5 +29,5 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionEntry[] = [
   { key: 'safety', title: 'Safety', detail: 'Approvals, privacy and checkpoints', icon: 'lock', render: () => createElement(SafetySection) },
   { key: 'connection', title: 'Connection', detail: 'Gateway, sign-in and sign out', icon: 'server', render: () => createElement(ConnectionSection) },
   { key: 'profiles', title: 'Profiles', detail: 'The active profile', icon: 'account', render: () => createElement(ProfilesSection) },
-  { key: 'about', title: 'About', detail: 'Version and build', icon: 'info', render: () => createElement(AboutSection) },
+  { key: 'about', title: 'About', detail: 'Version, build and updates', icon: 'info', render: () => createElement(AboutSection) },
 ];
