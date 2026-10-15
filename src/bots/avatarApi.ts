@@ -108,3 +108,11 @@ export function createAvatarApi(request: AvatarRequest, profile: () => string, n
 
   return { probeImagen, generate, petGallery, petThumb };
 }
+
+/** pet.tsx: filtered by name or slug, installed first, then curated, then the rest (stable) */
+export function rankPets(pets: PetEntry[], query: string): PetEntry[] {
+  const q = query.trim().toLowerCase();
+  const filtered = q ? pets.filter((pet) => (pet.displayName || '').toLowerCase().includes(q) || (pet.slug || '').includes(q)) : pets;
+  const rank = (pet: PetEntry) => (pet.installed ? 0 : pet.curated ? 1 : 2);
+  return filtered.slice().sort((a, b) => rank(a) - rank(b));
+}

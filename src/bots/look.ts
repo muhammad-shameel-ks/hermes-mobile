@@ -71,3 +71,13 @@ export function generatedAvatarPrompt(bot: string, title?: string, description?:
   const who = [title || bot, description].filter(Boolean).join(' — ');
   return `Cute minimal robot avatar for an AI agent named "${who}". Friendly simple mascot face, ${AVATAR_SUFFIX}`;
 }
+
+const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
+/** why the asset store would refuse this data URL, or null when it takes it */
+export function avatarImageError(dataUrl: string): string | null {
+  const type = /^data:([^;,]+);base64,/i.exec(dataUrl)?.[1]?.toLowerCase();
+  if (!type || !AVATAR_TYPES.includes(type)) return 'Use a PNG, JPEG or WebP image.';
+  if (dataUrlBytes(dataUrl) > AVATAR_MAX_BYTES) return 'Image too large (max 2MB).';
+  return null;
+}

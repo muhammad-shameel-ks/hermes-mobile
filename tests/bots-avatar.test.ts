@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createAvatarApi, PET_THUMB_TIMEOUT_MS, type AvatarRequest } from '../src/bots/avatarApi.ts';
+import { createAvatarApi, PET_THUMB_TIMEOUT_MS, rankPets, type AvatarRequest } from '../src/bots/avatarApi.ts';
 import {
   avatarColor,
   blobShapeString,
@@ -15,6 +15,7 @@ import {
   settlePose,
 } from '../src/bots/face.ts';
 import {
+  avatarImageError,
   customAvatarPrompt,
   dataUrlBytes,
   editedLook,
@@ -241,4 +242,26 @@ test('the gallery is fetched once per five minutes and a failed fetch is not rem
   clock = 300_001;
   await api.petGallery();
   assert.equal(calls.length, 3);
+});
+
+test('the asset store takes PNG, JPEG and WebP up to 2 MB', () => {
+  const big = `data:image/jpeg;base64,${'A'.repeat(2_700_000)}`;
+  assert.equal(avatarImageError('data:image/png;base64,AAAA'), null);
+  assert.equal(avatarImageError('data:image/webp;base64,AAAA'), null);
+  assert.match(avatarImageError('data:image/gif;base64,AAAA') ?? '', /PNG, JPEG or WebP/);
+  assert.match(avatarImageError('https://x/y.png') ?? '', /PNG, JPEG or WebP/);
+  assert.match(avatarImageError(big) ?? '', /too large/);
+});
+
+test('pets rank installed, then curated, then the rest, and search matches name or slug', () => {
+  const pets = [
+    { slug: 'zed', displayName: 'Zed', installed: false },
+    { slug: 'cur', displayName: 'Curated Cat', installed: false, curated: true },
+    { slug: 'mine', displayName: 'Mine', installed: true },
+    { slug: 'plain', displayName: 'Plain', installed: false },
+  ];
+  assert.deepEqual(rankPets(pets, '').map((p) => p.slug), ['mine', 'cur', 'zed', 'plain']);
+  assert.deepEqual(rankPets(pets, ' CAT ').map((p) => p.slug), ['cur']);
+  assert.deepEqual(rankPets(pets, 'plain').map((p) => p.slug), ['plain']);
+  assert.deepEqual(rankPets(pets, 'nope'), []);
 });

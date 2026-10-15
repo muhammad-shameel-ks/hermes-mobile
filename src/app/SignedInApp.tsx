@@ -4,7 +4,7 @@
  * socket follows the app into the background and back (foreground-scoped).
  */
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, AppState, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,8 +13,7 @@ import { refreshCredentials } from '../auth/native-flow.ts';
 import { createAuthSession } from '../auth/session.ts';
 import { saveCredentials, type SavedConnection } from '../auth/store.ts';
 import type { Credentials } from '../auth/tokens.ts';
-import { forgetAvatar } from '../bots/BotAvatar.tsx';
-import BotForm from '../bots/BotForm.tsx';
+import { BotFormLauncher, type BotFormLaunch } from '../bots/BotFormLauncher.tsx';
 import { botLabel, type Bot } from '../bots/roster.ts';
 import ChatScreen from '../chat/ChatScreen.tsx';
 import { ChatController } from '../chat/controller.ts';
@@ -63,7 +62,7 @@ export default function SignedInApp(props: Props) {
   const [tab, setTab] = useState<DrawerTab>('sessions');
   const [actionsFor, setActionsFor] = useState<Bot | null>(null);
   const [profileSheet, setProfileSheet] = useState(false);
-  const [form, setForm] = useState<{ bot: Bot | null } | null>(null);
+  const openForm = useRef<BotFormLaunch | null>(null);
 
   useEffect(() => {
     controller.start();
@@ -113,10 +112,7 @@ export default function SignedInApp(props: Props) {
     { label: bot.hidden ? 'Unhide' : 'Hide', onPress: () => void controller.setBotFlag(bot, 'hidden', !bot.hidden) },
     {
       label: 'Edit',
-      onPress: () => {
-        forgetAvatar(bot.name);
-        setForm({ bot });
-      },
+      onPress: () => openForm.current?.(bot),
     },
     ...(bot.isDefault ? [] : [{ label: 'Delete', destructive: true, onPress: () => confirmDelete(bot) }]),
   ];
@@ -172,7 +168,7 @@ export default function SignedInApp(props: Props) {
             void controller.openBot(bot);
           }}
           onBotActions={setActionsFor}
-          onNewBot={() => setForm({ bot: null })}
+          onNewBot={() => openForm.current?.(null)}
           onProfileChip={() => setProfileSheet(true)}
           onSignOut={props.onSignOut}
           loadImage={controller.avatarDataFn}
@@ -192,18 +188,7 @@ export default function SignedInApp(props: Props) {
           actions={profileActions}
           onClose={() => setProfileSheet(false)}
         />
-        <BotForm
-          visible={form !== null}
-          bot={form?.bot ?? null}
-          onClose={() => setForm(null)}
-          onSubmit={async (draft) => {
-            if (form?.bot) return controller.editBot(form.bot, draft);
-            const created = await controller.createBot(draft);
-            if (created) closeDrawer();
-            return created;
-          }}
-          loadImage={controller.avatarDataFn}
-        />
+        <BotFormLauncher controller={controller} launchRef={openForm} onCreated={closeDrawer} />
       </View>
     </OverlayProvider>
   );
