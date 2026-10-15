@@ -157,9 +157,12 @@ export class QueueDriver {
   }
 
   private failed(key: string, id: string) {
+    // hold the sweep off while the failure is recorded: recording it changes the queue, which sweeps
+    this.retries.set(key, () => {});
     this.change(key, (queue) => noteDrainFailure(queue, id));
     const failures = this.entry(key, id)?.drainFailures ?? MAX_AUTO_DRAIN_ATTEMPTS;
     if (failures >= MAX_AUTO_DRAIN_ATTEMPTS) {
+      this.retries.delete(key);
       this.host.notify(`${QUEUE_COPY.stuckTitle}. ${QUEUE_COPY.stuckBody}`);
       return;
     }

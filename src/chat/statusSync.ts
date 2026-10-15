@@ -11,6 +11,7 @@
 
 import type { RpcMethods } from '../../vendor/hermes-shared/src/gateway-contract.generated.ts';
 import { errorText } from '../gateway/http.ts';
+import { emptyQueue, queueFrom, type QueueEntry, type QueueState } from './queue.ts';
 import {
   applyControlSnapshot,
   applyGoalText,
@@ -23,10 +24,32 @@ import {
   reduceStatus,
   STATUS_COPY,
   statusNextExpiry,
+  emptyStatus,
   tickStatus,
   type StatusEvent,
   type StatusState,
 } from './statusStack.ts';
+
+/** everything a session keeps above its composer: live rows, the queue, and whether the reader folded the stack away */
+export type SessionStack = { status: StatusState; queue: QueueState; hidden: boolean };
+
+export const emptyStack = (): SessionStack => ({ status: emptyStatus(), queue: emptyQueue(), hidden: false });
+
+/** the part that outlives the process: the queued prompts and the folded choice (a park never does) */
+export type PersistedStack = { queue: QueueEntry[]; hidden: boolean };
+
+/** where the host keeps a stack between launches; `load` runs when a session is opened */
+export type StackStore = {
+  load(key: string): Promise<PersistedStack | null>;
+  save(key: string, stack: PersistedStack): void;
+};
+
+export const persistedStack = (stack: SessionStack): PersistedStack => ({ queue: stack.queue.entries, hidden: stack.hidden });
+
+/** adopt a saved stack, never over prompts queued since the session opened */
+export function restoreStack(stack: SessionStack, saved: PersistedStack): SessionStack {
+  return { ...stack, hidden: saved.hidden, queue: stack.queue.entries.length ? stack.queue : queueFrom(saved.queue) };
+}
 
 export type StatusHost = {
   get(key: string): StatusState | undefined;
