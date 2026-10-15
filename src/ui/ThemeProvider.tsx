@@ -13,12 +13,13 @@ import { Appearance, useColorScheme, useWindowDimensions } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
+import { SafeAreaView, type SafeAreaViewProps } from 'react-native-safe-area-context';
 
 import type { TranslucencyBook } from '../../vendor/hermes-shared/src/translucency.ts';
 import { DEFAULT_PREFS, normalizeChatTextScale, parsePrefs, type AppearancePrefs, type ChatTextScale } from './appearance.ts';
 import { normalizeHex } from './color.ts';
 import { normalizeSkin, resolveMode, type Mode, type ModePreference, type SkinName } from './skins.ts';
-import { resolveTheme, TokensContext } from './tokens.ts';
+import { resolveTheme, TokensContext, useTokens } from './tokens.ts';
 
 export type AppearanceApi = AppearancePrefs & {
   /** the light/dark switch after `system` resolves */
@@ -123,4 +124,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function ThemedStatusBar() {
   const { renderedMode } = useAppearance();
   return <StatusBar style={renderedMode === 'dark' ? 'light' : 'dark'} />;
+}
+
+/** The app root: fills the screen with the chrome background, so no frame ever paints white. */
+export function ThemedSafeAreaView({ style, ...props }: SafeAreaViewProps) {
+  const t = useTokens();
+  return <SafeAreaView {...props} style={[{ flex: 1, backgroundColor: t.uiBgChrome }, style]} />;
 }
