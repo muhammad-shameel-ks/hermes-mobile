@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, test } from 'node:test';
 
-import { buildReviewFlatList, buildReviewTree, flattenReviewRows, isExcludedPath, matchReviewFile, recordTurnBase, resetTurnBases, turnBaseFor, type ReviewFile } from '../src/review/tree.ts';
+import { buildReviewFlatList, buildReviewTree, countAllNodes, flattenReviewRows, headerLine, isExcludedPath, matchReviewFile, recordTurnBase, resetTurnBases, turnBaseFor, type ReviewFile } from '../src/review/tree.ts';
 
 const file = (path: string, added = 1, removed = 0, status = 'M'): ReviewFile => ({ path, added, removed, status, staged: false });
 
@@ -26,6 +26,10 @@ test('flattening shows a folder\'s children only while it is open', () => {
   assert.deepEqual(open.map((r) => [r.node.name, r.depth]), [['src/ui', 0], ['a.ts', 1], ['b.ts', 1], ['top.ts', 0]]);
 });
 
+test('the node count includes every descendant', () => {
+  assert.equal(countAllNodes(buildReviewTree([file('a/b/x.ts'), file('a/b/y.ts'), file('a/c.ts')])), 5);
+});
+
 test('noise paths are excluded on any segment', () => {
   assert.equal(isExcludedPath('node_modules/.bin/x'), true);
   assert.equal(isExcludedPath('src/.DS_Store'), true);
@@ -47,4 +51,13 @@ test('turn baselines are per cwd and capped at eight, oldest out first', () => {
   assert.equal(turnBaseFor('/repo/8'), 'sha8');
   recordTurnBase('/repo/8', 'newer');
   assert.equal(turnBaseFor('/repo/8 '), 'newer');
+});
+
+test('the header line carries branch, divergence and the base for non-uncommitted scopes', () => {
+  const status = { branch: 'feat/x', detached: false, ahead: 2, behind: 1, changed: 3 };
+  assert.equal(headerLine(status, 'uncommitted', null), 'feat/x · 2 ahead · 1 behind');
+  assert.equal(headerLine(status, 'branch', 'origin/main'), 'feat/x · 2 ahead · 1 behind · vs origin/main');
+  assert.equal(headerLine(status, 'lastTurn', '0123456789abcdef0123456789abcdef01234567'), 'feat/x · 2 ahead · 1 behind · vs 01234567');
+  assert.equal(headerLine({ ...status, branch: null, detached: true, ahead: 0, behind: 0 }, 'uncommitted', null), 'detached');
+  assert.equal(headerLine(undefined, 'uncommitted', null), '');
 });

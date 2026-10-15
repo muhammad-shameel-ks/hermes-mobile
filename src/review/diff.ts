@@ -135,3 +135,23 @@ export function gutterDigits(rows: readonly DiffLine[]): number {
   for (const row of rows) max = Math.max(max, row.oldNo ?? 0, row.newNo ?? 0);
   return Math.max(2, String(max).length);
 }
+
+export type OverviewRun = { kind: 'add' | 'remove'; startPct: number; sizePct: number };
+
+/** Consecutive same-kind changed rows as runs placed by line fraction: the ticks of the overview ruler. */
+export function overviewRuns(rows: readonly DiffLine[]): OverviewRun[] {
+  const total = rows.length || 1;
+  const runs: OverviewRun[] = [];
+  for (let i = 0; i < rows.length; ) {
+    const kind = rows[i].kind;
+    if (kind === 'context') {
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    while (j < rows.length && rows[j].kind === kind) j += 1;
+    runs.push({ kind, startPct: (i / total) * 100, sizePct: ((j - i) / total) * 100 });
+    i = j;
+  }
+  return runs;
+}

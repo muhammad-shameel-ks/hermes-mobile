@@ -5,6 +5,8 @@
  * shows its total, and single-child chains compact into one `a/b/c` row.
  */
 
+import type { RepoStatus } from '../files/rest.ts';
+
 export type ReviewScope = 'uncommitted' | 'branch' | 'lastTurn';
 
 export const REVIEW_SCOPES: ReadonlyArray<{ id: ReviewScope; label: string }> = [
@@ -100,6 +102,15 @@ export function buildReviewTree(files: readonly ReviewFile[], compact = true): R
   return finalize(root);
 }
 
+/** Every node including descendants: past 60 a tree starts collapsed, as the desktop's heavy path does. */
+export function countAllNodes(nodes: readonly ReviewTreeNode[]): number {
+  let total = 0;
+  for (const node of nodes) total += 1 + (node.children ? countAllNodes(node.children) : 0);
+  return total;
+}
+
+export const HEAVY_TREE_NODES = 60;
+
 export type ReviewRow = { node: ReviewTreeNode; depth: number };
 
 /** The rows currently visible: a directory contributes its children only while `isOpen(id)`. */
@@ -152,4 +163,16 @@ export const turnBaseFor = (cwd: string): string | null => turnBases.find(([key]
 
 export function resetTurnBases(): void {
   turnBases = [];
+}
+
+/** Branch, divergence from upstream and the base this scope diffs against, on one line. */
+export function headerLine(status: RepoStatus | undefined, scope: ReviewScope, base: string | null): string {
+  const parts: string[] = [];
+  if (status) {
+    parts.push(status.branch ?? (status.detached ? 'detached' : 'No branch'));
+    if (status.ahead) parts.push(`${status.ahead} ahead`);
+    if (status.behind) parts.push(`${status.behind} behind`);
+  }
+  if (scope !== 'uncommitted' && base) parts.push(`vs ${/^[0-9a-f]{40}$/i.test(base) ? base.slice(0, 8) : base}`);
+  return parts.join(' · ');
 }

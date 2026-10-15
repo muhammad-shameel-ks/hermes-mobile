@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { diffRows, diffStats, fullFileDiffRows, gutterDigits, isBinaryDiff, parseHunks } from '../src/review/diff.ts';
+import { diffRows, diffStats, fullFileDiffRows, gutterDigits, isBinaryDiff, overviewRuns, parseHunks } from '../src/review/diff.ts';
 
 const diff = [
   'diff --git a/src/a.ts b/src/a.ts',
@@ -72,4 +72,13 @@ test('a full-file diff keeps every current line and slots removals in', () => {
     ['context', 'four', 3, 4],
   ]);
   assert.equal(fullFileDiffRows('', 'a\nb').length, 2);
+});
+
+test('the overview ruler coalesces runs of one kind and skips context', () => {
+  const rows = diffRows('@@ -1,5 +1,5 @@\n a\n-b\n-c\n+d\n e\n');
+  assert.deepEqual(overviewRuns(rows), [
+    { kind: 'remove', startPct: 20, sizePct: 40 },
+    { kind: 'add', startPct: 60, sizePct: 20 },
+  ]);
+  assert.deepEqual(overviewRuns([]), []);
 });
