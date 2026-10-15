@@ -16,6 +16,8 @@ import {
   settlePose,
 } from '../src/bots/face.ts';
 import {
+  AVATAR_EDGE,
+  avatarCrop,
   avatarImageError,
   customAvatarPrompt,
   dataUrlBytes,
@@ -278,4 +280,12 @@ test('a live worker session reads as working, a merely recent chat only as activ
   const chatty = toBot(row({ last_session: { id: 's', last_active: now - 30 } }), now);
   assert.equal(chatty.working, false);
   assert.equal(chatty.active, true);
+});
+
+test('avatars are cropped to the centred square and scaled to 256 px, as the desktop does', () => {
+  assert.equal(AVATAR_EDGE, 256);
+  assert.deepEqual(avatarCrop(1000, 600), { originX: 200, originY: 0, width: 600, height: 600 });
+  assert.deepEqual(avatarCrop(600, 1001), { originX: 0, originY: 200, width: 600, height: 600 });
+  assert.deepEqual(avatarCrop(512, 512), { originX: 0, originY: 0, width: 512, height: 512 });
+  assert.deepEqual(avatarCrop(101.5, 50.5), { originX: 25, originY: 0, width: 50, height: 50 });
 });
