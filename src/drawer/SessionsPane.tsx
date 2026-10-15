@@ -160,6 +160,6 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: SIDEBAR_INSET, paddingBottom: 12 },
-  nav: { gap: 1, paddingTop: 6, paddingBottom: 8 },
-  search: { paddingHorizontal: 8, paddingBottom: 4, paddingTop: 4 },
+  nav: { gap: 2, paddingTop: 10, paddingBottom: 10 },
+  search: { paddingHorizontal: 10, paddingBottom: 4, paddingTop: 4 },
 });

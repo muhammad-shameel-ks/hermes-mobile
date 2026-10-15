@@ -49,5 +49,5 @@ export function StatusDot({ state, branchStem }: { state: DotState; branchStem?:
 
 const styles = StyleSheet.create({
   lead: { minWidth: ROW_LEAD, height: ROW_LEAD, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2 },
-  stem: { fontSize: 10, lineHeight: 10 },
+  stem: { fontSize: 12, lineHeight: 12 },
 });

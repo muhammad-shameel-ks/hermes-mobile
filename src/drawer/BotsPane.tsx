@@ -45,9 +45,9 @@ function PanelEmpty({ icon, title, description, action }: { icon: CodiconName; t
   const t = useTokens();
   return (
     <View style={styles.empty} accessibilityLiveRegion="polite">
-      <Codicon name={icon} size={20} color={t.uiTextQuaternary} />
-      {title ? <Text style={{ color: t.dtForeground, fontSize: 14, fontWeight: '500', opacity: 0.9 }}>{title}</Text> : null}
-      <Text style={{ color: t.uiTextTertiary, fontSize: 12, lineHeight: 19, textAlign: 'center' }}>{description}</Text>
+      <Codicon name={icon} size={24} color={t.uiTextQuaternary} />
+      {title ? <Text style={{ color: t.dtForeground, fontSize: 16, fontWeight: '500', opacity: 0.9 }}>{title}</Text> : null}
+      <Text style={{ color: t.uiTextTertiary, fontSize: 14, lineHeight: 20, textAlign: 'center' }}>{description}</Text>
       {action}
     </View>
   );
@@ -97,7 +97,7 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
           hitSlop={4}
           style={({ pressed }) => [styles.add, { borderRadius: t.radius.md, backgroundColor: pressed ? t.uiControlHoverBackground : 'transparent' }]}
         >
-          <Codicon name="add" size={14} color={t.uiTextTertiary} />
+          <Codicon name="add" size={18} color={t.uiTextTertiary} />
         </Pressable>
       </View>
       <View style={styles.search}>
@@ -107,11 +107,11 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         {error && !empty ? (
           <View style={[styles.stale, { backgroundColor: t.uiRowActiveBackground, borderRadius: t.radius['2xl'] }]} accessibilityLiveRegion="polite">
-            <Text style={{ flex: 1, color: t.uiTextTertiary, fontSize: 11, lineHeight: 15 }}>
+            <Text style={{ flex: 1, color: t.uiTextTertiary, fontSize: 13, lineHeight: 18 }}>
               {`Roster refresh failed — showing the last good list.${gatewayUp ? '' : ' Waiting for the gateway to reconnect…'}`}
             </Text>
             <Pressable onPress={onRetryRoster} hitSlop={8} accessibilityRole="button">
-              <Text style={{ color: t.uiAccent, fontSize: 11, fontWeight: '600' }}>Retry now</Text>
+              <Text style={{ color: t.uiAccent, fontSize: 13, fontWeight: '600' }}>Retry now</Text>
             </Pressable>
           </View>
         ) : null}
@@ -120,7 +120,7 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
 
         {error && empty ? (
           <View style={styles.unavailable}>
-            <Text style={{ color: t.uiTextTertiary, fontSize: 12, lineHeight: 17 }}>
+            <Text style={{ color: t.uiTextTertiary, fontSize: 14, lineHeight: 20 }}>
               {gatewayUp
                 ? `Roster unavailable: ${error}. If your gateway predates profiles.list, update Hermes and restart the gateway.`
                 : 'Waiting for the gateway connection… (remote gateways can take a few seconds; retries automatically)'}
@@ -130,7 +130,7 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
               accessibilityRole="button"
               style={({ pressed }) => [styles.retry, { backgroundColor: t.uiBgSecondary, borderRadius: t.radius['2xl'], opacity: pressed ? 0.6 : 1 }]}
             >
-              <Text style={{ color: t.uiTextSecondary, fontSize: 12, fontWeight: '500' }}>Retry now</Text>
+              <Text style={{ color: t.uiTextSecondary, fontSize: 14, fontWeight: '500' }}>Retry now</Text>
             </Pressable>
           </View>
         ) : null}
@@ -148,7 +148,7 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
                 accessibilityRole="button"
                 style={({ pressed }) => [styles.retry, { backgroundColor: t.uiBgSecondary, borderRadius: t.radius['2xl'], opacity: pressed ? 0.6 : 1 }]}
               >
-                <Text style={{ color: t.uiTextSecondary, fontSize: 12, fontWeight: '500' }}>Show hidden bots</Text>
+                <Text style={{ color: t.uiTextSecondary, fontSize: 14, fontWeight: '500' }}>Show hidden bots</Text>
               </Pressable>
             }
           />
@@ -160,7 +160,7 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
           <View style={[styles.hidden, { borderTopColor: t.uiStrokeTertiary }]}>
             {trimmed ? (
               <View style={styles.hiddenToggle}>
-                <Codicon name="eye-closed" size={12} color={t.uiTextTertiary} />
+                <Codicon name="eye-closed" size={14} color={t.uiTextTertiary} />
                 <Text style={[styles.hiddenLabel, { color: t.uiTextTertiary }]}>Hidden</Text>
                 <Text style={[styles.hiddenLabel, { color: t.uiTextQuaternary }]}>{shownHidden.length}</Text>
               </View>
@@ -174,7 +174,7 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
                 accessibilityState={{ expanded: hiddenBotsOpen }}
                 style={({ pressed }) => [styles.hiddenToggle, { borderRadius: t.radius.md, backgroundColor: pressed ? t.uiControlHoverBackground : 'transparent' }]}
               >
-                <DisclosureCaret open={hiddenBotsOpen} size={12} color={t.uiTextTertiary} />
+                <DisclosureCaret open={hiddenBotsOpen} size={14} color={t.uiTextTertiary} />
                 <Text style={[styles.hiddenLabel, { color: t.uiTextTertiary }]}>Hidden</Text>
                 <Text style={[styles.hiddenLabel, { color: t.uiTextQuaternary }]}>{shownHidden.length}</Text>
               </Pressable>
@@ -189,9 +189,9 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
 
 const styles = StyleSheet.create({
   pane: { flex: 1 },
-  heading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: SIDEBAR_INSET, paddingRight: 6, paddingTop: 4, paddingBottom: 2 },
-  headingLabel: { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.55, textTransform: 'uppercase' },
-  add: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  heading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: SIDEBAR_INSET, paddingRight: 6, paddingTop: 8, paddingBottom: 2 },
+  headingLabel: { fontSize: 12, lineHeight: 15, fontWeight: '600', letterSpacing: 1.4, textTransform: 'uppercase' },
+  add: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   search: { paddingHorizontal: SIDEBAR_INSET, paddingBottom: 6 },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 6, paddingBottom: 8 },
@@ -199,9 +199,9 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 40 },
   loading: { alignSelf: 'center', marginVertical: 24 },
   unavailable: { gap: 10, paddingHorizontal: 12, paddingVertical: 16 },
-  retry: { alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center', paddingHorizontal: 12 },
+  retry: { alignSelf: 'flex-start', minHeight: 40, justifyContent: 'center', paddingHorizontal: 12 },
   stale: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 4 },
   hidden: { marginTop: 4, paddingTop: 4, borderTopWidth: StyleSheet.hairlineWidth },
-  hiddenToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, paddingHorizontal: 8 },
-  hiddenLabel: { fontSize: 11, fontWeight: '500' },
+  hiddenToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 10 },
+  hiddenLabel: { fontSize: 13, fontWeight: '500' },
 });

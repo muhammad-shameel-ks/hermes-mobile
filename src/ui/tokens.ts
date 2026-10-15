@@ -192,14 +192,15 @@ function resolve({ skin = DEFAULT_SKIN, mode, accent = null, chatTextScale = CHA
     // --radius-scalar 0.2 × the styles.css ladder, 1:1 in dp (issue "Shell and loader prototype on device").
     radius: { xs: 0.4, sm: 1.6, md: 2, lg: 2.4, xl: 3.2, '2xl': 4.8, '3xl': 6.4, '4xl': 8, full: 9999 },
 
-    // body 13px; the five conversation tokens scale with Chat Text Size and the platform font scale.
+    // Phone reading sizes, not the desktop's 13px: body 15, so the 110% default sets prose at ~16.5pt as
+    // native chat apps do. The five conversation tokens scale with Chat Text Size and the platform font scale.
     type: {
-      base: 13,
-      text: 13 * effective,
-      tool: 11 * effective,
-      caption: 12 * effective,
-      lineHeight: 18 * effective,
-      captionLineHeight: 16 * effective,
+      base: 15,
+      text: 15 * effective,
+      tool: 12 * effective,
+      caption: 13 * effective,
+      lineHeight: 22 * effective,
+      captionLineHeight: 18 * effective,
     },
   };
 }

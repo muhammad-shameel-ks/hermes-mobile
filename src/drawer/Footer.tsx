@@ -2,7 +2,7 @@
  * The drawer's footer chips (issue #12): the gateway's health and the active profile, where the desktop's
  * statusbar keeps its connection and profile switchers (apps/desktop/src/app/chat/sidebar/
  * connection-switcher.tsx, profile-dropdown-switcher.tsx, components/ui/profile-glyph.tsx), then
- * Settings and Sign out. Ghost chips at 0.6875rem, a lead glyph and a trailing chevron where a menu
+ * Settings and Sign out. Ghost chips at 13pt, a lead glyph and a trailing chevron where a menu
  * opens. Parity deviation (touch): 40dp tall.
  */
 
@@ -37,13 +37,13 @@ function ProfileGlyph({ name, label }: { name: string; label: string }) {
   if (!color) {
     return (
       <View style={styles.glyph}>
-        <Codicon name="home" size={12} color={t.uiTextQuaternary} />
+        <Codicon name="home" size={15} color={t.uiTextQuaternary} />
       </View>
     );
   }
   return (
     <View style={[styles.glyph, { borderRadius: 3, backgroundColor: profileColorSoft(color, 22) }]}>
-      <Text allowFontScaling={false} style={{ color, fontSize: 7, lineHeight: 9, fontWeight: '600' }}>
+      <Text allowFontScaling={false} style={{ color, fontSize: 9, lineHeight: 11, fontWeight: '600' }}>
         {profileInitial(label)}
       </Text>
     </View>
@@ -61,9 +61,9 @@ export function Footer({ link, connectionLabel, connectionUrl, profileName, prof
     <View style={styles.footer}>
       <View style={styles.chip} accessible accessibilityLabel={`Gateway ${connectionLabel}, ${healthy ? 'connected' : link.kind === 'connecting' ? 'connecting' : 'not connected'}`}>
         <View style={styles.glyph}>
-          <Codicon name={connectionGlyphName(connectionKind(connectionUrl))} size={12} color={t.uiTextQuaternary} />
+          <Codicon name={connectionGlyphName(connectionKind(connectionUrl))} size={15} color={t.uiTextQuaternary} />
         </View>
-        <Text numberOfLines={1} style={[styles.chipText, { color: t.uiTextSecondary, fontFamily: MONO, maxWidth: 112 }]}>
+        <Text numberOfLines={1} style={[styles.chipText, { color: t.uiTextSecondary, fontFamily: MONO, maxWidth: 128 }]}>
           {connectionLabel}
         </Text>
         <View style={[styles.health, { backgroundColor: health }]} />
@@ -81,7 +81,7 @@ export function Footer({ link, connectionLabel, connectionUrl, profileName, prof
       ) : null}
       <Pressable onPress={routes.openSettings} accessibilityRole="button" accessibilityLabel="Settings" style={chip}>
         <View style={styles.glyph}>
-          <Codicon name="settings-gear" size={12} color={t.uiTextSecondary} />
+          <Codicon name="settings-gear" size={15} color={t.uiTextSecondary} />
         </View>
         <Text style={[styles.chipText, { color: t.uiTextSecondary }]}>Settings</Text>
       </Pressable>
@@ -93,10 +93,10 @@ export function Footer({ link, connectionLabel, connectionUrl, profileName, prof
 }
 
 const styles = StyleSheet.create({
-  footer: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', paddingHorizontal: 4 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: ROW_MIN_H, paddingHorizontal: 8 },
-  chipText: { fontSize: 11, lineHeight: 14 },
-  glyph: { width: 12, height: 12, alignItems: 'center', justifyContent: 'center' },
-  health: { width: 6, height: 6, borderRadius: 3, marginLeft: 2 },
+  footer: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', paddingHorizontal: 6, paddingTop: 4 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: ROW_MIN_H, paddingHorizontal: 8 },
+  chipText: { fontSize: 13, lineHeight: 17 },
+  glyph: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
+  health: { width: 7, height: 7, borderRadius: 3.5, marginLeft: 2 },
 });
 

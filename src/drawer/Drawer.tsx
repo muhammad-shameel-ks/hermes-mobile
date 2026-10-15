@@ -56,7 +56,7 @@ export default function Drawer(props: Props) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const width = Math.min(Math.round(screenWidth * 0.84), 320);
+  const width = Math.min(Math.round(screenWidth * 0.86), 360);
   const progress = useSharedValue(open ? 1 : 0);
   const [mounted, setMounted] = useState(open);
 
@@ -135,8 +135,8 @@ export default function Drawer(props: Props) {
 
 /**
  * The zone's tab strip (components/ui/pane-tab.tsx `PaneTabStrip`): tabs on the sidebar surface, the
- * active one in the foreground with a 2 px underline in the skin's primary, the label 0.6875rem medium
- * uppercase at the wide tracking. Parity deviation (touch): 40dp, not 28.
+ * active one in the foreground with a 2 px underline in the skin's primary, the label semibold uppercase
+ * at the wide tracking. Parity deviation (touch): 48dp, not 28, with a 13pt label.
  */
 function TabStrip({ tab, onTab }: { tab: DrawerTab; onTab: (tab: DrawerTab) => void }) {
   const t = useTokens();
@@ -170,8 +170,8 @@ function TabStrip({ tab, onTab }: { tab: DrawerTab; onTab: (tab: DrawerTab) => v
 
 const styles = StyleSheet.create({
   panel: { position: 'absolute', top: 0, bottom: 0, left: 0, borderRightWidth: StyleSheet.hairlineWidth },
-  strip: { flexDirection: 'row', height: 40 },
-  tab: { justifyContent: 'center', paddingHorizontal: 16, maxWidth: 192 },
+  strip: { flexDirection: 'row', height: 48 },
+  tab: { justifyContent: 'center', paddingHorizontal: 20, maxWidth: 192 },
   underline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2 },
-  tabLabel: { fontSize: 11, lineHeight: 14, fontWeight: '500', letterSpacing: 0.55, textTransform: 'uppercase' },
+  tabLabel: { fontSize: 13, lineHeight: 17, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' },
 });

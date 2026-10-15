@@ -28,6 +28,6 @@ export function PlatformChip({ sourceId, label }: { sourceId: string; label: str
 }
 
 const styles = StyleSheet.create({
-  chip: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
-  letter: { fontSize: 9, lineHeight: 11, fontWeight: '600' },
+  chip: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
+  letter: { fontSize: 11, lineHeight: 13, fontWeight: '600' },
 });

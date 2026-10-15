@@ -29,10 +29,10 @@ export function MicButton({ dictation, disabled }: { dictation: Dictation; disab
       accessibilityState={{ disabled: disabled || status === 'transcribing', busy: status === 'transcribing' }}
       disabled={disabled || status === 'transcribing'}
       onPress={dictation.toggle}
-      hitSlop={8}
+      hitSlop={4}
       style={({ pressed }) => [
         styles.mic,
-        { borderRadius: active ? t.radius.full : t.radius.md, opacity: disabled ? 0.5 : 1 },
+        { borderRadius: t.radius.full, opacity: disabled ? 0.5 : 1 },
         active && { backgroundColor: mixPct(primary, pressed ? 0.15 : 0.1, 'transparent') },
         !active && pressed && { backgroundColor: t.uiControlHoverBackground },
       ]}
@@ -42,7 +42,7 @@ export function MicButton({ dictation, disabled }: { dictation: Dictation; disab
       ) : status === 'transcribing' ? (
         <GlyphSpinner size={14} color={primary} style={styles.spinner} />
       ) : (
-        <Codicon name="mic" size={14} color={t.uiTextTertiary} />
+        <Codicon name="mic" size={19} color={t.uiTextSecondary} />
       )}
     </Pressable>
   );
@@ -84,16 +84,16 @@ export function DictationActivity({ dictation }: { dictation: Dictation }) {
 }
 
 const styles = StyleSheet.create({
-  mic: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
-  stopGlyph: { width: 10, height: 10, borderRadius: 2 },
-  spinner: { transform: [{ scale: 0.75 }] },
+  mic: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  stopGlyph: { width: 12, height: 12, borderRadius: 3 },
+  spinner: { transform: [{ scale: 1 }] },
   // desktop `flex h-8 items-center gap-2 rounded-xl border px-2.5 text-xs`
-  activity: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 32, paddingHorizontal: 10, borderWidth: 1 },
+  activity: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 38, paddingHorizontal: 12, borderWidth: 1 },
   badge: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   badgeSpinner: { transform: [{ scale: 0.6 }] },
   activityText: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 },
-  title: { flexShrink: 1, fontSize: 12, fontWeight: '500' },
-  clock: { fontSize: 11 },
+  title: { flexShrink: 1, fontSize: 14, fontWeight: '500' },
+  clock: { fontSize: 13 },
   bars: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 16 },
   bar: { width: 2, borderRadius: 1 },
 });

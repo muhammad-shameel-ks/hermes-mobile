@@ -13,7 +13,7 @@ import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { DisclosureCaret } from '../ui/motion.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { tick } from '../ui/haptics.ts';
-import { LABEL_LINE, LABEL_SIZE, ROW_MIN_H, ROW_PAD_X } from './rowGeometry.ts';
+import { ROW_MIN_H, ROW_PAD_X } from './rowGeometry.ts';
 
 /**
  * `SearchField`: no box, a quiet search glyph, text-xs, resting at 30% until focused or filled. The
@@ -37,7 +37,7 @@ export function SearchField({
   const [focused, setFocused] = useState(false);
   return (
     <View style={[styles.search, { opacity: value || focused ? 1 : rest }]}>
-      <Codicon name="search" size={14} color={t.uiTextTertiary} />
+      <Codicon name="search" size={16} color={t.uiTextTertiary} />
       <TextInput
         value={value}
         onChangeText={onChange}
@@ -55,7 +55,7 @@ export function SearchField({
         <GlyphSpinner size={12} color={t.uiTextTertiary} label="Searching" />
       ) : value ? (
         <Pressable onPress={() => onChange('')} accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={10} style={styles.clear}>
-          <Codicon name="close" size={14} color={t.uiTextTertiary} />
+          <Codicon name="close" size={16} color={t.uiTextTertiary} />
         </Pressable>
       ) : null}
     </View>
@@ -104,7 +104,7 @@ export function SectionHeader({
         {label}
       </Text>
       {meta ? <Text style={[styles.meta, { color: t.uiTextQuaternary }]}>{meta}</Text> : null}
-      {onToggle ? <DisclosureCaret open={open ?? true} size={12} color={t.uiTextTertiary} /> : null}
+      {onToggle ? <DisclosureCaret open={open ?? true} size={14} color={t.uiTextTertiary} /> : null}
     </>
   );
   return onToggle ? (
@@ -145,15 +145,16 @@ export function DateDivider({ label, open, onToggle }: { label: string; open: bo
       style={styles.divider}
     >
       <Text style={[styles.dividerLabel, { color: t.uiTextQuaternary }]}>{label}</Text>
-      <DisclosureCaret open={open} size={12} color={t.uiTextTertiary} />
+      <DisclosureCaret open={open} size={14} color={t.uiTextTertiary} />
       <View style={[styles.rule, { backgroundColor: t.uiStrokeTertiary }]} />
     </Pressable>
   );
 }
 
 /**
- * A nav row (the desktop's `SidebarMenuButton`): a 16 dp glyph at 72%, 0.8125rem medium secondary text,
- * the control-hover wash while pressed. Parity deviation (touch): 40dp, not 28.
+ * A nav row (the desktop's `SidebarMenuButton`): a glyph at 80%, medium secondary text, the control-hover
+ * wash while pressed. Parity deviation (touch): 48dp with a 20 dp glyph and a 17pt label, the size of a
+ * phone app's primary drawer destinations.
  */
 export function NavRow({ label, icon, onPress }: { label: string; icon: CodiconName; onPress: () => void }) {
   const t = useTokens();
@@ -163,8 +164,8 @@ export function NavRow({ label, icon, onPress }: { label: string; icon: CodiconN
       accessibilityRole="button"
       style={({ pressed }) => [styles.nav, { borderRadius: t.radius.md, backgroundColor: pressed ? t.uiControlHoverBackground : 'transparent' }]}
     >
-      <View style={{ opacity: 0.72 }}>
-        <Codicon name={icon} size={16} color={t.uiTextSecondary} />
+      <View style={styles.navGlyph}>
+        <Codicon name={icon} size={20} color={t.uiTextSecondary} />
       </View>
       <Text numberOfLines={1} style={[styles.navLabel, { color: t.uiTextSecondary }]}>
         {label}
@@ -191,24 +192,25 @@ export function LoadMoreRow({ onPress, loading = false, step = 0 }: { onPress: (
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         style={({ pressed }) => [styles.loadMore, { borderRadius: t.radius.sm, backgroundColor: pressed ? t.uiControlHoverBackground : 'transparent', opacity: loading ? 0.6 : 1 }]}
       >
-        {loading ? <GlyphSpinner size={12} color={t.uiTextTertiary} label={label} /> : <Codicon name="ellipsis" size={12} color={t.uiTextTertiary} />}
+        {loading ? <GlyphSpinner size={12} color={t.uiTextTertiary} label={label} /> : <Codicon name="ellipsis" size={16} color={t.uiTextTertiary} />}
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  search: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 2, minHeight: ROW_MIN_H },
-  searchInput: { flex: 1, minWidth: 0, fontSize: 12, paddingVertical: 8 },
-  clear: { alignItems: 'center', justifyContent: 'center', width: 20, height: 20 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', minHeight: 32, paddingTop: 6, paddingBottom: 4, paddingLeft: ROW_PAD_X, paddingRight: 12 },
-  sectionLabel: { fontSize: 10.24, lineHeight: 10.24, fontWeight: '600', letterSpacing: 1.64, textTransform: 'uppercase', flexShrink: 1 },
-  meta: { fontSize: 11, fontWeight: '500' },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28, paddingHorizontal: ROW_PAD_X, paddingTop: 8, paddingBottom: 2 },
-  dividerLabel: { fontSize: 10.24, lineHeight: 12, fontWeight: '600', letterSpacing: 1.23, textTransform: 'uppercase' },
+  search: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 2, minHeight: ROW_MIN_H },
+  searchInput: { flex: 1, minWidth: 0, fontSize: 15, paddingVertical: 10 },
+  clear: { alignItems: 'center', justifyContent: 'center', width: 24, height: 24 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', minHeight: 40, paddingTop: 14, paddingBottom: 6, paddingLeft: ROW_PAD_X, paddingRight: 12 },
+  sectionLabel: { fontSize: 12, lineHeight: 14, fontWeight: '600', letterSpacing: 1.4, textTransform: 'uppercase', flexShrink: 1 },
+  meta: { fontSize: 13, fontWeight: '500' },
+  divider: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 34, paddingHorizontal: ROW_PAD_X, paddingTop: 12, paddingBottom: 4 },
+  dividerLabel: { fontSize: 11.5, lineHeight: 14, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase' },
   rule: { flex: 1, minWidth: 16, height: StyleSheet.hairlineWidth },
-  nav: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: ROW_MIN_H, paddingHorizontal: ROW_PAD_X },
-  navLabel: { fontSize: LABEL_SIZE, lineHeight: LABEL_LINE, fontWeight: '500', flexShrink: 1 },
+  nav: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 48, paddingHorizontal: ROW_PAD_X },
+  navGlyph: { width: 22, alignItems: 'center', opacity: 0.8 },
+  navLabel: { fontSize: 17, lineHeight: 22, fontWeight: '500', flexShrink: 1 },
   loadMoreRow: { alignItems: 'flex-end', paddingRight: ROW_PAD_X, paddingVertical: 10 },
-  loadMore: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+  loadMore: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
 });

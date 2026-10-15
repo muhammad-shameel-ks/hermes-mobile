@@ -50,13 +50,13 @@ function BotRowImpl({ bot, now, selected, opening, thinking, state, onOpen, onAc
       accessibilityState={{ selected, busy: opening }}
       style={({ pressed }) => [styles.row, { borderRadius: t.radius.md }, (selected || pressed) && { backgroundColor: selected ? t.uiRowActiveBackground : t.uiRowHoverBackground }]}
     >
-      <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={34} loadImage={loadImage} mood={faceMood(thinking, bot.working)} />
+      <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={38} loadImage={loadImage} mood={faceMood(thinking, bot.working)} />
       <View style={styles.text}>
         <View style={styles.titleLine}>
           <View style={styles.name}>
             <StatusDot state={state} />
-            {bot.pinned ? <Codicon name="pinned" size={11} color={t.uiTextQuaternary} /> : null}
-            {bot.hidden ? <Codicon name="eye-closed" size={11} color={t.uiTextQuaternary} /> : null}
+            {bot.pinned ? <Codicon name="pinned" size={13} color={t.uiTextQuaternary} /> : null}
+            {bot.hidden ? <Codicon name="eye-closed" size={13} color={t.uiTextQuaternary} /> : null}
             <Text numberOfLines={1} style={[styles.nameText, { color: t.dtForeground }]}>
               {bot.label}
             </Text>
@@ -80,11 +80,11 @@ export const BotRow = memo(
 );
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, paddingVertical: 8, minHeight: 50 },
-  text: { flex: 1, minWidth: 0 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10, paddingVertical: 10, minHeight: 60 },
+  text: { flex: 1, minWidth: 0, gap: 2 },
   titleLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: ROW_GAP },
-  nameText: { flexShrink: 1, fontSize: 13, lineHeight: 18, fontWeight: '500' },
-  age: { fontSize: 11, lineHeight: 14 },
-  preview: { fontSize: 12, lineHeight: 16 },
+  nameText: { flexShrink: 1, fontSize: 16, lineHeight: 21, fontWeight: '500' },
+  age: { fontSize: 12, lineHeight: 16 },
+  preview: { fontSize: 14, lineHeight: 19 },
 });

@@ -60,7 +60,7 @@ function SessionRowImpl({ session, active, state, branchStem, now, onOpen, onAct
       <StatusDot state={state} branchStem={branchStem} />
       {session.continuation_kind === 'compression' ? (
         <View accessible accessibilityLabel="Automatic continuation — this conversation was compressed and continued">
-          <Codicon name="layers" size={12} color={t.uiTextQuaternary} />
+          <Codicon name="layers" size={14} color={t.uiTextQuaternary} />
         </View>
       ) : null}
       <Text
@@ -83,5 +83,5 @@ export const SessionRow = memo(
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: ROW_GAP, minHeight: ROW_MIN_H, paddingRight: ROW_PAD_X },
   label: { flex: 1, minWidth: 0, fontSize: LABEL_SIZE, lineHeight: LABEL_LINE },
-  age: { fontSize: AGE_SIZE, lineHeight: AGE_SIZE, minWidth: 20, textAlign: 'right' },
+  age: { fontSize: AGE_SIZE, lineHeight: AGE_SIZE + 2, minWidth: 24, textAlign: 'right' },
 });

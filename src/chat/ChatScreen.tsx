@@ -306,25 +306,25 @@ function AppBar({
   return (
     <View style={[styles.appBar, { borderBottomColor: t.uiStrokeQuaternary }]}>
       <IconButton label="Open sessions and bots" onPress={onOpenDrawer}>
-        <Svg width={20} height={20} viewBox="0 0 20 20">
+        <Svg width={24} height={24} viewBox="0 0 20 20">
           <Path d="M3 5.5h14M3 10h14M3 14.5h9" stroke={stroke} strokeWidth={1.6} strokeLinecap="round" />
         </Svg>
       </IconButton>
       <View style={styles.titleBlock}>
         <View style={styles.titleLine}>
           {avatar}
-          <Text numberOfLines={1} style={{ flexShrink: 1, color: t.uiTextPrimary, fontSize: 15, fontWeight: '600' }} accessibilityRole="header">
+          <Text numberOfLines={1} style={{ flexShrink: 1, color: t.uiTextPrimary, fontSize: 17, lineHeight: 22, fontWeight: '600', letterSpacing: -0.2 }} accessibilityRole="header">
             {title}
           </Text>
         </View>
         {subtitle ? (
-          <Text numberOfLines={1} style={{ color: t.uiTextTertiary, fontSize: 11 }}>
+          <Text numberOfLines={1} style={{ color: t.uiTextTertiary, fontSize: 13, lineHeight: 17 }}>
             {subtitle}
           </Text>
         ) : null}
       </View>
       <IconButton label="New session" onPress={onNewChat}>
-        <Svg width={20} height={20} viewBox="0 0 20 20">
+        <Svg width={23} height={23} viewBox="0 0 20 20">
           <Path
             d="M10.5 3.5H5.2A1.7 1.7 0 0 0 3.5 5.2v9.6a1.7 1.7 0 0 0 1.7 1.7h9.6a1.7 1.7 0 0 0 1.7-1.7V9.5M14.6 3.1a1.4 1.4 0 0 1 2 2L10 11.7l-2.6.6.6-2.6 6.6-6.6Z"
             stroke={stroke}
@@ -351,12 +351,12 @@ function LinkBanner({ link, onRetry }: { link: LinkState; onRetry: () => void })
   return (
     <View style={[styles.banner, { backgroundColor: t.uiBgSecondary, borderBottomColor: t.uiStrokeQuaternary }]}>
       {link.kind === 'connecting' ? <GlyphSpinner size={12} label="Connecting" /> : null}
-      <Text style={{ color: t.uiTextSecondary, fontSize: 12, flex: 1 }} numberOfLines={2}>
+      <Text style={{ color: t.uiTextSecondary, fontSize: 14, lineHeight: 19, flex: 1 }} numberOfLines={2}>
         {text}
       </Text>
       {link.kind === 'waiting' ? (
         <Pressable onPress={onRetry} hitSlop={8} accessibilityRole="button">
-          <Text style={{ color: t.uiAccent, fontSize: 12, fontWeight: '600' }}>Retry now</Text>
+          <Text style={{ color: t.uiAccent, fontSize: 14, fontWeight: '600' }}>Retry now</Text>
         </Pressable>
       ) : null}
     </View>
@@ -389,8 +389,8 @@ function EmptyState({
   if (entry.error) {
     return (
       <View style={styles.empty}>
-        <Text style={{ color: t.dtDestructive, fontSize: 13, textAlign: 'center' }}>Could not load this session.</Text>
-        <Text style={{ color: t.uiTextTertiary, fontSize: 12, textAlign: 'center', marginTop: 6 }}>{entry.error}</Text>
+        <Text style={{ color: t.dtDestructive, fontSize: 16, fontWeight: '500', textAlign: 'center' }}>Could not load this session.</Text>
+        <Text style={{ color: t.uiTextTertiary, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 6 }}>{entry.error}</Text>
       </View>
     );
   }
@@ -514,16 +514,7 @@ function Composer({
         style={[styles.composer, { backgroundColor: t.uiBgEditor, borderColor: focused ? t.dtComposerRing : t.uiComposerBorder, borderRadius: t.radius['2xl'] }]}
       >
         <AttachmentChips items={attachments.items} onRemove={attachments.remove} />
-        <View style={styles.composerRow}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Add context"
-          onPress={() => setAttachOpen(true)}
-          hitSlop={8}
-          style={({ pressed }) => [styles.ghostButton, styles.menuCell, { borderRadius: t.radius.md }, pressed && { backgroundColor: t.uiControlHoverBackground }]}
-        >
-          <Codicon name="add" size={14} color={t.uiTextTertiary} />
-        </Pressable>
+        {/* the input owns the full width; the controls sit on a toolbar beneath, so a thumb aiming at the text never lands on the model pill */}
         <View style={styles.inputCell}>
           <TextInput
             ref={inputRef}
@@ -551,18 +542,29 @@ function Composer({
             </Text>
           ) : null}
         </View>
+        <View style={styles.composerRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add context"
+          onPress={() => setAttachOpen(true)}
+          hitSlop={4}
+          style={({ pressed }) => [styles.ghostButton, { borderRadius: t.radius.full }, pressed && { backgroundColor: t.uiControlHoverBackground }]}
+        >
+          <Codicon name="add" size={20} color={t.uiTextSecondary} />
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Model: ${modelLabel}`}
           onPress={onModelPicker}
-          hitSlop={6}
-          style={({ pressed }) => [styles.modelPill, { borderRadius: t.radius.md }, pressed && { backgroundColor: t.uiControlHoverBackground }]}
+          hitSlop={4}
+          style={({ pressed }) => [styles.modelPill, { borderRadius: t.radius.full, backgroundColor: pressed ? t.uiControlActiveBackground : t.uiControlHoverBackground }]}
         >
-          <Text style={[styles.modelPillText, { color: t.uiTextTertiary }]} numberOfLines={1}>
+          <Text style={[styles.modelPillText, { color: t.uiTextSecondary }]} numberOfLines={1}>
             {modelLabel}
           </Text>
-          <Codicon name="chevron-down" size={10} color={t.uiTextTertiary} style={{ opacity: 0.5 }} />
+          <Codicon name="chevron-down" size={12} color={t.uiTextTertiary} style={{ opacity: 0.7 }} />
         </Pressable>
+        <View style={styles.toolbarSpacer} />
         {dictation.available ? <MicButton dictation={dictation} disabled={disabled} /> : null}
         {running && canSend ? (
           <Pressable
@@ -572,7 +574,7 @@ function Composer({
             hitSlop={6}
             style={({ pressed }) => [styles.ghostButton, { borderRadius: t.radius.md }, pressed && { backgroundColor: t.uiControlHoverBackground }]}
           >
-            <StackIcon name="layers" size={14} color={t.uiTextTertiary} />
+            <StackIcon name="layers" size={18} color={t.uiTextTertiary} />
           </Pressable>
         ) : null}
         <Pressable
@@ -589,7 +591,7 @@ function Composer({
           {showStop ? (
             <View style={[styles.stopGlyph, { backgroundColor: t.dtBackground }]} />
           ) : (
-            <Codicon name="arrow-up" size={14} color={t.dtBackground} />
+            <Codicon name="arrow-up" size={18} color={t.dtBackground} />
           )}
         </Pressable>
         </View>
@@ -604,19 +606,19 @@ const styles = StyleSheet.create({
   appBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 48,
-    paddingHorizontal: 8,
+    minHeight: 56,
+    paddingHorizontal: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  iconButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  titleBlock: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
+  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  titleBlock: { flex: 1, alignItems: 'center', paddingHorizontal: 4, gap: 1 },
   titleLine: { flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '100%' },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   body: { flex: 1 },
@@ -628,21 +630,21 @@ const styles = StyleSheet.create({
   wordmark: { marginHorizontal: 8, marginBottom: 4 },
   botIntro: { alignSelf: 'stretch', alignItems: 'center', transform: [{ translateY: -(BOT_FACE + BOT_FACE_GAP) / 2 }] },
   botWordmark: { width: '80%', paddingHorizontal: 8, marginTop: BOT_FACE_GAP, marginBottom: 4 },
-  // desktop `[data-slot='aui_intro'] p:last-child`: 0.875rem, leading 1.45, tracking-tight
-  introBody: { maxWidth: 544, fontSize: 14, lineHeight: 14 * 1.45, letterSpacing: -0.35, textAlign: 'center' },
+  // desktop `[data-slot='aui_intro'] p:last-child`: leading 1.45, tracking-tight, at phone reading size
+  introBody: { maxWidth: 544, fontSize: 17, lineHeight: 17 * 1.45, letterSpacing: -0.3, textAlign: 'center', marginTop: 6 },
   runStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SIDE_INSET - 6, paddingBottom: 4 },
-  // desktop composer tokens: control 24, primary 26, gap 4, surface padding 8 × 5, input 26–150
-  composerDock: { paddingHorizontal: 16, paddingTop: COMPOSER_DOCK_TOP, paddingBottom: 6 },
-  composer: { borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, paddingVertical: 5 },
-  composerRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  // phone composer: a full-width input over a toolbar (add and model on the left, mic and send on the right); controls 36, input 40–180
+  composerDock: { paddingHorizontal: 12, paddingTop: COMPOSER_DOCK_TOP, paddingBottom: 8 },
+  composer: { borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, paddingTop: 6, paddingBottom: 8 },
+  composerRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  toolbarSpacer: { flex: 1 },
   dictationRow: { paddingBottom: 6 },
-  ghostButton: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
-  menuCell: { alignSelf: 'flex-start', marginTop: 3 },
-  inputCell: { flex: 1, justifyContent: 'center' },
-  placeholder: { position: 'absolute', top: 4, left: 0, right: 4 },
-  input: { minHeight: 26, maxHeight: 150, paddingTop: 4, paddingBottom: 4, paddingLeft: 0, paddingRight: 4, textAlignVertical: 'top' },
-  modelPill: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 24, paddingHorizontal: 8, maxWidth: 150, flexShrink: 1 },
-  modelPillText: { fontSize: 12, flexShrink: 1 },
-  primaryButton: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  stopGlyph: { width: 10, height: 10, borderRadius: 3 },
+  ghostButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  inputCell: { justifyContent: 'center', paddingHorizontal: 6 },
+  placeholder: { position: 'absolute', top: 8, left: 6, right: 6 },
+  input: { minHeight: 40, maxHeight: 180, paddingTop: 8, paddingBottom: 8, paddingLeft: 0, paddingRight: 0, textAlignVertical: 'top' },
+  modelPill: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 14, maxWidth: 200, flexShrink: 1 },
+  modelPillText: { fontSize: 14, fontWeight: '500', flexShrink: 1 },
+  primaryButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  stopGlyph: { width: 12, height: 12, borderRadius: 3 },
 });

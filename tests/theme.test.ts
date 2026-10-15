@@ -118,24 +118,24 @@ test('retinting a palette with its own accent is the identity', () => {
 test('Chat Text Size multiplies only the five conversation tokens', () => {
   const normal = resolveTheme({ mode: 'dark', chatTextScale: 1 });
   const big = resolveTheme({ mode: 'dark', chatTextScale: 1.5 });
-  assert.equal(normal.type.text, 13);
-  assert.equal(big.type.text, 19.5);
-  assert.equal(big.type.tool, 11 * 1.5);
-  assert.equal(big.type.caption, 12 * 1.5);
-  assert.equal(big.type.lineHeight, 18 * 1.5);
-  assert.equal(big.type.captionLineHeight, 16 * 1.5);
-  assert.equal(big.type.base, 13);
+  assert.equal(normal.type.text, 15);
+  assert.equal(big.type.text, 22.5);
+  assert.equal(big.type.tool, 12 * 1.5);
+  assert.equal(big.type.caption, 13 * 1.5);
+  assert.equal(big.type.lineHeight, 22 * 1.5);
+  assert.equal(big.type.captionLineHeight, 18 * 1.5);
+  assert.equal(big.type.base, 15);
   assert.deepEqual(big.radius, normal.radius);
   assert.equal(big.uiBgChrome, normal.uiBgChrome);
   // the default is the desktop's 110%
-  assert.ok(Math.abs(resolveTokens('dark').type.text - 14.3) < 1e-9);
-  assert.ok(Math.abs(resolveTokens('dark').type.lineHeight - 19.8) < 1e-9);
+  assert.ok(Math.abs(resolveTokens('dark').type.text - 16.5) < 1e-9);
+  assert.ok(Math.abs(resolveTokens('dark').type.lineHeight - 24.2) < 1e-9);
 });
 
 test('the platform font scale rides the same five tokens', () => {
   const scaled = resolveTheme({ mode: 'dark', chatTextScale: 1.1, fontScale: 1.3 });
-  assert.ok(Math.abs(scaled.type.text - 13 * 1.1 * 1.3) < 1e-9);
-  assert.equal(scaled.type.base, 13);
+  assert.ok(Math.abs(scaled.type.text - 15 * 1.1 * 1.3) < 1e-9);
+  assert.equal(scaled.type.base, 15);
 });
 
 test('stored appearance normalises per key and keeps the translucency book', () => {
