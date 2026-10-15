@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.9] - 2026-10-15
+
+- Give Android text pre-15 line metrics so the last word stops vanishing ([81bf7ed](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/81bf7ed))
+
 ## [0.1.8] - 2026-10-15
 
 - Default Android text to Roboto so OEM system fonts stop clipping last words ([10f7d48](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/10f7d48))
