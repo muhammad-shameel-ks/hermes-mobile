@@ -11,7 +11,7 @@ import { OverlayScreen } from '../app/overlay.tsx';
 import { gateway } from '../files/gateway.ts';
 import { baseName, displayPath, joinPath } from '../files/path.ts';
 import { createReviewRest, errorMessage } from '../files/rest.ts';
-import { copyText } from '../files/transfer.ts';
+import { copyText } from '../ui/clipboard.ts';
 import { EmptyState, ErrorBanner, HeaderAction, Loading } from '../files/ui.tsx';
 import { ActionSheet, type SheetAction } from '../ui/Sheet.tsx';
 import { MONO, useTokens } from '../ui/tokens.ts';

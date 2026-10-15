@@ -10,7 +10,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Codicon } from '../../ui/Codicon.tsx';
 import { useTokens } from '../../ui/tokens.ts';
 import { mediaName } from '../media.ts';
-import { copyPath } from './copyPath.ts';
+import { copyText } from '../../ui/clipboard.ts';
 import { widgetShell } from './widgetShell.ts';
 
 export function FileCard({ path }: { path: string }) {
@@ -21,7 +21,7 @@ export function FileCard({ path }: { path: string }) {
 
   const name = mediaName(path);
   const onPress = () => {
-    void copyPath(path);
+    void copyText(path);
     setCopied(true);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied(false), 1500);

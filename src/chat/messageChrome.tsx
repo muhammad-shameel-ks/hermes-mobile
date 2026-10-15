@@ -6,12 +6,11 @@
  * object is stable and each bar plan keeps its identity until it changes.
  */
 
-import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Codicon } from '../ui/Codicon.tsx';
+import { copyText } from '../ui/clipboard.ts';
 import { ActionSheet } from '../ui/Sheet.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { fullResponseText, planBars, stablePlans, userReaction, type BarPlan } from './actionBar.ts';
@@ -133,8 +132,7 @@ export function useMessageChrome(controller: ChatController, entry: ChatEntry, r
       copy: async (text) => {
         if (!text) return false;
         try {
-          await Clipboard.setStringAsync(text);
-          void Haptics.selectionAsync().catch(noop);
+          await copyText(text);
           return true;
         } catch {
           controller.notify('Copy failed');

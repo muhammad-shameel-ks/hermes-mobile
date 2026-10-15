@@ -15,7 +15,7 @@ import { Codicon } from '../../ui/Codicon.tsx';
 import { DisclosureCaret } from '../../ui/motion.tsx';
 import { MONO, useTokens } from '../../ui/tokens.ts';
 import { artifactGeneratingLabel, artifactGlyph, artifactLineCount, ARTIFACT_KIND_LABEL, type ArtifactDetection } from '../artifact.ts';
-import { copyText } from './copyPath.ts';
+import { copyText } from '../../ui/clipboard.ts';
 import { SvgBlock } from './SvgBlock.tsx';
 import { widgetShell } from './widgetShell.ts';
 

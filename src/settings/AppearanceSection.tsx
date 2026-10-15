@@ -8,11 +8,11 @@
 
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import * as Haptics from 'expo-haptics';
 
 import { CHAT_TEXT_SCALE_PRESETS } from '../ui/appearance.ts';
 import { Codicon } from '../ui/Codicon.tsx';
 import { mixPct, normalizeHex, readableInk } from '../ui/color.ts';
+import { tick } from '../ui/haptics.ts';
 import { accentsFor, baseColors, SKINS, type SkinName } from '../ui/skins.ts';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
 import { useAppearance } from '../ui/ThemeProvider.tsx';
@@ -22,8 +22,6 @@ const MODES = [
   { id: 'light', label: 'Light' },
   { id: 'dark', label: 'Dark' },
 ] as const;
-
-const tick = () => void Haptics.selectionAsync().catch(() => {});
 
 export function AppearanceSection({ heading = true }: { heading?: boolean }) {
   const t = useTokens();

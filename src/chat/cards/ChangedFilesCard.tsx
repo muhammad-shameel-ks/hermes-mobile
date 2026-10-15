@@ -13,7 +13,7 @@ import { Codicon } from '../../ui/Codicon.tsx';
 import { useTokens } from '../../ui/tokens.ts';
 import { deriveChangedFiles, filesChangedLabel, type ChangedFile } from '../changedFiles.ts';
 import type { Part } from '../transcript.ts';
-import { copyPath } from './copyPath.ts';
+import { copyText } from '../../ui/clipboard.ts';
 import { cardEnv } from './env.ts';
 import { widgetShell } from './widgetShell.ts';
 
@@ -29,7 +29,7 @@ function ChangedFilesCardImpl({ parts }: { parts: readonly Part[] }) {
   if (files.length === 0) return null;
 
   const shown = all ? files : files.slice(0, FOLDED_ROWS);
-  const open = (file: ChangedFile) => (openReview ? openReview(file.path) : void copyPath(file.path));
+  const open = (file: ChangedFile) => (openReview ? openReview(file.path) : void copyText(file.path));
 
   return (
     <View style={[widgetShell(t), styles.card]}>

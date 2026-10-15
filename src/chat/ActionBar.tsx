@@ -11,11 +11,11 @@
  * transcript does not shift when the turn settles.
  */
 
-import * as Haptics from 'expo-haptics';
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
+import { press, tick } from '../ui/haptics.ts';
 import { useTokens } from '../ui/tokens.ts';
 import { COPIED_RESET_MS, formatElapsed, formatStamp, messageText, type BarPlan } from './actionBar.ts';
 import { useMessageActions } from './messageChrome.tsx';
@@ -26,11 +26,6 @@ import type { Message } from './transcript.ts';
 const REST_OPACITY = 0.5;
 const GLYPH = 14;
 const HIT = { top: 9, bottom: 9, left: 4, right: 4 } as const;
-
-const tap = (style: 'selection' | 'submit') => {
-  const run = style === 'submit' ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light) : Haptics.selectionAsync();
-  void run.catch(() => undefined);
-};
 
 function BarButton({ label, onPress, children }: { label: string; onPress: () => void; children: ReactNode }) {
   return (
@@ -81,7 +76,7 @@ function ReactionSlot({ message, color }: { message: Message; color: string }) {
         name="reactions"
         color={color}
         onPress={() => {
-          tap('selection');
+          tick();
           actions.react(message.id);
         }}
       />
@@ -93,7 +88,7 @@ function ReactionSlot({ message, color }: { message: Message; color: string }) {
       accessibilityLabel={`Reactions: ${reactions.map((reaction) => reaction.emoji).join(' ')}`}
       disabled={!actions.reactionsEnabled}
       onPress={() => {
-        tap('selection');
+        tick();
         actions.react(message.id);
       }}
       hitSlop={HIT}
@@ -143,7 +138,7 @@ function ActionBarImpl({ message, plan }: { message: Message; plan: BarPlan }) {
               name={reading ? 'mute' : 'unmute'}
               color={t.uiTextTertiary}
               onPress={() => {
-                tap('selection');
+                tick();
                 if (reading) stopReadAloud();
                 else readAloud(text(), message.id).catch(() => actions.notify('Read aloud failed'));
               }}
@@ -154,7 +149,7 @@ function ActionBarImpl({ message, plan }: { message: Message; plan: BarPlan }) {
             name="refresh"
             color={t.uiTextTertiary}
             onPress={() => {
-              tap('submit');
+              press();
               actions.retry(message.id);
             }}
           />
@@ -169,7 +164,7 @@ function ActionBarImpl({ message, plan }: { message: Message; plan: BarPlan }) {
             name="edit"
             color={t.uiTextSecondary}
             onPress={() => {
-              tap('selection');
+              tick();
               actions.edit(message.id);
             }}
           />
@@ -183,7 +178,7 @@ function ActionBarImpl({ message, plan }: { message: Message; plan: BarPlan }) {
               name="discard"
               color={t.uiTextSecondary}
               onPress={() => {
-                tap('selection');
+                tick();
                 actions.restore(message.id);
               }}
             />

@@ -13,12 +13,13 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View 
 
 import { OverlayScreen } from '../app/overlay.tsx';
 import { Codicon } from '../ui/Codicon.tsx';
+import { copyText } from '../ui/clipboard.ts';
 import { ActionSheet, Sheet, type SheetAction } from '../ui/Sheet.tsx';
 import { MONO, useTokens } from '../ui/tokens.ts';
 import { gateway } from './gateway.ts';
 import { baseName, displayPath, folderNameError, formatBytes, formatModified, joinPath } from './path.ts';
 import { createFilesRest, errorMessage, type ManagedFileEntry, type ManagedFilesResponse } from './rest.ts';
-import { copyText, downloadToCache, downloadToFolder, shareFile, uploadFile, type UploadSource } from './transfer.ts';
+import { downloadToCache, downloadToFolder, shareFile, uploadFile, type UploadSource } from './transfer.ts';
 import { mimeFor } from './preview.ts';
 import { EmptyState, ErrorBanner, HeaderAction, Loading, useToast } from './ui.tsx';
 import { bumpFilesVersion, useFilesVersion } from './version.ts';

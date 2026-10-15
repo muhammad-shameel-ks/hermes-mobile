@@ -5,7 +5,6 @@
  * and error shapes live in rest.ts so they stay testable.
  */
 
-import * as Clipboard from 'expo-clipboard';
 import { Directory, File, Paths, UploadType } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Linking } from 'react-native';
@@ -81,8 +80,6 @@ export function writeCacheText(name: string, text: string): File {
   file.write(text);
   return file;
 }
-
-export const copyText = (text: string) => Clipboard.setStringAsync(text);
 
 /** `url` targets leave the app: the system browser takes them. */
 export const openInBrowser = (url: string) => Linking.openURL(url);

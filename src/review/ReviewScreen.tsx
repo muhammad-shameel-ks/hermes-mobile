@@ -15,10 +15,10 @@ import { displayPath, joinPath } from '../files/path.ts';
 import { createFilesRest, createReviewRest, errorMessage, type RepoStatus } from '../files/rest.ts';
 import { EmptyState, ErrorBanner, HeaderAction, Loading } from '../files/ui.tsx';
 import { Codicon } from '../ui/Codicon.tsx';
+import { copyText } from '../ui/clipboard.ts';
 import { ActionSheet, type SheetAction } from '../ui/Sheet.tsx';
 import { mixPct } from '../ui/color.ts';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
-import { copyText } from '../files/transfer.ts';
 import { DiffCount } from './DiffCount.tsx';
 import {
   buildReviewFlatList,
