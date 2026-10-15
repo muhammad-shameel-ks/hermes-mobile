@@ -10,7 +10,7 @@ import { Codicon } from '../ui/Codicon.tsx';
 import { mixPct } from '../ui/color.ts';
 import { MONO, useTokens } from '../ui/tokens.ts';
 import type { Dictation } from './dictation.ts';
-import { formatElapsed } from './dictationText.ts';
+import { formatClock } from './media.ts';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 const BAR_WEIGHTS = [0.5, 0.78, 1, 0.78, 0.5];
@@ -71,7 +71,7 @@ export function DictationActivity({ dictation }: { dictation: Dictation }) {
         <Text numberOfLines={1} style={[styles.title, { color: t.uiTextPrimary }]}>
           {partial || (recording ? 'Dictating' : 'Transcribing')}
         </Text>
-        <Text style={[styles.clock, { color: t.uiTextSecondary, fontFamily: MONO }]}>{formatElapsed(elapsedSeconds)}</Text>
+        <Text style={[styles.clock, { color: t.uiTextSecondary, fontFamily: MONO }]}>{formatClock(elapsedSeconds)}</Text>
       </View>
       <View accessible={false} style={styles.bars}>
         {BAR_WEIGHTS.map((weight, index) => {
