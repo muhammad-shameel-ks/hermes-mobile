@@ -48,6 +48,8 @@ export type Bot = {
   /** ms; the recency sort key */
   activity: number;
   active: boolean;
+  /** a live worker session (kanban, background task): the face reads as working */
+  working: boolean;
   canonicalSessionId: string | null;
   row: ProfileRow;
 };
@@ -116,6 +118,7 @@ export function toBot(row: ProfileRow, nowSeconds: number): Bot {
     lastActive,
     activity: Math.max(meta.created ?? 0, lastActive * 1000),
     active: (lastActive > 0 && nowSeconds - lastActive < ACTIVE_WINDOW_S) || (worker > 0 && nowSeconds - worker < WORKER_WINDOW_S),
+    working: worker > 0 && nowSeconds - worker < WORKER_WINDOW_S,
     canonicalSessionId: row.canonical_session ? row.canonical_session.resolved_id || row.canonical_session.id : null,
     row,
   };

@@ -7,7 +7,7 @@
  * row renders our own message by id.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView, useKeyboardState } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +21,7 @@ import {
 } from '@assistant-ui/react-native';
 
 import { BotAvatar } from '../bots/BotAvatar.tsx';
+import { faceMood } from '../bots/face.ts';
 import { BOT_CHAT_EMPTY, type Bot } from '../bots/roster.ts';
 import type { LinkState } from '../gateway/link.ts';
 import { Codicon } from '../ui/Codicon.tsx';
@@ -69,6 +70,8 @@ type Props = {
 };
 
 const WORDMARK = 'HERMES AGENT';
+const BOT_FACE = 96;
+const BOT_FACE_GAP = 16;
 
 export default function ChatScreen({
   controller,
@@ -101,12 +104,17 @@ export default function ChatScreen({
   const jump = useJumpToBottom(entry.key, messages);
 
   const title = entry.isBotChat && bot ? bot.label : entry.title || (entry.key === 'draft' ? 'New session' : 'Untitled session');
-  const subtitle = entry.isBotChat ? 'Bot Chat' : profileLabel;
+  // the registry's "Bot Chat" title is plumbing, not chrome: a bot's app bar is its face and name
+  const subtitle = entry.isBotChat ? null : profileLabel;
+  const avatar =
+    entry.isBotChat && bot ? (
+      <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={28} loadImage={controller.avatarDataFn} mood={faceMood(running, bot.working)} />
+    ) : null;
 
   return (
     <KeyboardAvoidingView behavior="padding" style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground }]}>
       <View style={styles.root}>
-        <AppBar t={t} title={title} subtitle={subtitle} onOpenDrawer={onOpenDrawer} onNewChat={() => controller.newChat()} />
+        <AppBar t={t} title={title} subtitle={subtitle} avatar={avatar} onOpenDrawer={onOpenDrawer} onNewChat={() => controller.newChat()} />
         <LinkBanner link={link} onRetry={() => controller.retryLink()} />
 
         <AssistantRuntimeProvider runtime={runtime}>
@@ -196,7 +204,21 @@ function IconButton({ label, onPress, children }: { label: string; onPress: () =
   );
 }
 
-function AppBar({ t, title, subtitle, onOpenDrawer, onNewChat }: { t: Tokens; title: string; subtitle: string; onOpenDrawer: () => void; onNewChat: () => void }) {
+function AppBar({
+  t,
+  title,
+  subtitle,
+  avatar,
+  onOpenDrawer,
+  onNewChat,
+}: {
+  t: Tokens;
+  title: string;
+  subtitle: string | null;
+  avatar: ReactNode;
+  onOpenDrawer: () => void;
+  onNewChat: () => void;
+}) {
   const stroke = t.uiTextSecondary;
   return (
     <View style={[styles.appBar, { borderBottomColor: t.uiStrokeQuaternary }]}>
@@ -206,12 +228,17 @@ function AppBar({ t, title, subtitle, onOpenDrawer, onNewChat }: { t: Tokens; ti
         </Svg>
       </IconButton>
       <View style={styles.titleBlock}>
-        <Text numberOfLines={1} style={{ color: t.uiTextPrimary, fontSize: 15, fontWeight: '600' }} accessibilityRole="header">
-          {title}
-        </Text>
-        <Text numberOfLines={1} style={{ color: t.uiTextTertiary, fontSize: 11 }}>
-          {subtitle}
-        </Text>
+        <View style={styles.titleLine}>
+          {avatar}
+          <Text numberOfLines={1} style={{ flexShrink: 1, color: t.uiTextPrimary, fontSize: 15, fontWeight: '600' }} accessibilityRole="header">
+            {title}
+          </Text>
+        </View>
+        {subtitle ? (
+          <Text numberOfLines={1} style={{ color: t.uiTextTertiary, fontSize: 11 }}>
+            {subtitle}
+          </Text>
+        ) : null}
       </View>
       <IconButton label="New session" onPress={onNewChat}>
         <Svg width={20} height={20} viewBox="0 0 20 20">
@@ -285,14 +312,16 @@ function EmptyState({
     );
   }
   if (entry.isBotChat && bot) {
+    // desktop chat-empty.tsx: the face, then the Wordmark carrying the bot's name over the prompt, lifted so the name sits on the centre line
     return (
       <View style={styles.empty}>
-        <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={96} loadImage={loadImage} />
-        <Text style={{ color: t.uiTextPrimary, fontSize: 20, fontWeight: '600', marginTop: 16 }}>{bot.label}</Text>
-        {bot.description ? (
-          <Text style={{ color: t.uiTextTertiary, fontSize: 13, textAlign: 'center', marginTop: 6, lineHeight: 18 }}>{bot.description}</Text>
-        ) : null}
-        <Text style={{ color: t.uiTextQuaternary, fontSize: 12, marginTop: 18 }}>{BOT_CHAT_EMPTY}</Text>
+        <View style={styles.botIntro}>
+          <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={BOT_FACE} loadImage={loadImage} />
+          <View style={styles.botWordmark}>
+            <Wordmark text={bot.label} />
+          </View>
+          <Text style={[styles.introBody, { color: t.uiTextTertiary }]}>{BOT_CHAT_EMPTY}</Text>
+        </View>
       </View>
     );
   }
@@ -464,6 +493,7 @@ const styles = StyleSheet.create({
   },
   iconButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   titleBlock: { flex: 1, alignItems: 'center', paddingHorizontal: 4 },
+  titleLine: { flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: '100%' },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -479,6 +509,8 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 48 },
   intro: { paddingHorizontal: SIDE_INSET, paddingBottom: 24 },
   wordmark: { marginHorizontal: 8, marginBottom: 4 },
+  botIntro: { alignSelf: 'stretch', alignItems: 'center', transform: [{ translateY: -(BOT_FACE + BOT_FACE_GAP) / 2 }] },
+  botWordmark: { width: '80%', paddingHorizontal: 8, marginTop: BOT_FACE_GAP, marginBottom: 4 },
   // desktop `[data-slot='aui_intro'] p:last-child`: 0.875rem, leading 1.45, tracking-tight
   introBody: { maxWidth: 544, fontSize: 14, lineHeight: 14 * 1.45, letterSpacing: -0.35, textAlign: 'center' },
   runStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SIDE_INSET - 6, paddingBottom: 4 },
