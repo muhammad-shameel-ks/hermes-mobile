@@ -23,6 +23,7 @@ import { createGatewayApi } from '../gateway/api.ts';
 import { gatewaySocketUrl, GatewayLink } from '../gateway/link.ts';
 import { ActionSheet, type SheetAction } from '../ui/Sheet.tsx';
 import { useTokens } from '../ui/tokens.ts';
+import { OverlayProvider } from './overlay.tsx';
 
 type Props = {
   connection: SavedConnection;
@@ -130,79 +131,81 @@ export default function SignedInApp(props: Props) {
   }));
 
   return (
-    <View style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground, paddingTop: insets.top }]}>
-      <ChatScreen
-        controller={controller}
-        entry={entry}
-        link={snapshot.link}
-        bot={openBot}
-        profileLabel={profileLabel}
-        opening={snapshot.openingBot !== null}
-        models={snapshot.models}
-        currentModel={controller.currentModel()}
-        personality={snapshot.personality}
-        onOpenDrawer={openDrawer}
-        onProfile={() => setProfileSheet(true)}
-      />
+    <OverlayProvider>
+      <View style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground, paddingTop: insets.top }]}>
+        <ChatScreen
+          controller={controller}
+          entry={entry}
+          link={snapshot.link}
+          bot={openBot}
+          profileLabel={profileLabel}
+          opening={snapshot.openingBot !== null}
+          models={snapshot.models}
+          currentModel={controller.currentModel()}
+          personality={snapshot.personality}
+          onOpenDrawer={openDrawer}
+          onProfile={() => setProfileSheet(true)}
+        />
 
-      {snapshot.notice ? (
-        <Notice key={snapshot.notice.at} text={snapshot.notice.text} top={insets.top + 56} onDone={controller.clearNotice} />
-      ) : null}
+        {snapshot.notice ? (
+          <Notice key={snapshot.notice.at} text={snapshot.notice.text} top={insets.top + 56} onDone={controller.clearNotice} />
+        ) : null}
 
-      <Drawer
-        open={drawerOpen}
-        onClose={closeDrawer}
-        snapshot={snapshot}
-        connectionLabel={props.connection.label}
-        profileLabel={profileLabel}
-        tab={tab}
-        onTab={setTab}
-        onNewSession={() => {
-          closeDrawer();
-          controller.newChat();
-        }}
-        onOpenSession={(session) => {
-          closeDrawer();
-          controller.openSession(session);
-        }}
-        onOpenBot={(bot) => {
-          closeDrawer();
-          void controller.openBot(bot);
-        }}
-        onBotActions={setActionsFor}
-        onNewBot={() => setForm({ bot: null })}
-        onProfileChip={() => setProfileSheet(true)}
-        onSignOut={props.onSignOut}
-        loadImage={controller.avatarDataFn}
-      />
+        <Drawer
+          open={drawerOpen}
+          onClose={closeDrawer}
+          snapshot={snapshot}
+          connectionLabel={props.connection.label}
+          profileLabel={profileLabel}
+          tab={tab}
+          onTab={setTab}
+          onNewSession={() => {
+            closeDrawer();
+            controller.newChat();
+          }}
+          onOpenSession={(session) => {
+            closeDrawer();
+            controller.openSession(session);
+          }}
+          onOpenBot={(bot) => {
+            closeDrawer();
+            void controller.openBot(bot);
+          }}
+          onBotActions={setActionsFor}
+          onNewBot={() => setForm({ bot: null })}
+          onProfileChip={() => setProfileSheet(true)}
+          onSignOut={props.onSignOut}
+          loadImage={controller.avatarDataFn}
+        />
 
-      <ActionSheet
-        visible={actionsFor !== null}
-        title={actionsFor?.label}
-        subtitle={actionsFor?.description || undefined}
-        actions={actionsFor ? botActions(actionsFor) : []}
-        onClose={() => setActionsFor(null)}
-      />
-      <ActionSheet
-        visible={profileSheet}
-        title="Active profile"
-        subtitle="Scopes the sessions list and new sessions."
-        actions={profileActions}
-        onClose={() => setProfileSheet(false)}
-      />
-      <BotForm
-        visible={form !== null}
-        bot={form?.bot ?? null}
-        onClose={() => setForm(null)}
-        onSubmit={async (draft) => {
-          if (form?.bot) return controller.editBot(form.bot, draft);
-          const created = await controller.createBot(draft);
-          if (created) closeDrawer();
-          return created;
-        }}
-        loadImage={controller.avatarDataFn}
-      />
-    </View>
+        <ActionSheet
+          visible={actionsFor !== null}
+          title={actionsFor?.label}
+          subtitle={actionsFor?.description || undefined}
+          actions={actionsFor ? botActions(actionsFor) : []}
+          onClose={() => setActionsFor(null)}
+        />
+        <ActionSheet
+          visible={profileSheet}
+          title="Active profile"
+          subtitle="Scopes the sessions list and new sessions."
+          actions={profileActions}
+          onClose={() => setProfileSheet(false)}
+        />
+        <BotForm
+          visible={form !== null}
+          bot={form?.bot ?? null}
+          onClose={() => setForm(null)}
+          onSubmit={async (draft) => {
+            if (form?.bot) return controller.editBot(form.bot, draft);
+            const created = await controller.createBot(draft);
+            if (created) closeDrawer();
+            return created;
+          }}
+          loadImage={controller.avatarDataFn}
+        />
+      </View>
+    </OverlayProvider>
   );
 }
 
