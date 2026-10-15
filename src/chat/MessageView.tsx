@@ -14,8 +14,12 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View, type TextStyle } 
 import { DisclosureCaret, EnterView } from '../ui/motion.tsx';
 import { MONO, SCAFFOLD_OPACITY, useTokens, type Tokens } from '../ui/tokens.ts';
 import { AlertGlyph, ToolIcon } from '../ui/ToolIcon.tsx';
+import { ChangedFilesCard } from './cards/ChangedFilesCard.tsx';
+import { ToolCard } from './cards/ToolCard.tsx';
+import { ToolDiffStats, ToolExtras } from './cards/ToolExtras.tsx';
+import { generatedImageEchoSources, stripGeneratedImageEchoes } from './generatedImage.ts';
 import { Markdown } from './Markdown.tsx';
-import { buildToolView, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
+import { buildToolView, isFileEditTool, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
 import type { Message, Part, ToolPart } from './transcript.ts';
 
 type Block = { kind: 'text'; text: string } | { kind: 'reasoning'; text: string } | { kind: 'tools'; tools: ToolPart[] };
@@ -35,7 +39,7 @@ function blocks(parts: Part[]): Block[] {
   return out;
 }
 
-function MessageViewImpl({ message }: { message: Message }) {
+function MessageViewImpl({ message, latest = false }: { message: Message; latest?: boolean }) {
   const t = useTokens();
 
   if (message.role === 'user') {
@@ -62,6 +66,7 @@ function MessageViewImpl({ message }: { message: Message }) {
 
   const streaming = message.status === 'streaming';
   const content = blocks(message.parts);
+  const echoes = generatedImageEchoSources(message.parts);
   return (
     <EnterView enabled={streaming} animationKey={`assistant-message:${message.id}`} style={styles.assistant}>
       {content.map((block, index) => {
@@ -81,8 +86,9 @@ function MessageViewImpl({ message }: { message: Message }) {
             </EnterView>
           );
         }
-        return <Markdown key={index} text={block.text} />;
+        return <Markdown key={index} text={stripGeneratedImageEchoes(block.text, echoes)} streaming={streaming && last} />;
       })}
+      {latest && !streaming ? <ChangedFilesCard parts={message.parts} /> : null}
       {message.status === 'error' ? (
         <Text style={[styles.footnote, { color: t.dtDestructive, fontSize: t.type.caption }]}>
           {message.error ? `The turn failed: ${message.error}` : 'The turn failed.'}
@@ -176,7 +182,10 @@ function ToolBlock({ tools, live }: { tools: ToolPart[]; live: boolean }) {
   return (
     <View style={styles.toolBlock}>
       {items.map((item, index) => {
-        if (item.kind === 'card') return <ToolRow key={tools[item.index].id} tool={tools[item.index]} />;
+        if (item.kind === 'card') {
+          const card = tools[item.index];
+          return <ToolCard key={card.id} tool={card} fallback={<ToolRow tool={card} />} />;
+        }
         const run = tools.slice(item.start, item.end + 1);
         if (run.length === 1) return <ToolRow key={run[0].id} tool={run[0]} />;
         return <ToolRun key={run[0].id} tools={run} live={live && index === items.length - 1} />;
@@ -221,29 +230,35 @@ function ToolGlyph({ view, color }: { view: ToolView; color: string }) {
 
 function ToolRow({ tool }: { tool: ToolPart }) {
   const t = useTokens();
-  const [open, setOpen] = useState(false);
   const view = useMemo(() => buildToolView(tool), [tool]);
-  const expandable = view.status !== 'running' && Boolean(view.detail || view.command);
+  // a row that carries a diff opens on it until the reader says otherwise
+  const [picked, setPicked] = useState<boolean | null>(null);
+  const open = picked ?? Boolean(view.inlineDiff);
+  const expandable = view.status !== 'running' && Boolean(view.detail || view.command || view.inlineDiff || view.imageUrl);
+  // an edit that landed with no diff to review is a bare, dead row (a `write_file` create after a reload)
+  if (isFileEditTool(tool.name) && tool.status === 'done' && view.status !== 'error' && !view.inlineDiff) return null;
   const failed = view.status === 'error';
   const titleColor =
     failed ? t.dtDestructive : view.status === 'warning' ? AMBER[t.renderedMode] : view.status === 'running' ? t.conversationScaffoldMeta : t.conversationScaffoldText;
 
   return (
     <View
-      style={[styles.scaffold, open && [styles.toolShell, { borderColor: t.uiStrokeTertiary }]]}
+      style={[styles.scaffold, open && [styles.toolShell, { borderColor: t.uiStrokeTertiary }], open && isFileEditTool(tool.name) && styles.fileEdit]}
     >
       <View style={open ? [styles.toolShellHeader, { borderBottomColor: t.uiStrokeTertiary }] : undefined}>
-        <ScaffoldRow open={open} onToggle={expandable ? () => setOpen((v) => !v) : undefined} caretRest={0} label={view.title}>
+        <ScaffoldRow open={open} onToggle={expandable ? () => setPicked(!open) : undefined} caretRest={0} label={view.title}>
           <ToolGlyph view={view} color={view.status === 'warning' ? AMBER[t.renderedMode] : t.dtDestructive} />
           <Text style={scaffoldLabel(t, titleColor)} numberOfLines={1}>
             {view.title}
           </Text>
           {view.status !== 'running' && view.countLabel ? <Text style={scaffoldMeta(t)}>{view.countLabel}</Text> : null}
+          <ToolDiffStats view={view} />
           {view.durationLabel ? <Text style={scaffoldMeta(t)}>{view.durationLabel}</Text> : null}
         </ScaffoldRow>
       </View>
       {open ? (
         <View style={styles.toolBody}>
+          <ToolExtras view={view} />
           {view.command ? (
             <View style={[styles.terminal, { borderColor: t.uiStrokeTertiary, backgroundColor: t.uiBgTertiary }]}>
               <Text selectable style={[styles.code, { color: t.uiTextSecondary, fontSize: t.type.tool * 0.95 }]}>
@@ -284,6 +299,8 @@ const styles = StyleSheet.create({
   spinner: { transform: [{ scale: 0.6 }] },
   reasoningText: { marginTop: 2, paddingBottom: 4 },
   toolBlock: { gap: 6 },
+  // an open edit is the turn's deliverable, not scaffolding: full strength and the full block gap
+  fileEdit: { opacity: 1, marginVertical: 6 },
   toolShell: { borderWidth: 1, borderRadius: 5 },
   toolShellHeader: { borderBottomWidth: 1, paddingHorizontal: 8, paddingVertical: 6 },
   toolBody: { padding: 6, gap: 6 },

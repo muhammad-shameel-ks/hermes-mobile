@@ -72,3 +72,18 @@ test('runs fold between cards and summarize by category', () => {
   ];
   assert.equal(summarizeToolRun(run, false), 'Explored 2 files, ran 2 commands, 1 tool call failed');
 });
+
+test('a file edit carries its diff and counts, and the diff stands in for the raw result', () => {
+  const diff = '--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,2 +1,2 @@\n-old\n+new\n same';
+  const view = buildToolView(tool({ name: 'patch', args: { path: '/repo/src/a.ts' }, result: JSON.stringify({ success: true, diff }) }));
+  assert.equal(view.title, 'a.ts');
+  assert.equal(view.inlineDiff, diff);
+  assert.deepEqual(view.diffStats, { added: 1, removed: 1 });
+  assert.equal(view.detail, '');
+  assert.equal(buildToolView(tool({ name: 'patch', args: { path: '/a.ts' }, status: 'running' })).inlineDiff, undefined);
+});
+
+test('a row shows the image its call touched, but only an image', () => {
+  assert.equal(buildToolView(tool({ name: 'vision_analyze', args: { image_url: 'https://x.test/a.png' }, result: 'a cat' })).imageUrl, 'https://x.test/a.png');
+  assert.equal(buildToolView(tool({ name: 'read_file', args: { path: '/repo/README.md' }, result: 'text' })).imageUrl, undefined);
+});

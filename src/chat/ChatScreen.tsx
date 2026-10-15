@@ -130,7 +130,7 @@ export default function ChatScreen({
                     const ours = byId.get(message.id);
                     return ours ? (
                       <View style={styles.row}>
-                        <MessageView message={ours} />
+                        <MessageView message={ours} latest={ours.id === messages[messages.length - 1]?.id} />
                       </View>
                     ) : null;
                   }}

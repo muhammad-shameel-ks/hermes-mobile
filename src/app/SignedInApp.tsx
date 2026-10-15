@@ -16,8 +16,10 @@ import type { Credentials } from '../auth/tokens.ts';
 import { forgetAvatar } from '../bots/BotAvatar.tsx';
 import BotForm from '../bots/BotForm.tsx';
 import { botLabel, type Bot } from '../bots/roster.ts';
+import { setCardEnv } from '../chat/cards/env.ts';
 import ChatScreen from '../chat/ChatScreen.tsx';
 import { ChatController } from '../chat/controller.ts';
+import { createMediaResolver } from '../chat/mediaResolver.ts';
 import Drawer, { type DrawerTab } from '../drawer/Drawer.tsx';
 import { createGatewayApi } from '../gateway/api.ts';
 import { gatewaySocketUrl, GatewayLink } from '../gateway/link.ts';
@@ -50,6 +52,7 @@ function useController({ connection, credentials, onReauthRequired }: Props) {
       },
       onAuthRejected: onReauthRequired,
     });
+    setCardEnv({ media: createMediaResolver(auth, api) });
     return new ChatController(link, api);
   }, [connection.id]);
 }
