@@ -145,6 +145,92 @@ test('a bot without a Bot Chat gets one created hidden and titled', async () => 
   controller.dispose();
 });
 
+test('a failed Bot Chat lookup fails closed: no profile switch, the screen stays put', async () => {
+  const { gateway, controller, snap } = await setup();
+  gateway.handlers['session.list'] = () => {
+    throw new Error('registry unavailable');
+  };
+
+  await controller.openBot({ name: 'scout', label: 'Scout' });
+  await flush();
+  assert.equal(snap().profile, 'default');
+  assert.equal(snap().openKey, DRAFT_KEY);
+  assert.equal(snap().openingBot, null);
+  assert.equal(gateway.called('session.create').length, 0, 'a failed lookup never mints a second chat');
+  assert.match(snap().notice?.text ?? '', /Could not open Scout.s chat.*registry unavailable/);
+  controller.dispose();
+});
+
+test('a failed Bot Chat creation leaves the active profile alone', async () => {
+  const { gateway, controller, snap } = await setup();
+  gateway.handlers['session.list'] = () => ({ sessions: [] });
+  gateway.handlers['session.create'] = () => {
+    throw new Error('no model');
+  };
+
+  await controller.openBot({ name: 'scout', label: 'Scout' });
+  await flush();
+  assert.equal(snap().profile, 'default');
+  assert.equal(snap().openKey, DRAFT_KEY);
+  controller.dispose();
+});
+
+test('a new bot is created with its picked look and picture, and its Bot Chat is kicked off', async () => {
+  const { gateway, controller, snap } = await setup();
+  gateway.handlers['session.list'] = () => ({ sessions: [] });
+  gateway.handlers['session.create'] = () => ({ session_id: 'rt-b', stored_session_id: 'b1', message_count: 0, messages: [], info: {} });
+  gateway.handlers['prompt.submit'] = () => ({ status: 'streaming' });
+
+  const created = await controller.createBot(
+    { label: 'Scout', description: 'Finds things' },
+    { shape: 'blobatar:k3j9:sun', color: null, image: 'data:image/png;base64,AAAA' },
+  );
+  await flush();
+  assert.equal(created, true);
+  const configure = gateway.called('profiles.configure')[0].params as { name: string; ui_meta: { 'hermes-bots': Record<string, unknown> } };
+  assert.equal(configure.name, 'scout');
+  const meta = configure.ui_meta['hermes-bots'];
+  assert.equal(meta.shape, 'blobatar:k3j9:sun');
+  assert.equal(meta.imageKind, 'photo');
+  assert.equal('color' in meta, false, 'no pick keeps the name-derived hue');
+  assert.equal('image' in meta, false, 'the picture never rides ui_meta');
+  assert.deepEqual(gateway.called('profiles.set_asset')[0].params, { name: 'scout', asset: 'avatar', data: 'data:image/png;base64,AAAA' });
+  assert.equal(snap().profile, 'scout');
+  assert.equal(gateway.called('prompt.submit').length, 1, 'a created bot introduces itself');
+  controller.dispose();
+});
+
+test('Create while a create is under way joins it instead of making a second profile', async () => {
+  const { gateway, controller } = await setup();
+  gateway.handlers['session.list'] = () => ({ sessions: [{ id: 'bc', title: 'Bot Chat' }] });
+  const first = controller.createBot({ label: 'Scout', description: '' });
+  const second = controller.createBot({ label: 'Scout', description: '' });
+  assert.equal(first, second);
+  await first;
+  assert.equal(gateway.called('profiles.create').length, 1);
+  controller.dispose();
+});
+
+test('editing a bot patches only what changed and clears a removed picture', async () => {
+  const { gateway, controller } = await setup();
+  gateway.handlers['profiles.list'] = () => ({
+    profiles: [{ name: 'scout', path: '/p', ui_meta: { 'hermes-bots': { title: 'Scout', shape: 'blobatar' } }, ui_meta_revisions: { 'hermes-bots': 3 } }],
+  });
+  await controller.refreshRoster();
+  const bot = controller.getSnapshot().roster.visible[0];
+
+  await controller.editBot(bot, { label: 'Scout', description: 'Finds things' }, { image: null, imageKind: 'shape', custom: true });
+  const configure = gateway.called('profiles.configure').find((c) => 'ui_meta' in c.params)!.params as { ui_meta: { 'hermes-bots': Record<string, unknown> } };
+  assert.deepEqual(configure.ui_meta['hermes-bots'], { title: 'Scout', shape: 'blobatar', imageKind: 'shape', custom: true });
+  assert.deepEqual(gateway.called('profiles.set_asset')[0].params, { name: 'scout', asset: 'avatar', clear: true });
+
+  gateway.calls.length = 0;
+  await controller.editBot(bot, { label: 'Scout', description: 'Finds things' }, null);
+  assert.equal(gateway.called('profiles.set_asset').length, 0, 'an untouched look writes nothing');
+  assert.equal(gateway.calls.filter((c) => c.method === 'profiles.configure' && 'ui_meta' in c.params).length, 0);
+  controller.dispose();
+});
+
 test('/new in a Bot Chat compacts instead of resetting', async () => {
   const { gateway, controller, snap } = await setup();
   gateway.handlers['session.list'] = () => ({ sessions: [{ id: 'bc', title: 'Bot Chat' }] });

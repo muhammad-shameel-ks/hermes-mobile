@@ -35,6 +35,7 @@ import {
   type BotMeta,
   type Roster,
 } from '../bots/roster.ts';
+import { metaOfLook, type LookPatch } from '../bots/look.ts';
 import { ApiError, type GatewayApi } from '../gateway/api.ts';
 import { errorText } from '../gateway/http.ts';
 import type { GatewayLink, LinkState } from '../gateway/link.ts';
@@ -154,6 +155,8 @@ export type ChatSnapshot = {
 export type RewindOutcome = 'ok' | 'confirm' | 'failed';
 
 export type BotDraft = { label: string; description: string };
+/** the look a new bot is created with; `image` is a data URL for the profile's asset store */
+export type NewBotLook = { shape: string; color: string | null; image: string | null };
 
 type Rpc = <M extends keyof RpcMethods>(method: M, params: RpcMethods[M]['params'], timeoutMs?: number) => Promise<RpcMethods[M]['result']>;
 
@@ -200,6 +203,7 @@ export class ChatController {
   /** the transcript last handed to the tail writer, so unrelated entry updates do not rewrite it */
   private readonly saved = new Map<string, unknown>();
   readonly drafts: DraftStore;
+  private creatingBot: Promise<boolean> | null = null;
 
   constructor(link: GatewayLink, api: GatewayApi, initialProfile = 'default', persistence: Persistence | null = null) {
     this.link = link;
@@ -480,10 +484,9 @@ export class ChatController {
     void this.refreshPersonality();
   }
 
-  /** a roster tap: the active profile follows the bot, and its one Bot Chat opens (or is created) */
+  /** a roster tap: its one Bot Chat opens (or is created) and the active profile follows; a failed lookup changes nothing */
   async openBot(bot: Pick<Bot, 'name' | 'label'>, options: { kickoff?: boolean } = {}) {
     if (this.snapshot.openingBot) return;
-    this.setProfile(bot.name);
     this.set({ openingBot: bot.name });
     try {
       const found = await this.findBotChat(bot.name);
@@ -500,6 +503,7 @@ export class ChatController {
   }
 
   private openBotChat(botName: string, storedId: string) {
+    this.setProfile(botName);
     const existing = this.entry(storedId);
     if (!existing) this.putEntry(newEntry(storedId, botName, { title: BOT_CHAT_TITLE, isBotChat: true, bot: botName }));
     this.set({ openKey: storedId });
@@ -530,6 +534,7 @@ export class ChatController {
       throw error;
     }
     const key = created.stored_session_id;
+    this.setProfile(profile);
     this.putEntry(newEntry(key, profile, { title: BOT_CHAT_TITLE, isBotChat: true, bot: profile, model: selectionFromInfo(created.info, null) }));
     this.bindRuntime(key, created.session_id);
     this.set({ openKey: key });
@@ -1086,7 +1091,17 @@ export class ChatController {
     }
   }
 
-  async createBot(draft: BotDraft): Promise<boolean> {
+  /** single-flighted: a second Create while the first is under way joins it */
+  createBot(draft: BotDraft, look: NewBotLook = { shape: 'blobatar', color: null, image: null }): Promise<boolean> {
+    if (!this.creatingBot) {
+      this.creatingBot = this.materializeBot(draft, look).finally(() => {
+        this.creatingBot = null;
+      });
+    }
+    return this.creatingBot;
+  }
+
+  private async materializeBot(draft: BotDraft, look: NewBotLook): Promise<boolean> {
     const label = draft.label.trim();
     const name = slugifyProfileName(label);
     if (!name) {
@@ -1103,8 +1118,21 @@ export class ChatController {
       await this.rpc('profiles.create', { name, description: description || null, clone_from: 'default', soul });
       await this.rpc('profiles.configure', {
         name,
-        ui_meta: { [BOT_META_NAMESPACE]: { title: label, shape: 'blobatar', imageKind: 'shape', created: Date.now() } },
+        ui_meta: {
+          [BOT_META_NAMESPACE]: {
+            title: label,
+            shape: look.shape,
+            ...(look.color ? { color: look.color } : {}),
+            imageKind: look.image ? 'photo' : 'shape',
+            created: Date.now(),
+          },
+        },
       });
+      if (look.image) {
+        await this.storeAvatar(name, look.image).catch((error) =>
+          this.notify(`Created ${label}, but its picture was not saved. ${errorText(error)}`),
+        );
+      }
       await this.refreshRoster();
       await this.openBot({ name, label }, { kickoff: true });
       return true;
@@ -1114,11 +1142,16 @@ export class ChatController {
     }
   }
 
-  async editBot(bot: Bot, draft: BotDraft): Promise<boolean> {
+  /** `look` carries only what the editor changed (title, shape, colour, image) */
+  async editBot(bot: Bot, draft: BotDraft, look: LookPatch | null): Promise<boolean> {
     try {
       const description = draft.description.trim();
       await this.rpc('profiles.configure', { name: bot.name, description });
-      await this.patchBotMeta(bot.name, { title: draft.label.trim() || undefined, custom: bot.meta.custom });
+      if (look) {
+        const meta = metaOfLook(look);
+        if (Object.keys(meta).length > 0) await this.patchBotMeta(bot.name, meta);
+        if ('image' in look) await this.storeAvatar(bot.name, look.image ?? null);
+      }
       await this.refreshRoster();
       return true;
     } catch (error) {
@@ -1144,6 +1177,11 @@ export class ChatController {
       this.notify(`Could not delete ${bot.label}. ${errorText(error)}`);
       return false;
     }
+  }
+
+  /** the picture lives in the profile's asset store, never in `ui_meta`; null clears it */
+  private async storeAvatar(name: string, image: string | null) {
+    await this.rpc('profiles.set_asset', image ? { name, asset: 'avatar', data: image } : { name, asset: 'avatar', clear: true });
   }
 
   async avatarData(name: string): Promise<string | null> {
