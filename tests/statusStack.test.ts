@@ -9,7 +9,6 @@ import {
   applyTodoSnapshot,
   dismissBackground,
   emptyStatus,
-  formatElapsed,
   groupLabel,
   groupStatusItems,
   hydrateStatus,
@@ -310,9 +309,4 @@ test('only status events reach the reducer, so a text delta never churns the sta
   for (const type of ['todo.updated', 'tool.start', 'subagent.tool', 'message.start', 'session.control.update']) assert.equal(isStatusEvent(type), true);
   const state = emptyStatus();
   assert.equal(reduceStatus(state, { type: 'message.delta', payload: { text: 'hi' } }, 0), state);
-});
-
-test('elapsed time reads seconds, then minutes and seconds', () => {
-  assert.equal(formatElapsed(9), '9s');
-  assert.equal(formatElapsed(65), '1:05');
 });

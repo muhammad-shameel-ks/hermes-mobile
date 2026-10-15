@@ -785,9 +785,6 @@ export function hasStatusRows(state: StatusState, busy: boolean): boolean {
   return statusItems(state).length > 0 || retainedTodoItems(state, busy).length > 0;
 }
 
-/** `m:ss` past a minute, `Ns` before (desktop activity-timer `formatElapsed`) */
-export const formatElapsed = (seconds: number) => (seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
-
 /** a resume's snapshot: the todo list, restored only when it is still live or finished */
 export function hydrateStatus(state: StatusState, resumed: { todo_state?: unknown; running?: boolean | null }, now: number): StatusState {
   return resumed.todo_state ? applyTodoSnapshot(state, resumed.todo_state, resumed.running === true, now) : state;
