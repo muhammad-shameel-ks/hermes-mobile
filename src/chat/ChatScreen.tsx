@@ -25,10 +25,8 @@ import { BOT_CHAT_EMPTY, type Bot } from '../bots/roster.ts';
 import type { LinkState } from '../gateway/link.ts';
 import type { DraftStore } from '../store/drafts.ts';
 import { Codicon } from '../ui/Codicon.tsx';
-import { mixPct } from '../ui/color.ts';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { ThreadLoader } from '../ui/loaders/presets.tsx';
-import { StatusPulse } from '../ui/loaders/StatusPulse.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { Wordmark } from '../ui/Wordmark.tsx';
 import { AttachMenu, AttachmentChips } from './AttachmentChips.tsx';
@@ -53,6 +51,7 @@ import { uiSlash, type SlashUi } from './slash.ts';
 import { StackIcon } from './StatusRows.tsx';
 import { StatusStack } from './StatusStack.tsx';
 import type { Message } from './transcript.ts';
+import { TurnActivity } from './TurnActivity.tsx';
 import { useAttachments } from './useAttachments.ts';
 import { useComposerDraft } from './useComposerDraft.ts';
 import { useComposerTriggers, type ComposerSheet } from './useComposerTriggers.ts';
@@ -182,7 +181,12 @@ export default function ChatScreen({
                   ListHeaderComponent={
                     entry.history.more ? <ShowEarlier loading={entry.history.loadingEarlier} onPress={() => void controller.showEarlier(entry.key)} /> : null
                   }
-                  ListFooterComponent={<PendingApprovals />}
+                  ListFooterComponent={
+                    <>
+                      <TurnActivity key={entry.key} messages={messages} running={running} wait={entry.transcript.wait} inset={SIDE_INSET} />
+                      <PendingApprovals />
+                    </>
+                  }
                 >
                   {({ message }) => {
                     const ours = byId.get(message.id);
@@ -198,7 +202,6 @@ export default function ChatScreen({
                 <ScrollToBottomButton visible={jump.visible} count={jump.count} onPress={jump.toBottom} />
               </View>
             )}
-            {running ? <RunStatus t={t} status={entry.transcript.status} /> : null}
           </View>
           </RequestsProvider>
         </AssistantRuntimeProvider>
@@ -417,17 +420,6 @@ function EmptyState({
   );
 }
 
-function RunStatus({ t, status }: { t: Tokens; status: string | null }) {
-  return (
-    <View style={styles.runStatus} accessibilityLiveRegion="polite">
-      <StatusPulse kind="opacity" style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: mixPct(t.uiAccent, 0.8, 'transparent') }} />
-      <Text style={{ color: t.uiTextTertiary, fontSize: t.type.tool }} numberOfLines={1}>
-        {status || 'Working…'}
-      </Text>
-    </View>
-  );
-}
-
 function Composer({
   t,
   drafts,
@@ -632,7 +624,6 @@ const styles = StyleSheet.create({
   botWordmark: { width: '80%', paddingHorizontal: 8, marginTop: BOT_FACE_GAP, marginBottom: 4 },
   // desktop `[data-slot='aui_intro'] p:last-child`: leading 1.45, tracking-tight, at phone reading size
   introBody: { maxWidth: 544, fontSize: 17, lineHeight: 17 * 1.45, letterSpacing: -0.3, textAlign: 'center', marginTop: 6 },
-  runStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SIDE_INSET - 6, paddingBottom: 4 },
   // phone composer: a full-width input over a toolbar (add and model on the left, mic and send on the right); controls 36, input 40–180
   composerDock: { paddingHorizontal: 12, paddingTop: COMPOSER_DOCK_TOP, paddingBottom: 8 },
   composer: { borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, paddingTop: 6, paddingBottom: 8 },

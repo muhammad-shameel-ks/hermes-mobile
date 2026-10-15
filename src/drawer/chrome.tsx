@@ -6,9 +6,8 @@
 
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
-
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
+import { Dither } from '../ui/Dither.tsx';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { DisclosureCaret } from '../ui/motion.tsx';
 import { useTokens } from '../ui/tokens.ts';
@@ -59,21 +58,6 @@ export function SearchField({
         </Pressable>
       ) : null}
     </View>
-  );
-}
-
-/** `SidebarPanelLabel`'s square: an 8 dp checker of the label colour, `repeating-conic-gradient` at 1 dp a cell */
-const DITHER = (() => {
-  const cells: string[] = [];
-  for (let row = 0; row < 8; row += 1) for (let col = 0; col < 8; col += 1) if ((row + col) % 2 === 1) cells.push(`M${col} ${row}h1v1h-1z`);
-  return cells.join('');
-})();
-
-export function Dither({ color }: { color: string }) {
-  return (
-    <Svg width={8} height={8} viewBox="0 0 8 8" accessibilityElementsHidden importantForAccessibility="no">
-      <Path d={DITHER} fill={color} />
-    </Svg>
   );
 }
 

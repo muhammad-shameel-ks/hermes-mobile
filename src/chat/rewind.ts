@@ -10,6 +10,7 @@
  */
 
 import type { Message, Transcript } from './transcript.ts';
+import { idleWait } from './turnActivity.ts';
 
 /** desktop `RECENT_INTERRUPT_COOLDOWN_MS`: how long after Stop a rewind still interrupts first */
 export const RECENT_INTERRUPT_COOLDOWN_MS = 3_000;
@@ -146,7 +147,7 @@ export function rewindOptimistic(transcript: Transcript, plan: RewindPlan): Tran
   const source = transcript.messages[plan.index];
   const edited: Message =
     plan.text === plan.sourceText ? source : { ...source, parts: [{ kind: 'text', text: plan.text }], reactions: undefined };
-  return { ...transcript, messages: [...transcript.messages.slice(0, plan.index), edited], running: true, liveId: null, breakText: false, status: null };
+  return { ...transcript, messages: [...transcript.messages.slice(0, plan.index), edited], running: true, liveId: null, breakText: false, wait: idleWait() };
 }
 
 /** the row id `prompt.submit` just minted for the optimistic user message */

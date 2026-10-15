@@ -665,6 +665,12 @@ function category(name: string): Category {
   return TOOL_CATEGORY[name] ?? (name.startsWith('browser_') ? 'interact' : 'other');
 }
 
+/** desktop `toolPresentVerb`: what the tail row calls a call whose arguments are still streaming */
+export function toolPresentVerb(name: string): string {
+  if (name === 'skill_view') return 'Loading skill';
+  return CATEGORY_COPY[category(name)].present;
+}
+
 function unitCount(tool: ToolPart): number {
   if (tool.name !== 'web_extract') return 1;
   const urls = tool.args.urls;

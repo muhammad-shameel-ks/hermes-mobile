@@ -13,6 +13,7 @@
 
 import { reactionsFromMetadata, withAgentReactions, type Reaction } from './actionBar.ts';
 import { parseObject } from './json.ts';
+import { applyWaitEvent, idleWait, type TurnWait } from './turnActivity.ts';
 
 export type ToolPart = {
   kind: 'tool';
@@ -60,11 +61,11 @@ export type Transcript = {
   liveId: string | null;
   /** the next delta opens a new text part (a `null` delta marked a segment boundary) */
   breakText: boolean;
-  /** transient status line from `status.update` / `tool.generating` */
-  status: string | null;
+  /** the named waits the tail activity row can show: compaction, a provider wait, a tool being drafted */
+  wait: TurnWait;
 };
 
-export const emptyTranscript = (): Transcript => ({ messages: [], running: false, liveId: null, breakText: false, status: null });
+export const emptyTranscript = (): Transcript => ({ messages: [], running: false, liveId: null, breakText: false, wait: idleWait() });
 
 // ─── history ─────────────────────────────────────────────────────────────────
 
@@ -290,11 +291,16 @@ export function addSystemNotice(state: Transcript, text: string): Transcript {
 
 export function applyEvent(state: Transcript, event: LiveEvent): Transcript {
   const payload = asRecord(event.payload) ?? {};
+  const wait = applyWaitEvent(state.wait, event.type, payload);
+  return applyStreamEvent(wait === state.wait ? state : { ...state, wait }, event.type, payload);
+}
+
+function applyStreamEvent(state: Transcript, type: string, payload: Record<string, unknown>): Transcript {
   const str = (key: string) => (typeof payload[key] === 'string' ? (payload[key] as string) : '');
 
-  switch (event.type) {
+  switch (type) {
     case 'message.start': {
-      const [next] = ensureLive({ ...state, running: true, status: null });
+      const [next] = ensureLive({ ...state, running: true });
       return next;
     }
     case 'message.delta': {
@@ -302,7 +308,7 @@ export function applyEvent(state: Transcript, event: LiveEvent): Transcript {
       const text = str('text');
       if (!text) return state;
       const [next, id] = ensureLive(state);
-      return { ...updateMessage(next, id, (m) => ({ ...m, parts: appendText(m.parts, 'text', text, next.breakText) })), breakText: false, status: null };
+      return { ...updateMessage(next, id, (m) => ({ ...m, parts: appendText(m.parts, 'text', text, next.breakText) })), breakText: false };
     }
     case 'reasoning.delta': {
       const text = str('text');
@@ -318,10 +324,6 @@ export function applyEvent(state: Transcript, event: LiveEvent): Transcript {
         m.parts.some((part) => part.kind === 'reasoning') ? m : { ...m, parts: [{ kind: 'reasoning', text }, ...m.parts] },
       );
     }
-    case 'tool.generating': {
-      const name = str('name');
-      return { ...state, status: name ? `Preparing ${name}…` : state.status };
-    }
     case 'tool.start': {
       const [next, id] = ensureLive(state);
       const args = parseObject(payload.args ?? payload.args_text);
@@ -333,7 +335,7 @@ export function applyEvent(state: Transcript, event: LiveEvent): Transcript {
         args: Object.keys(args).length ? args : { ...(str('context') ? { context: str('context') } : {}), ...(str('preview') ? { preview: str('preview') } : {}) },
         status: 'running',
       };
-      return { ...updateMessage(next, id, (m) => ({ ...m, parts: [...m.parts, tool] })), breakText: true, status: null };
+      return { ...updateMessage(next, id, (m) => ({ ...m, parts: [...m.parts, tool] })), breakText: true };
     }
     case 'tool.complete': {
       const toolId = str('tool_id');
@@ -387,7 +389,7 @@ export function applyEvent(state: Transcript, event: LiveEvent): Transcript {
           return { ...settle(withText, status), error, ...turnDuration(next) };
         });
       }
-      return { ...next, running: false, liveId: null, breakText: false, status: null };
+      return { ...next, running: false, liveId: null, breakText: false, wait: idleWait() };
     }
     case 'message.reaction': {
       const rowId = payload.row_id;
@@ -396,19 +398,15 @@ export function applyEvent(state: Transcript, event: LiveEvent): Transcript {
       const target = state.messages.find((m) => m.rowId === rowId);
       return target ? updateMessage(state, target.id, (m) => ({ ...m, reactions: withAgentReactions(m.reactions, announced) })) : state;
     }
-    case 'status.update': {
-      const text = str('text');
-      return { ...state, status: text || null };
-    }
     case 'error': {
       const message = str('message') || 'The gateway reported an error.';
       const settled = state.liveId ? updateMessage(state, state.liveId, (m) => settle(m, 'error')) : state;
-      return { ...addSystemNotice(settled, message), running: false, liveId: null, status: null };
+      return { ...addSystemNotice(settled, message), running: false, liveId: null, wait: idleWait() };
     }
     case 'session.info': {
       if (payload.running !== false) return payload.running === true ? { ...state, running: true } : state;
       const settled = state.liveId ? updateMessage(state, state.liveId, (m) => settle(m, m.status === 'streaming' ? 'complete' : m.status)) : state;
-      return { ...settled, running: false, liveId: null, status: null };
+      return { ...settled, running: false, liveId: null, wait: idleWait() };
     }
     default:
       return state;

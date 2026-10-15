@@ -3,7 +3,7 @@
  * replays on one shared 5 s beat, with the app asleep between plays.
  */
 
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { AppState, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 
@@ -18,9 +18,11 @@ export type StatusPulseProps = {
   /** starting opacity of a `ping` */
   opacity?: number;
   style?: StyleProp<ViewStyle>;
+  /** what pulses, when it is more than a filled box (the dither square) */
+  children?: ReactNode;
 };
 
-export function StatusPulse({ kind, opacity = 1, style }: StatusPulseProps) {
+export function StatusPulse({ kind, opacity = 1, style, children }: StatusPulseProps) {
   const reduced = useReducedMotion();
   const progress = useSharedValue(0);
 
@@ -52,5 +54,5 @@ export function StatusPulse({ kind, opacity = 1, style }: StatusPulseProps) {
     kind === 'ping' ? { opacity: opacity * (1 - progress.value), transform: [{ scale: 1 + progress.value }] } : { opacity: 1 - progress.value * 0.5 },
   );
 
-  return <Animated.View style={[style, animated]} />;
+  return <Animated.View style={[style, animated]}>{children}</Animated.View>;
 }

@@ -92,6 +92,7 @@ import {
   type SessionMessage,
   type Transcript,
 } from './transcript.ts';
+import { idleWait } from './turnActivity.ts';
 
 export const DRAFT_KEY = FRESH_DRAFT_KEY;
 /** the notice a replay gap leaves where the transcript was reloaded from saved history */
@@ -1084,14 +1085,14 @@ export class ChatController {
       const runtimeId = this.entry(key)?.runtimeId;
       if (!runtimeId) throw new Error('The session is not attached to the gateway.');
       flagged = !this.entry(key)?.transcript.running;
-      if (flagged) this.updateTranscript(key, (t) => ({ ...t, running: true, status: 'Compacting…' }));
+      if (flagged) this.updateTranscript(key, (t) => ({ ...t, running: true, wait: { ...t.wait, compacting: true } }));
       const result = await this.rpc('session.compress', { session_id: runtimeId, profile: entry.profile, ...(focusTopic ? { focus_topic: focusTopic } : {}) }, 600_000);
       const messages = Array.isArray(result.messages) ? fromHistory(result.messages as SessionMessage[]) : null;
-      this.updateTranscript(key, (t) => ({ ...t, messages: messages ?? t.messages, ...(flagged ? { running: false, status: null } : {}) }));
+      this.updateTranscript(key, (t) => ({ ...t, messages: messages ?? t.messages, ...(flagged ? { running: false, wait: idleWait() } : {}) }));
       if (messages) this.updateEntry(key, (e) => ({ ...e, history: NO_HISTORY }));
       this.updateTranscript(key, (t) => addSystemNotice(t, result.message || 'Conversation compacted.'));
     } catch (error) {
-      this.updateTranscript(key, (t) => ({ ...addSystemNotice(t, `Compacting failed: ${errorText(error)}`), ...(flagged ? { running: false, status: null } : {}) }));
+      this.updateTranscript(key, (t) => ({ ...addSystemNotice(t, `Compacting failed: ${errorText(error)}`), ...(flagged ? { running: false, wait: idleWait() } : {}) }));
     }
   }
 
