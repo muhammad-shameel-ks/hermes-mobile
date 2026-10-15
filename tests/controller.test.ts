@@ -66,6 +66,7 @@ async function setup(history: Record<string, unknown[]> = {}) {
       return { sessions: [] } as T;
     },
     post: async <T>() => ({}) as T,
+    put: async <T>() => ({}) as T,
     patch: async <T>() => ({}) as T,
     del: async <T>() => ({}) as T,
   };
