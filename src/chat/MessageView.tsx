@@ -4,8 +4,8 @@
  * Reasoning and tool calls are the desktop's transcript scaffolding: quiet,
  * faded one-line rows (a glyph, a title, trailing meta, a caret right of the
  * text) where a run of two or more calls folds into one summary line. A turn
- * that arrives live slides in with the desktop's enter motion. Tool cards and
- * the action bar are later work.
+ * that arrives live slides in with the desktop's enter motion. Tool cards are
+ * later work.
  */
 
 import { memo, useMemo, useState, type ReactNode } from 'react';
@@ -14,6 +14,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View, type TextStyle } 
 import { DisclosureCaret, EnterView } from '../ui/motion.tsx';
 import { MONO, SCAFFOLD_OPACITY, useTokens, type Tokens } from '../ui/tokens.ts';
 import { AlertGlyph, ToolIcon } from '../ui/ToolIcon.tsx';
+import { ActionBar } from './ActionBar.tsx';
+import type { BarPlan } from './actionBar.ts';
 import { Markdown } from './Markdown.tsx';
 import { buildToolView, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
 import type { Message, Part, ToolPart } from './transcript.ts';
@@ -35,12 +37,12 @@ function blocks(parts: Part[]): Block[] {
   return out;
 }
 
-function MessageViewImpl({ message }: { message: Message }) {
+function MessageViewImpl({ message, bar, onReadAloud }: { message: Message; bar?: BarPlan; onReadAloud?: (text: string) => void }) {
   const t = useTokens();
 
   if (message.role === 'user') {
     const text = message.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('\n');
-    return (
+    const bubble = (
       <View style={styles.userRow}>
         <View style={[styles.bubble, { backgroundColor: t.uiChatBubbleBackground, borderRadius: t.radius['3xl'] }]}>
           <Text selectable style={{ color: t.uiTextPrimary, fontSize: t.type.text, lineHeight: t.type.lineHeight }}>
@@ -48,6 +50,12 @@ function MessageViewImpl({ message }: { message: Message }) {
           </Text>
         </View>
       </View>
+    );
+    return (
+      <>
+        {bubble}
+        {bar ? <ActionBar message={message} plan={bar} /> : null}
+      </>
     );
   }
 
@@ -91,6 +99,7 @@ function MessageViewImpl({ message }: { message: Message }) {
       {message.status === 'interrupted' ? (
         <Text style={[styles.footnote, { color: t.uiTextTertiary, fontSize: t.type.caption }]}>Stopped.</Text>
       ) : null}
+      {bar ? <ActionBar message={message} plan={bar} onReadAloud={onReadAloud} /> : null}
     </EnterView>
   );
 }

@@ -58,7 +58,7 @@ function MarkdownImpl({ text }: { text: string }) {
     () => ({ colors: { text: t.uiTextPrimary, link: t.uiAccent, code: t.uiWidgetSurfaceBackground, border: t.uiStrokeTertiary } }),
     [t],
   );
-  const elements = useMarkdown(text, { styles, theme, colorScheme: t.renderedMode });
+  const elements = useMarkdown(text, { styles, theme, colorScheme: t.renderedMode, selectable: true });
   return <View>{elements}</View>;
 }
 
