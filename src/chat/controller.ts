@@ -40,6 +40,8 @@ import { errorText } from '../gateway/http.ts';
 import type { GatewayLink, LinkState } from '../gateway/link.ts';
 import { normalizePersonality } from './intro.ts';
 import type { ModelSelection } from './models.ts';
+import { RequestRouter } from './requestRouter.ts';
+import { emptyRequests, type Requests } from './requests.ts';
 import {
   addSystemNotice,
   addUserMessage,
@@ -82,6 +84,8 @@ export type ChatEntry = {
   error: string | null;
   /** the session's live model, or the draft's pick before its session exists */
   model: ModelSelection | null;
+  /** approvals, clarify and prompts the gateway has the session blocked on */
+  requests: Requests;
 };
 
 export type ModelCatalog = {
@@ -130,6 +134,7 @@ const newEntry = (key: string, profile: string, extra: Partial<ChatEntry> = {}):
   loading: false,
   error: null,
   model: null,
+  requests: emptyRequests(),
   ...extra,
 });
 
@@ -153,12 +158,26 @@ export class ChatController {
   private listTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly link: GatewayLink;
   private readonly api: GatewayApi;
+  /** the gateway's approval, clarify and prompt requests, parked into each chat's `requests` */
+  readonly serverRequests: RequestRouter;
 
   constructor(link: GatewayLink, api: GatewayApi, initialProfile = 'default') {
     this.link = link;
     this.api = api;
     this.rpc = (method, params, timeoutMs) =>
       this.link.client.request(method, params as unknown as Record<string, unknown>, timeoutMs);
+    this.serverRequests = new RequestRouter({
+      keyFor: (runtimeId) => this.runtimeToKey.get(runtimeId),
+      keys: () => Object.keys(this.snapshot.entries),
+      runtimeId: (key) => this.entry(key)?.runtimeId ?? null,
+      profile: (key) => this.entry(key)?.profile ?? this.snapshot.profile,
+      requests: (key) => this.entry(key)?.requests,
+      setRequests: (key, update) => this.updateEntry(key, (e) => ({ ...e, requests: update(e.requests) })),
+      updateTranscript: (key, update) => this.updateTranscript(key, update),
+      rpc: this.rpc,
+      online: () => this.link.current.kind === 'open',
+      notify: (text) => this.notify(text),
+    });
     this.snapshot = {
       link: link.current,
       profile: initialProfile,
@@ -215,6 +234,7 @@ export class ChatController {
     for (const [runtime, mapped] of this.runtimeToKey) if (mapped === key && runtime !== runtimeId) this.runtimeToKey.delete(runtime);
     this.runtimeToKey.set(runtimeId, key);
     this.updateEntry(key, (entry) => ({ ...entry, runtimeId }));
+    this.serverRequests.adopt(runtimeId);
   }
 
   notify(text: string) {
@@ -237,6 +257,7 @@ export class ChatController {
   dispose() {
     for (const off of this.unsubscribe) off();
     if (this.listTimer) clearTimeout(this.listTimer);
+    this.serverRequests.dispose();
     this.link.pause();
   }
 
@@ -271,6 +292,7 @@ export class ChatController {
       return;
     }
     const key = event.session_id ? this.runtimeToKey.get(event.session_id) : undefined;
+    this.serverRequests.onEvent(key, event);
     if (!key) return;
     if (this.buffered.has(key)) {
       this.buffered.get(key)!.push(event);
@@ -285,25 +307,9 @@ export class ChatController {
     if (event.type === 'message.complete' || (wasRunning && !this.entry(key)?.transcript.running)) this.scheduleListRefresh();
   }
 
-  /** Approvals and other server questions are not shown on the phone yet: decline them visibly. */
+  /** approvals, clarify and the prompts park into their chat; other methods fall to the next handler */
   private onServerRequest(request: ServerRequest): boolean {
-    const key = request.params.session_id ? this.runtimeToKey.get(request.params.session_id) : undefined;
-    const what =
-      request.method === 'approval'
-        ? `approval to run ${typeof request.params.command === 'string' ? `\`${request.params.command}\`` : 'a tool'}`
-        : request.method === 'clarify'
-          ? 'a clarifying answer'
-          : `a ${request.method} answer`;
-    if (key) {
-      this.updateTranscript(key, (t) => addSystemNotice(t, `Hermes asked for ${what}. The phone cannot answer that yet, so it was declined.`));
-    }
-    // `decline` lets another client answer, but only reaches a backend that counts declines;
-    // elsewhere it is silent, and the run would sit blocked, so an explicit answer follows
-    // (the channel drops it if the decline was already sent).
-    request.decline?.('Not shown on the phone');
-    if (request.method === 'approval') request.respond({ choice: 'deny' });
-    else request.fail(4404, 'Not shown on the phone');
-    return true;
+    return this.serverRequests.handle(request);
   }
 
   private retitle(storedId: string, title: string) {
@@ -460,6 +466,7 @@ export class ChatController {
       if (resumed?.running) transcript = withInflight(transcript, resumed);
       for (const event of this.buffered.get(key) ?? []) transcript = applyEvent(transcript, event);
       this.updateEntry(key, (e) => ({ ...e, transcript, loading: false }));
+      this.serverRequests.rearm(key);
     } catch (error) {
       this.updateEntry(key, (e) => ({ ...e, loading: false, error: errorText(error) }));
     } finally {
@@ -470,6 +477,7 @@ export class ChatController {
   private async resume(key: string, { rebind }: { rebind: boolean }): Promise<SessionResumeResult | null> {
     const entry = this.entry(key);
     if (!entry) return null;
+    const startedAt = Date.now() / 1000;
     try {
       const result = await this.rpc('session.resume', {
         session_id: key,
@@ -479,6 +487,7 @@ export class ChatController {
         source: 'desktop',
       });
       this.bindRuntime(key, result.session_id);
+      this.serverRequests.onResumed(key, result, startedAt);
       if (result.info?.model) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(result.info, e.model) }));
       if (rebind && !result.running && entry.transcript.running) {
         this.updateTranscript(key, (t) => applyEvent(t, { type: 'session.info', payload: { running: false } }));
@@ -512,6 +521,9 @@ export class ChatController {
       await this.compact(key);
       return;
     }
+
+    // text typed while a clarify waits answers it rather than steering the blocked turn
+    if (key !== DRAFT_KEY && this.serverRequests.answerText(key, text)) return;
 
     if (entry.transcript.running && entry.runtimeId) {
       // Send while busy steers the running turn (issue "Transcript and composer parity on touch")

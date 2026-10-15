@@ -160,19 +160,6 @@ test('/new in a Bot Chat compacts instead of resetting', async () => {
   controller.dispose();
 });
 
-test('an approval request is declined with a visible notice', async () => {
-  const { gateway, controller, snap } = await setup();
-  gateway.handlers['session.create'] = () => ({ session_id: 'rt-1', stored_session_id: 's1', message_count: 0, messages: [], info: {} });
-  await controller.send('run it');
-  await flush();
-  gateway.push({ jsonrpc: '2.0', id: 'srv-1', method: 'approval', params: { session_id: 'rt-1', command: 'rm -rf build' } });
-  await flush();
-  assert.deepEqual(gateway.responses[0], { jsonrpc: '2.0', id: 'srv-1', result: { choice: 'deny' } });
-  const notice = snap().entries.s1.transcript.messages.at(-1);
-  assert.equal(notice?.role, 'system');
-  controller.dispose();
-});
-
 test('Send while a turn runs steers it', async () => {
   const { gateway, controller } = await setup();
   gateway.handlers['session.create'] = () => ({ session_id: 'rt-1', stored_session_id: 's1', message_count: 0, messages: [], info: {} });
