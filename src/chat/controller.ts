@@ -149,10 +149,10 @@ export class ChatController {
   /** events for a session whose history is still loading, applied once it lands */
   private readonly buffered = new Map<string, GatewayEvent[]>();
   private readonly unsubscribe: Array<() => void> = [];
-  private readonly rpc: Rpc;
+  readonly rpc: Rpc;
   private listTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly link: GatewayLink;
-  private readonly api: GatewayApi;
+  readonly api: GatewayApi;
 
   constructor(link: GatewayLink, api: GatewayApi, initialProfile = 'default') {
     this.link = link;
