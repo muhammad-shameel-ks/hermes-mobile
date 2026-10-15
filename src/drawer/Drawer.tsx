@@ -15,7 +15,9 @@ import { BotAvatar } from '../bots/BotAvatar.tsx';
 import { compactAge, filterBots, type Bot } from '../bots/roster.ts';
 import type { ChatSnapshot, SessionInfo } from '../chat/controller.ts';
 import type { LinkState } from '../gateway/link.ts';
+import { Codicon } from '../ui/Codicon.tsx';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
+import { useDrawerRoutes } from './useDrawerRoutes.tsx';
 
 export type DrawerTab = 'sessions' | 'bots';
 
@@ -29,6 +31,7 @@ type Props = {
   onTab: (tab: DrawerTab) => void;
   onNewSession: () => void;
   onOpenSession: (session: SessionInfo) => void;
+  onSessionActions: (session: SessionInfo) => void;
   onOpenBot: (bot: Bot) => void;
   onBotActions: (bot: Bot) => void;
   onNewBot: () => void;
@@ -90,7 +93,7 @@ export default function Drawer(props: Props) {
       >
         <Segmented t={t} tab={props.tab} onTab={props.onTab} />
         {props.tab === 'sessions' ? <SessionsPane {...props} t={t} /> : <BotsPane {...props} t={t} />}
-        <Footer t={t} link={props.snapshot.link} connectionLabel={props.connectionLabel} profileLabel={props.profileLabel} onProfileChip={props.onProfileChip} onSignOut={props.onSignOut} />
+        <Footer t={t} link={props.snapshot.link} connectionLabel={props.connectionLabel} profileLabel={props.profileLabel} onProfileChip={props.onProfileChip} onSignOut={props.onSignOut} onClose={onClose} />
       </Animated.View>
     </View>
   );
@@ -159,8 +162,9 @@ function NavRow({ t, label, onPress, icon }: { t: Tokens; label: string; onPress
 
 const sessionTime = (s: SessionInfo) => s.last_active || s.started_at;
 
-function SessionsPane({ t, snapshot, onNewSession, onOpenSession }: Props & { t: Tokens }) {
+function SessionsPane({ t, snapshot, onClose, onNewSession, onOpenSession, onSessionActions }: Props & { t: Tokens }) {
   const [query, setQuery] = useState('');
+  const routes = useDrawerRoutes(onClose);
   const now = Math.floor(Date.now() / 1000);
   const { items, loading, error } = snapshot.sessions;
   const filtered = useMemo(() => {
@@ -177,7 +181,10 @@ function SessionsPane({ t, snapshot, onNewSession, onOpenSession }: Props & { t:
       <Pressable
         key={session.id}
         onPress={() => onOpenSession(session)}
+        onLongPress={() => onSessionActions(session)}
+        delayLongPress={350}
         accessibilityRole="button"
+        accessibilityHint="Long press for more actions"
         accessibilityState={{ selected: active }}
         style={({ pressed }) => [
           styles.row,
@@ -208,6 +215,7 @@ function SessionsPane({ t, snapshot, onNewSession, onOpenSession }: Props & { t:
           </Svg>
         }
       />
+      <NavRow t={t} label="Capabilities" onPress={routes.openCapabilities} icon={<Codicon name="tools" size={14} color={t.uiTextSecondary} />} />
       <SearchField t={t} value={query} onChange={setQuery} placeholder="Search sessions…" />
       {pinned.length ? <SectionLabel t={t}>PINNED</SectionLabel> : null}
       {pinned.map(row)}
@@ -325,8 +333,9 @@ function BotsPane({ t, snapshot, onOpenBot, onBotActions, onNewBot, loadImage }:
   );
 }
 
-function Footer({ t, link, connectionLabel, profileLabel, onProfileChip, onSignOut }: { t: Tokens; link: LinkState; connectionLabel: string; profileLabel: string; onProfileChip: () => void; onSignOut: () => void }) {
+function Footer({ t, link, connectionLabel, profileLabel, onProfileChip, onSignOut, onClose }: { t: Tokens; link: LinkState; connectionLabel: string; profileLabel: string; onProfileChip: () => void; onSignOut: () => void; onClose: () => void }) {
   const healthy = link.kind === 'open';
+  const routes = useDrawerRoutes(onClose);
   const chip = [styles.chip, { backgroundColor: t.uiBgSecondary, borderRadius: t.radius['2xl'] }];
   return (
     <View style={[styles.footer, { borderTopColor: t.uiStrokeQuaternary }]}>
@@ -340,6 +349,10 @@ function Footer({ t, link, connectionLabel, profileLabel, onProfileChip, onSignO
         <Text numberOfLines={1} style={[styles.chipText, { color: t.uiTextSecondary, maxWidth: 90 }]}>
           {profileLabel}
         </Text>
+      </Pressable>
+      <Pressable onPress={routes.openSettings} accessibilityRole="button" accessibilityLabel="Settings" style={({ pressed }) => [...chip, pressed && { opacity: 0.6 }]}>
+        <Codicon name="settings-gear" size={12} color={t.uiTextSecondary} />
+        <Text style={[styles.chipText, { color: t.uiTextSecondary }]}>Settings</Text>
       </Pressable>
       <Pressable onPress={onSignOut} accessibilityRole="button" style={({ pressed }) => [...chip, pressed && { opacity: 0.6 }]}>
         <Text style={[styles.chipText, { color: t.uiTextTertiary }]}>Sign out</Text>

@@ -1,0 +1,184 @@
+/**
+ * The settings page's building blocks, ported from the desktop's
+ * app/settings/primitives.tsx and components/ui/button.tsx: a titled section, the
+ * one list row, a pill and the three button variants. Colours come from the
+ * tokens; the phone only stacks a row's control under its description (the
+ * desktop does the same below its `@2xl` container width) and lifts button
+ * height to a touch target.
+ */
+
+import type { ReactNode } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
+import { MONO, useTokens } from '../ui/tokens.ts';
+
+/** `SettingsContent`: the scrolling page body */
+export function SettingsContent({ children }: { children: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <ScrollView
+      style={styles.flex}
+      contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: Math.max(insets.bottom, 12) + 40 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
+/** `SettingsSection`: heading plus body with the shared vertical rhythm */
+export function SettingsSection({ title, icon, meta, aside, children }: { title: string; icon?: CodiconName; meta?: string; aside?: ReactNode; children: ReactNode }) {
+  const t = useTokens();
+  return (
+    <View style={styles.section}>
+      <View style={styles.heading}>
+        {icon ? <Codicon name={icon} size={16} color={t.uiTextTertiary} /> : null}
+        <Text style={{ color: t.uiTextPrimary, fontSize: t.type.text, fontWeight: '500' }}>{title}</Text>
+        {meta ? <Pill>{meta}</Pill> : null}
+        {aside ? <View style={styles.aside}>{aside}</View> : null}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+/** `ListRow`: title and description, with the control under them */
+export function ListRow({
+  title,
+  description,
+  hint,
+  action,
+  onPress,
+  trailing,
+  disabled,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  hint?: string;
+  action?: ReactNode;
+  onPress?: () => void;
+  trailing?: ReactNode;
+  disabled?: boolean;
+}) {
+  const t = useTokens();
+  const body = (
+    <>
+      <View style={styles.rowText}>
+        <Text style={{ color: t.uiTextPrimary, fontSize: t.type.text, fontWeight: '500' }}>{title}</Text>
+        {description ? (
+          <Text style={{ color: t.uiTextTertiary, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight, marginTop: 4 }}>{description}</Text>
+        ) : null}
+        {hint ? <Text style={{ color: t.uiTextQuaternary, fontFamily: MONO, fontSize: 11, marginTop: 4 }}>{hint}</Text> : null}
+        {action ? <View style={styles.action}>{action}</View> : null}
+      </View>
+      {trailing}
+    </>
+  );
+  if (!onPress) return <View style={styles.row}>{body}</View>;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.row, pressed && { backgroundColor: t.uiRowActiveBackground }, disabled && { opacity: 0.5 }]}
+    >
+      {body}
+    </Pressable>
+  );
+}
+
+/** a label and a value on one line, as the desktop's version details */
+export function DetailRow({ label, value, mono, onPress }: { label: string; value: string; mono?: boolean; onPress?: () => void }) {
+  const t = useTokens();
+  const text = (
+    <Text
+      selectable={!onPress}
+      style={[styles.detailValue, { color: onPress ? t.uiAccent : t.uiTextPrimary, fontSize: mono ? 12 : t.type.base }, mono && { fontFamily: MONO }]}
+    >
+      {value}
+    </Text>
+  );
+  return (
+    <View style={styles.detail}>
+      <Text style={{ color: t.uiTextTertiary, fontSize: t.type.base }}>{label}</Text>
+      {onPress ? (
+        <Pressable onPress={onPress} accessibilityRole="link" hitSlop={8} style={styles.detailValue}>
+          {text}
+        </Pressable>
+      ) : (
+        text
+      )}
+    </View>
+  );
+}
+
+export function Pill({ children, tone = 'muted' }: { children: ReactNode; tone?: 'muted' | 'success' | 'destructive' }) {
+  const t = useTokens();
+  const color = tone === 'success' ? t.uiSuccess : tone === 'destructive' ? t.dtDestructive : t.uiTextSecondary;
+  return (
+    <View style={[styles.pill, { backgroundColor: t.uiBgSecondary, borderRadius: t.radius.full }]}>
+      <Text style={{ color, fontSize: 11, fontWeight: '500' }}>{children}</Text>
+    </View>
+  );
+}
+
+export type ButtonVariant = 'default' | 'secondary' | 'ghost' | 'destructive';
+
+/** the desktop Button: 12 px label, 2.5 px radius, soft fill for secondary, text-only ghost */
+export function ActionButton({
+  label,
+  onPress,
+  variant = 'default',
+  icon,
+  busy,
+  disabled,
+  style,
+}: {
+  label: string;
+  onPress: () => void;
+  variant?: ButtonVariant;
+  icon?: CodiconName;
+  busy?: boolean;
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const t = useTokens();
+  const fill =
+    variant === 'default' ? t.dtPrimarySolid : variant === 'secondary' ? t.uiBgTertiary : variant === 'destructive' ? t.dtDestructive : 'transparent';
+  const color =
+    variant === 'default' ? t.dtPrimarySolidForeground : variant === 'destructive' ? '#ffffff' : variant === 'secondary' ? t.uiTextPrimary : t.uiTextSecondary;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || busy}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: disabled || busy, busy }}
+      style={({ pressed }) => [
+        styles.button,
+        { backgroundColor: fill, borderRadius: 2.5 },
+        pressed && { opacity: 0.8 },
+        (disabled || busy) && { opacity: 0.5 },
+        style,
+      ]}
+    >
+      {busy ? <ActivityIndicator size="small" color={color} /> : icon ? <Codicon name={icon} size={14} color={color} /> : null}
+      <Text style={{ color, fontSize: 12, lineHeight: 16, fontWeight: '500' }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  section: { marginBottom: 24 },
+  heading: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8, marginBottom: 10 },
+  aside: { marginLeft: 'auto', minWidth: 0, flexDirection: 'row', alignItems: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
+  rowText: { flex: 1, minWidth: 0 },
+  action: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10 },
+  detail: { flexDirection: 'row', justifyContent: 'space-between', gap: 16, paddingVertical: 6 },
+  detailValue: { flex: 1, textAlign: 'right' },
+  pill: { paddingHorizontal: 8, paddingVertical: 2 },
+  button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 14, minHeight: 40 },
+});
