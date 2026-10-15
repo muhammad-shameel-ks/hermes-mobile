@@ -551,6 +551,7 @@ export class ChatController {
     const reusable = draft && draft.profile === profile && !draft.bot && draft.transcript.messages.length === 0;
     if (!reusable) this.putEntry(newEntry(DRAFT_KEY, profile));
     this.set({ openKey: DRAFT_KEY });
+    this.syncScope();
   }
 
   /** open a listed session of the active profile */
@@ -559,6 +560,19 @@ export class ChatController {
     if (!existing) this.putEntry(newEntry(session.id, this.snapshot.profile, { title: session.title }));
     this.set({ openKey: session.id });
     if (!existing || (!existing.runtimeId && !existing.loading)) void this.load(session.id);
+    this.syncScope();
+  }
+
+  /** the profile the open chat speaks as: a Bot Chat's bot, else the active profile */
+  private scopeProfile(): string {
+    return this.entry(this.snapshot.openKey)?.profile ?? this.snapshot.profile;
+  }
+
+  /** the model catalog and display config follow the open chat's profile in and out of a Bot Chat */
+  private syncScope() {
+    if (this.snapshot.models.profile === this.scopeProfile()) return;
+    void this.refreshModels();
+    void this.refreshPersonality();
   }
 
   private setProfile(profile: string) {
@@ -569,7 +583,10 @@ export class ChatController {
     void this.refreshPersonality();
   }
 
-  /** a roster tap: its one Bot Chat opens (or is created) and the active profile follows; a failed lookup changes nothing */
+  /**
+   * a roster tap: its one Bot Chat opens (or is created). The active profile stays put, as on the
+   * desktop, where a Bot Chat opened in place keeps it; the chat's own calls carry the bot's profile.
+   */
   async openBot(bot: Pick<Bot, 'name' | 'label'>, options: { kickoff?: boolean } = {}) {
     if (this.snapshot.openingBot) return;
     this.set({ openingBot: bot.name });
@@ -588,11 +605,11 @@ export class ChatController {
   }
 
   private openBotChat(botName: string, storedId: string) {
-    this.setProfile(botName);
     const existing = this.entry(storedId);
     if (!existing) this.putEntry(newEntry(storedId, botName, { title: BOT_CHAT_TITLE, isBotChat: true, bot: botName }));
     this.set({ openKey: storedId });
     if (!existing || (!existing.runtimeId && !existing.loading)) void this.load(storedId);
+    this.syncScope();
   }
 
   /** exact-title lookup through the hidden registry; fails closed rather than minting a second chat */
@@ -619,10 +636,10 @@ export class ChatController {
       throw error;
     }
     const key = created.stored_session_id;
-    this.setProfile(profile);
     this.putEntry(newEntry(key, profile, { title: BOT_CHAT_TITLE, isBotChat: true, bot: profile, model: selectionFromInfo(created.info, null), cwd: cwdFromInfo(created.info, null) }));
     this.bindRuntime(key, created.session_id);
     this.set({ openKey: key });
+    this.syncScope();
     if (kickoff) {
       await new Promise((resolve) => setTimeout(resolve, 400));
       await this.submit(key, BOT_KICKOFF);
@@ -1123,7 +1140,7 @@ export class ChatController {
   /** the profile's catalog over `model.options`; `refresh` asks the gateway to re-probe its providers */
   async refreshModels(refresh = false) {
     if (this.link.current.kind !== 'open') return;
-    const profile = this.snapshot.profile;
+    const profile = this.scopeProfile();
     const keep = this.snapshot.models.profile === profile;
     this.set({ models: { ...(keep ? this.snapshot.models : { providers: [], current: null }), profile, loading: true, error: null } });
     try {
@@ -1133,21 +1150,21 @@ export class ChatController {
         { profile, session_id: open?.runtimeId ?? null, explicit_only: true, ...(refresh ? { refresh: true } : {}) },
         refresh ? 60_000 : undefined,
       );
-      if (profile !== this.snapshot.profile) return;
+      if (profile !== this.scopeProfile()) return;
       const current = result.model ? { model: result.model, provider: result.provider ?? '' } : null;
       this.set({ models: { profile, providers: result.providers ?? [], current, loading: false, error: null } });
     } catch (error) {
-      if (profile !== this.snapshot.profile) return;
+      if (profile !== this.scopeProfile()) return;
       this.set({ models: { ...this.snapshot.models, loading: false, error: errorText(error) } });
     }
   }
 
   /** the profile's display and agent config: personality for the intro, effort for the picker */
   private async refreshPersonality() {
-    const profile = this.snapshot.profile;
+    const profile = this.scopeProfile();
     try {
       const config = await this.api.get<{ display?: { personality?: unknown; message_reactions?: unknown }; agent?: { reasoning_effort?: unknown } }>('/api/config', { profile });
-      if (profile !== this.snapshot.profile) return;
+      if (profile !== this.scopeProfile()) return;
       const effort = config?.agent?.reasoning_effort;
       this.set({
         personality: normalizePersonality(config?.display?.personality),
@@ -1170,7 +1187,7 @@ export class ChatController {
    * config so the flag is the server's word. A failed write puts the old value back.
    */
   async setReactionsEnabled(enabled: boolean) {
-    const profile = this.snapshot.profile;
+    const profile = this.scopeProfile();
     const previous = this.snapshot.reactionsEnabled;
     this.set({ reactionsEnabled: enabled });
     try {

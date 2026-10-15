@@ -108,7 +108,7 @@ test('the first send creates the session lazily and the reply streams into it', 
   controller.dispose();
 });
 
-test('a roster tap finds the Bot Chat by title, follows the profile and loads history', async () => {
+test('a roster tap finds the Bot Chat by title, keeps the active profile and loads history', async () => {
   const { gateway, controller, snap, restCalls } = await setup({
     'bc-1': [{ role: 'user', content: 'earlier' }, { role: 'assistant', content: 'yes' }],
   });
@@ -117,7 +117,8 @@ test('a roster tap finds the Bot Chat by title, follows the profile and loads hi
   await controller.openBot({ name: 'scout', label: 'Scout' });
   await flush();
   assert.deepEqual(gateway.called('session.list')[0].params, { profile: 'scout', title: 'Bot Chat', limit: 200, include_hidden: true });
-  assert.equal(snap().profile, 'scout');
+  assert.equal(snap().profile, 'default', 'a Bot Chat keeps the active profile, as on the desktop');
+  assert.equal(snap().entries['bc-1'].profile, 'scout', 'the chat speaks as its bot');
   assert.equal(snap().openKey, 'bc-1', 'the compression tip opens, not the root');
   assert.equal(snap().entries['bc-1'].isBotChat, true);
   assert.equal(gateway.called('session.resume')[0].params.profile, 'scout');
@@ -196,7 +197,8 @@ test('a new bot is created with its picked look and picture, and its Bot Chat is
   assert.equal('color' in meta, false, 'no pick keeps the name-derived hue');
   assert.equal('image' in meta, false, 'the picture never rides ui_meta');
   assert.deepEqual(gateway.called('profiles.set_asset')[0].params, { name: 'scout', asset: 'avatar', data: 'data:image/png;base64,AAAA' });
-  assert.equal(snap().profile, 'scout');
+  assert.equal(snap().profile, 'default', 'opening the new Bot Chat keeps the active profile');
+  assert.equal(gateway.called('prompt.submit')[0].params.profile, 'scout');
   assert.equal(gateway.called('prompt.submit').length, 1, 'a created bot introduces itself');
   controller.dispose();
 });

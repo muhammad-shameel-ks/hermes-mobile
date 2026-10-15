@@ -117,7 +117,7 @@ A Hermes-side identity that owns its own sessions and configuration; the phone p
 _Avoid_: account, user, agent
 
 **Active profile**:
-The profile the phone is currently acting as: it scopes requests, the sessions list and new sessions, and it follows the bot whose chat is open.
+The profile the phone is currently acting as: it scopes the sessions list and new sessions. Opening a Bot Chat leaves it unchanged; that chat's own requests carry the bot's profile.
 _Avoid_: current profile, selected profile
 
 ## Bot Mode
