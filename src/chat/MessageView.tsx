@@ -18,6 +18,7 @@ import { MONO, SCAFFOLD_OPACITY, useTokens, type Tokens } from '../ui/tokens.ts'
 import { AlertGlyph, ToolIcon } from '../ui/ToolIcon.tsx';
 import { ActionBar } from './ActionBar.tsx';
 import type { BarPlan } from './actionBar.ts';
+import { ClarifyCard } from './ClarifyCard.tsx';
 import { Markdown } from './Markdown.tsx';
 import { buildToolView, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
 import type { Message, Part, ToolPart } from './transcript.ts';
@@ -187,7 +188,10 @@ function ToolBlock({ tools, live }: { tools: ToolPart[]; live: boolean }) {
   return (
     <View style={styles.toolBlock}>
       {items.map((item, index) => {
-        if (item.kind === 'card') return <ToolRow key={tools[item.index].id} tool={tools[item.index]} />;
+        if (item.kind === 'card') {
+          const tool = tools[item.index];
+          return tool.name === 'clarify' ? <ClarifyCard key={tool.id} tool={tool} fallback={<ToolRow tool={tool} />} /> : <ToolRow key={tool.id} tool={tool} />;
+        }
         const run = tools.slice(item.start, item.end + 1);
         if (run.length === 1) return <ToolRow key={run[0].id} tool={run[0]} />;
         return <ToolRun key={run[0].id} tools={run} live={live && index === items.length - 1} />;

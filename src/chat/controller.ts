@@ -76,6 +76,8 @@ import {
 import { busySendAction } from './queue.ts';
 import { QueueDriver } from './queueDrain.ts';
 import { emptyStack, persistedStack, restoreStack, StatusSync, type PersistedStack, type SessionStack, type StackStore } from './statusSync.ts';
+import { RequestRouter } from './requestRouter.ts';
+import { emptyRequests, hasBlockingPrompt, type Requests } from './requests.ts';
 import {
   addSystemNotice,
   addUserMessage,
@@ -123,6 +125,8 @@ export type ChatEntry = {
   history: HistoryState;
   /** the status stack's rows, the queue and the stack's folded choice */
   stack: SessionStack;
+  /** approvals, clarify and prompts the gateway has the session blocked on */
+  requests: Requests;
 };
 
 export type ModelCatalog = {
@@ -188,6 +192,7 @@ const newEntry = (key: string, profile: string, extra: Partial<ChatEntry> = {}):
   model: null,
   history: NO_HISTORY,
   stack: emptyStack(),
+  requests: emptyRequests(),
   ...extra,
 });
 
@@ -222,6 +227,8 @@ export class ChatController {
   readonly status: StatusSync;
   /** where queued prompts and the folded choice survive an app kill; set by the app shell */
   stackStore: StackStore | null = null;
+  /** the gateway's approval, clarify and prompt requests, parked into each chat's `requests` */
+  readonly serverRequests: RequestRouter;
 
   constructor(link: GatewayLink, api: GatewayApi, initialProfile = 'default', persistence: Persistence | null = null) {
     this.link = link;
@@ -231,6 +238,18 @@ export class ChatController {
     if (persistence) this.stackStore = stackStoreOver(persistence, (key) => this.entry(key)?.profile ?? this.snapshot.profile);
     this.rpc = (method, params, timeoutMs) =>
       this.link.client.request(method, params as unknown as Record<string, unknown>, timeoutMs);
+    this.serverRequests = new RequestRouter({
+      keyFor: (runtimeId) => this.runtimeToKey.get(runtimeId),
+      keys: () => Object.keys(this.snapshot.entries),
+      runtimeId: (key) => this.entry(key)?.runtimeId ?? null,
+      profile: (key) => this.entry(key)?.profile ?? this.snapshot.profile,
+      requests: (key) => this.entry(key)?.requests,
+      setRequests: (key, update) => this.updateEntry(key, (e) => ({ ...e, requests: update(e.requests) })),
+      updateTranscript: (key, update) => this.updateTranscript(key, update),
+      rpc: this.rpc,
+      online: () => this.link.current.kind === 'open',
+      notify: (text) => this.notify(text),
+    });
     this.snapshot = {
       link: link.current,
       profile: initialProfile,
@@ -346,6 +365,7 @@ export class ChatController {
         this.buffered.has(key) ||
         entry.transcript.running ||
         entry.stack.queue.entries.length > 0 ||
+        hasBlockingPrompt(entry.requests) ||
         entry.transcript.messages.some((m) => m.status === 'streaming')
       );
     };
@@ -374,6 +394,7 @@ export class ChatController {
     for (const [runtime, mapped] of this.runtimeToKey) if (mapped === key && runtime !== runtimeId) this.runtimeToKey.delete(runtime);
     this.runtimeToKey.set(runtimeId, key);
     this.updateEntry(key, (entry) => ({ ...entry, runtimeId }));
+    this.serverRequests.adopt(runtimeId);
   }
 
   notify(text: string) {
@@ -399,6 +420,7 @@ export class ChatController {
     if (this.listTimer) clearTimeout(this.listTimer);
     this.queue.dispose();
     this.status.dispose();
+    this.serverRequests.dispose();
     this.link.pause();
     void this.persistence?.flush();
   }
@@ -434,6 +456,7 @@ export class ChatController {
       return;
     }
     const key = event.session_id ? this.runtimeToKey.get(event.session_id) : undefined;
+    this.serverRequests.onEvent(key, event);
     if (!key) return;
     this.status.observe(key, event);
     if (this.buffered.has(key)) {
@@ -452,25 +475,9 @@ export class ChatController {
     }
   }
 
-  /** Approvals and other server questions are not shown on the phone yet: decline them visibly. */
+  /** approvals, clarify and the prompts park into their chat; other methods fall to the next handler */
   private onServerRequest(request: ServerRequest): boolean {
-    const key = request.params.session_id ? this.runtimeToKey.get(request.params.session_id) : undefined;
-    const what =
-      request.method === 'approval'
-        ? `approval to run ${typeof request.params.command === 'string' ? `\`${request.params.command}\`` : 'a tool'}`
-        : request.method === 'clarify'
-          ? 'a clarifying answer'
-          : `a ${request.method} answer`;
-    if (key) {
-      this.updateTranscript(key, (t) => addSystemNotice(t, `Hermes asked for ${what}. The phone cannot answer that yet, so it was declined.`));
-    }
-    // `decline` lets another client answer, but only reaches a backend that counts declines;
-    // elsewhere it is silent, and the run would sit blocked, so an explicit answer follows
-    // (the channel drops it if the decline was already sent).
-    request.decline?.('Not shown on the phone');
-    if (request.method === 'approval') request.respond({ choice: 'deny' });
-    else request.fail(4404, 'Not shown on the phone');
-    return true;
+    return this.serverRequests.handle(request);
   }
 
   private retitle(storedId: string, title: string) {
@@ -642,6 +649,7 @@ export class ChatController {
       for (const event of this.buffered.get(key) ?? []) transcript = applyEvent(transcript, event);
       const saved = await this.stackStore?.load(key).catch(() => null);
       this.updateEntry(key, (e) => ({ ...e, transcript, history, loading: false, ...(saved ? { stack: restoreStack(e.stack, saved) } : {}) }));
+      this.serverRequests.rearm(key);
     } catch (error) {
       if (isSessionGone(error)) {
         this.dropGone(key);
@@ -713,6 +721,7 @@ export class ChatController {
   private async resume(key: string, { rebind }: { rebind: boolean }): Promise<SessionResumeResult | null> {
     const entry = this.entry(key);
     if (!entry) return null;
+    const startedAt = Date.now() / 1000;
     try {
       const result = await this.rpc('session.resume', {
         session_id: key,
@@ -723,6 +732,7 @@ export class ChatController {
       });
       this.bindRuntime(key, result.session_id);
       this.status.hydrate(key, result);
+      this.serverRequests.onResumed(key, result, startedAt);
       if (result.info?.model) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(result.info, e.model) }));
       if (rebind && !result.running && entry.transcript.running) {
         this.updateTranscript(key, (t) => applyEvent(t, { type: 'session.info', payload: { running: false } }));
@@ -748,6 +758,9 @@ export class ChatController {
 
     if (attachments.length === 0 && (await runSlash(this.slashEnv(key), text))) return;
 
+    // text typed while a clarify waits answers it rather than steering the blocked turn
+    if (key !== DRAFT_KEY && this.serverRequests.answerText(key, text)) return;
+
     if (entry.transcript.running && entry.runtimeId && attachments.length > 0) {
       this.notify(ATTACH_WHILE_RUNNING);
       return;
@@ -766,7 +779,8 @@ export class ChatController {
 
   /** Send mid-turn steers; text a steer cannot carry, or that the turn declines, queues so no words are lost. */
   private async sendWhileRunning(key: string, entry: ChatEntry, text: string) {
-    if (busySendAction({ text, runtimeBound: Boolean(entry.runtimeId) }) === 'steer' && (await this.steerRunning(key, text))) return;
+    const action = busySendAction({ text, runtimeBound: Boolean(entry.runtimeId), blockingPrompt: hasBlockingPrompt(entry.requests) });
+    if (action === 'steer' && (await this.steerRunning(key, text))) return;
     this.queue.enqueue(key, text);
   }
 

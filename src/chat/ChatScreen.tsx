@@ -34,6 +34,7 @@ import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { Wordmark } from '../ui/Wordmark.tsx';
 import { AttachMenu, AttachmentChips } from './AttachmentChips.tsx';
 import { ATTACH_WHILE_RUNNING, type ComposerAttachment } from './attachments.ts';
+import { PendingApprovals } from './ApprovalCard.tsx';
 import { DRAFT_KEY, type ChatController, type ChatEntry, type ModelCatalog } from './controller.ts';
 import { ComposerSheets } from './ComposerSheets.tsx';
 import { useDictation } from './dictation.ts';
@@ -44,6 +45,7 @@ import { MessageView } from './MessageView.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
 import { modelPillLabel, type ModelSelection } from './models.ts';
 import { RestoredDraftNotice } from './RestoredDraftNotice.tsx';
+import { RequestsProvider } from './RequestsProvider.tsx';
 import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
 import { ShowEarlier } from './ShowEarlier.tsx';
 import { uiSlash, type SlashUi } from './slash.ts';
@@ -160,6 +162,7 @@ export default function ChatScreen({
         <LinkBanner link={link} onRetry={() => controller.retryLink()} />
 
         <AssistantRuntimeProvider runtime={runtime}>
+          <RequestsProvider controller={controller} entry={entry}>
           <View style={styles.body}>
             {messages.length === 0 ? (
               <EmptyState t={t} entry={entry} bot={bot} opening={opening} personality={personality} loadImage={controller.avatarDataFn} />
@@ -184,6 +187,7 @@ export default function ChatScreen({
                   ListHeaderComponent={
                     entry.history.more ? <ShowEarlier loading={entry.history.loadingEarlier} onPress={() => void controller.showEarlier(entry.key)} /> : null
                   }
+                  ListFooterComponent={<PendingApprovals />}
                 >
                   {({ message }) => {
                     const ours = byId.get(message.id);
@@ -202,6 +206,7 @@ export default function ChatScreen({
             )}
             {running ? <RunStatus t={t} status={entry.transcript.status} /> : null}
           </View>
+          </RequestsProvider>
         </AssistantRuntimeProvider>
 
         <StatusStack controller={controller} entry={entry} busy={running} />
