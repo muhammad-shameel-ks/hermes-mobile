@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.4] - 2026-10-15
+
+- Draw the turn activity row the way the desktop does ([01e7ac0](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/01e7ac0))
+
 ## [0.1.3] - 2026-10-15
 
 - Set the sidebar, chat and composer type at phone reading size ([5accbc9](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/5accbc9))
