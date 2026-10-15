@@ -5,7 +5,7 @@
  * management in v1 (issues #12, #17).
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { filterBots, type Bot } from '../bots/roster.ts';
@@ -41,13 +41,14 @@ function botState(snapshot: ChatSnapshot, bot: Bot) {
 }
 
 /** `PanelEmpty`: a glyph, a title, a line of help */
-function PanelEmpty({ icon, title, description }: { icon: CodiconName; title?: string; description: string }) {
+function PanelEmpty({ icon, title, description, action }: { icon: CodiconName; title?: string; description: string; action?: ReactNode }) {
   const t = useTokens();
   return (
     <View style={styles.empty} accessibilityLiveRegion="polite">
       <Codicon name={icon} size={20} color={t.uiTextQuaternary} />
       {title ? <Text style={{ color: t.dtForeground, fontSize: 14, fontWeight: '500', opacity: 0.9 }}>{title}</Text> : null}
       <Text style={{ color: t.uiTextTertiary, fontSize: 12, lineHeight: 19, textAlign: 'center' }}>{description}</Text>
+      {action}
     </View>
   );
 }
@@ -65,7 +66,8 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
   const thinking = selected && snapshot.entries[snapshot.openKey]?.transcript.running ? selected : null;
   const gatewayUp = snapshot.link.kind === 'open';
   const empty = visible.length === 0 && hidden.length === 0;
-  const allHidden = visible.length === 0 && hidden.length > 0;
+  // every bot hidden and the disclosure closed: the list says so, with the way back (desktop `allBotsHidden`)
+  const showAllHidden = visible.length === 0 && hidden.length > 0 && !hiddenBotsOpen && !trimmed;
 
   const renderBot = (bot: Bot) => (
     <BotRow
@@ -135,13 +137,26 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
 
         {loaded && !error && empty ? <PanelEmpty icon="hubot" title="No bots yet" description="Create your first bot." /> : null}
         {noMatch ? <PanelEmpty icon="search" description={`No bots match “${trimmed}”`} /> : null}
-        {allHidden && !hiddenBotsOpen && !trimmed ? (
-          <PanelEmpty icon="eye-closed" title="All bots are hidden" description="They keep working and retain their history." />
+        {showAllHidden ? (
+          <PanelEmpty
+            icon="eye-closed"
+            title="All bots are hidden"
+            description="They keep working and retain their history."
+            action={
+              <Pressable
+                onPress={() => updateFolds({ hiddenBotsOpen: true })}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.retry, { backgroundColor: t.uiBgSecondary, borderRadius: t.radius['2xl'], opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Text style={{ color: t.uiTextSecondary, fontSize: 12, fontWeight: '500' }}>Show hidden bots</Text>
+              </Pressable>
+            }
+          />
         ) : null}
 
         <View style={styles.rows}>{shown.map(renderBot)}</View>
 
-        {shownHidden.length > 0 ? (
+        {shownHidden.length > 0 && !showAllHidden ? (
           <View style={[styles.hidden, { borderTopColor: t.uiStrokeTertiary }]}>
             {trimmed ? (
               <View style={styles.hiddenToggle}>

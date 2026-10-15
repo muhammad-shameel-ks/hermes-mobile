@@ -80,7 +80,7 @@ export function Dither({ color }: { color: string }) {
 /**
  * A section's header: the dithered label in the skin's primary, 0.64rem semibold uppercase at 0.16em, a
  * caret that opens and closes it, the muted meta beside it. Parity deviation (touch): the caret is always
- * shown, where the desktop reveals it on hover.
+ * shown, where the desktop reveals it on hover, and the 32 dp header borrows its hit area from the gap.
  */
 export function SectionHeader({
   label,
@@ -116,6 +116,7 @@ export function SectionHeader({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ expanded: open }}
+      hitSlop={{ top: 4, bottom: 4 }}
       style={styles.sectionHeader}
     >
       {body}
@@ -140,6 +141,7 @@ export function DateDivider({ label, open, onToggle }: { label: string; open: bo
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ expanded: open }}
+      hitSlop={{ top: 6, bottom: 6 }}
       style={styles.divider}
     >
       <Text style={[styles.dividerLabel, { color: t.uiTextQuaternary }]}>{label}</Text>
@@ -199,7 +201,7 @@ const styles = StyleSheet.create({
   search: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 2, minHeight: ROW_MIN_H },
   searchInput: { flex: 1, minWidth: 0, fontSize: 12, paddingVertical: 8 },
   clear: { alignItems: 'center', justifyContent: 'center', width: 20, height: 20 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', minHeight: ROW_MIN_H - 8, paddingTop: 6, paddingBottom: 4, paddingLeft: ROW_PAD_X, paddingRight: 12 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', minHeight: 32, paddingTop: 6, paddingBottom: 4, paddingLeft: ROW_PAD_X, paddingRight: 12 },
   sectionLabel: { fontSize: 10.24, lineHeight: 10.24, fontWeight: '600', letterSpacing: 1.64, textTransform: 'uppercase', flexShrink: 1 },
   meta: { fontSize: 11, fontWeight: '500' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 28, paddingHorizontal: ROW_PAD_X, paddingTop: 8, paddingBottom: 2 },
