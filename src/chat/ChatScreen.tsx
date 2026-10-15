@@ -23,18 +23,22 @@ import {
 import { BotAvatar } from '../bots/BotAvatar.tsx';
 import { BOT_CHAT_EMPTY, type Bot } from '../bots/roster.ts';
 import type { LinkState } from '../gateway/link.ts';
+import type { DraftStore } from '../store/drafts.ts';
 import { Codicon } from '../ui/Codicon.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { Wordmark } from '../ui/Wordmark.tsx';
-import type { ChatController, ChatEntry, ModelCatalog } from './controller.ts';
+import { DRAFT_KEY, type ChatController, type ChatEntry, type ModelCatalog } from './controller.ts';
 import { ComposerSheets } from './ComposerSheets.tsx';
 import { FOLLOW_UP_PLACEHOLDERS, introBody, NEW_SESSION_PLACEHOLDERS } from './intro.ts';
 import { MessageView } from './MessageView.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
 import { modelPillLabel, type ModelSelection } from './models.ts';
+import { RestoredDraftNotice } from './RestoredDraftNotice.tsx';
 import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
+import { ShowEarlier } from './ShowEarlier.tsx';
 import { uiSlash, type SlashUi } from './slash.ts';
 import type { Message } from './transcript.ts';
+import { useComposerDraft } from './useComposerDraft.ts';
 import { useComposerTriggers, type ComposerSheet } from './useComposerTriggers.ts';
 import { useImeBack } from './useImeBack.ts';
 import { useJumpToBottom } from './useJumpToBottom.tsx';
@@ -146,6 +150,9 @@ export default function ChatScreen({
                   onScroll={jump.onScroll}
                   onScrollBeginDrag={jump.onDrag}
                   onContentSizeChange={jump.onContentSize}
+                  ListHeaderComponent={
+                    entry.history.more ? <ShowEarlier loading={entry.history.loadingEarlier} onPress={() => void controller.showEarlier(entry.key)} /> : null
+                  }
                 >
                   {({ message }) => {
                     const ours = byId.get(message.id);
@@ -171,6 +178,9 @@ export default function ChatScreen({
         >
           <Composer
             t={t}
+            drafts={controller.drafts}
+            profile={entry.profile}
+            session={entry.key}
             running={running}
             disabled={link.kind !== 'open' || entry.loading}
             botLabel={entry.isBotChat && bot ? bot.label : null}
@@ -343,6 +353,9 @@ function RunStatus({ t, status }: { t: Tokens; status: string | null }) {
 
 function Composer({
   t,
+  drafts,
+  profile,
+  session,
   running,
   disabled,
   botLabel,
@@ -355,6 +368,9 @@ function Composer({
   onModelPicker,
 }: {
   t: Tokens;
+  drafts: DraftStore;
+  profile: string;
+  session: string;
   running: boolean;
   disabled: boolean;
   botLabel: string | null;
@@ -366,7 +382,7 @@ function Composer({
   onAttach: () => void;
   onModelPicker: () => void;
 }) {
-  const [text, setText] = useState('');
+  const { text, setText, clear } = useComposerDraft(drafts, profile, session);
   const inputRef = useRef<TextInput>(null);
   const triggers = useComposerTriggers({ text, setText, inputRef, onSheet });
   const [seed] = useState(() => Math.floor(Math.random() * 100000));
@@ -379,11 +395,12 @@ function Composer({
   const submit = () => {
     if (!canSend) return;
     onSend(text);
-    setText('');
+    clear();
   };
 
   return (
     <View style={styles.composerDock}>
+      {session === DRAFT_KEY ? <RestoredDraftNotice drafts={drafts} profile={profile} liveText={text} /> : null}
       <View
         style={[styles.composer, { backgroundColor: t.uiBgEditor, borderColor: t.uiStrokeSecondary, borderRadius: t.radius['2xl'] }]}
       >
