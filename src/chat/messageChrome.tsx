@@ -29,6 +29,7 @@ export type MessageActions = {
   edit: (messageId: string) => void;
   react: (messageId: string) => void;
   stop: () => void;
+  notify: (text: string) => void;
 };
 
 const noop = () => undefined;
@@ -42,6 +43,7 @@ const MessageActionsContext = createContext<MessageActions>({
   edit: noop,
   react: noop,
   stop: noop,
+  notify: noop,
 });
 
 export const MessageActionsProvider = MessageActionsContext.Provider;
@@ -140,6 +142,7 @@ export function useMessageChrome(controller: ChatController, entry: ChatEntry, r
         }
       },
       fullResponseText: (messageId) => fullResponseText(latest.current.messages, messageId),
+      notify: (text) => controller.notify(text),
       retry: (messageId) => void parts.rewind(messageId),
       restore: (messageId) => void parts.rewind(messageId, { always: true }),
       edit: (messageId) => {

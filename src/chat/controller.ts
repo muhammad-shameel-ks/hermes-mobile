@@ -52,6 +52,7 @@ import {
   type MessagesPage,
 } from './history.ts';
 import { applyReaction } from './actionBar.ts';
+import { ATTACH_WHILE_RUNNING, bubbleText, detachImages, promptText, stageAttachments, type AttachRpc, type ComposerAttachment } from './attachments.ts';
 import { normalizePersonality } from './intro.ts';
 import type { ModelSelection } from './models.ts';
 import { runSlash, type SlashEnv } from './slashRun.ts';
@@ -660,15 +661,22 @@ export class ChatController {
 
   // ─── composing ─────────────────────────────────────────────────────────────
 
-  async send(rawText: string) {
+  /** reads a picked attachment's bytes as base64; the device implementation loads on first use so the pure paths never touch it */
+  readAttachment = async (uri: string) => (await import('./attachmentFiles.ts')).readBase64(uri);
+
+  async send(rawText: string, attachments: ComposerAttachment[] = []) {
     const text = rawText.trim();
-    if (!text) return;
+    if (!text && attachments.length === 0) return;
     const key = this.snapshot.openKey;
     const entry = this.entry(key);
     if (!entry) return;
 
-    if (await runSlash(this.slashEnv(key), text)) return;
+    if (attachments.length === 0 && (await runSlash(this.slashEnv(key), text))) return;
 
+    if (entry.transcript.running && entry.runtimeId && attachments.length > 0) {
+      this.notify(ATTACH_WHILE_RUNNING);
+      return;
+    }
     if (entry.transcript.running && entry.runtimeId) {
       // Send while busy steers the running turn (issue "Transcript and composer parity on touch")
       this.updateTranscript(key, (t) => addUserMessage(t, text));
@@ -682,17 +690,17 @@ export class ChatController {
     }
 
     if (key === DRAFT_KEY) {
-      await this.sendFromDraft(entry, text);
+      await this.sendFromDraft(entry, text, attachments);
       return;
     }
-    await this.submit(key, text);
+    await this.submit(key, text, { attachments });
   }
 
-  private async sendFromDraft(draft: ChatEntry, text: string) {
-    this.updateTranscript(DRAFT_KEY, (t) => addUserMessage(t, text));
+  private async sendFromDraft(draft: ChatEntry, text: string, attachments: ComposerAttachment[] = []) {
+    this.updateTranscript(DRAFT_KEY, (t) => addUserMessage(t, bubbleText(text, attachments)));
     try {
       const key = await this.createFromDraft(draft);
-      await this.submit(key, text, { optimistic: false });
+      await this.submit(key, text, { optimistic: false, attachments });
       this.scheduleListRefresh();
     } catch (error) {
       this.updateTranscript(DRAFT_KEY, (t) => ({ ...addSystemNotice(t, `Could not start the session: ${errorText(error)}`), running: false }));
@@ -723,19 +731,31 @@ export class ChatController {
     return key;
   }
 
-  private async submit(key: string, text: string, { optimistic = true } = {}) {
+  private async submit(key: string, text: string, { optimistic = true, attachments = [] as ComposerAttachment[] } = {}) {
     const entry = this.entry(key);
     if (!entry) return;
-    if (optimistic) this.updateTranscript(key, (t) => addUserMessage(t, text));
+    if (optimistic) this.updateTranscript(key, (t) => addUserMessage(t, bubbleText(text, attachments)));
+    let staged: { prompt: string; imagePaths: string[] } | null = null;
     try {
       if (!entry.runtimeId) await this.resume(key, { rebind: false });
       const runtimeId = this.entry(key)?.runtimeId;
       if (!runtimeId) throw new Error('The session is not attached to the gateway.');
-      const result = await this.rpc('prompt.submit', { session_id: runtimeId, profile: entry.profile, text }, PROMPT_TIMEOUT_MS);
+      staged = attachments.length ? await this.stageAttachments(runtimeId, entry.profile, text, attachments) : null;
+      const result = await this.rpc('prompt.submit', { session_id: runtimeId, profile: entry.profile, text: staged?.prompt ?? text }, PROMPT_TIMEOUT_MS);
       if (typeof result?.user_row_id === 'number') this.updateTranscript(key, (t) => stampUserRowId(t, result.user_row_id as number));
     } catch (error) {
+      const live = this.entry(key)?.runtimeId;
+      if (staged?.imagePaths.length && live) void detachImages(this.attachRpc, { sessionId: live, profile: entry.profile }, staged.imagePaths);
       this.updateTranscript(key, (t) => ({ ...addSystemNotice(t, `The message was not sent: ${errorText(error)}`), running: false, liveId: null }));
     }
+  }
+
+  private attachRpc: AttachRpc = (method, params, timeoutMs) => this.rpc(method, params as never, timeoutMs);
+
+  /** uploads the attachments into the live session and returns the prompt text that carries their refs */
+  private async stageAttachments(runtimeId: string, profile: string, text: string, attachments: ComposerAttachment[]) {
+    const staged = await stageAttachments(this.attachRpc, { sessionId: runtimeId, profile }, attachments, this.readAttachment);
+    return { prompt: promptText(text, staged, attachments.some((attachment) => attachment.kind === 'image')), imagePaths: staged.imagePaths };
   }
 
   async stop() {

@@ -19,6 +19,7 @@ import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { COPIED_RESET_MS, formatElapsed, formatStamp, messageText, type BarPlan } from './actionBar.ts';
 import { useMessageActions } from './messageChrome.tsx';
+import { readAloud, stopReadAloud, useReadAloud } from './readAloud.ts';
 import type { Message } from './transcript.ts';
 
 /** desktop styles.css `[data-slot='aui_msg-actions'] button`: the controls' resting opacity */
@@ -107,13 +108,15 @@ function ReactionSlot({ message, color }: { message: Message; color: string }) {
   );
 }
 
-function ActionBarImpl({ message, plan, onReadAloud }: { message: Message; plan: BarPlan; onReadAloud?: (text: string) => void }) {
+function ActionBarImpl({ message, plan }: { message: Message; plan: BarPlan }) {
   const t = useTokens();
   const actions = useMessageActions();
   const stamp = formatStamp(message.timestamp);
   const live = plan.kind === 'assistant' && plan.live;
   const text = useCallback(() => messageText(message), [message]);
   const full = useCallback(() => actions.fullResponseText(message.id), [actions, message.id]);
+  const speech = useReadAloud();
+  const reading = speech.status !== 'idle' && speech.id === message.id;
 
   const time = stamp ? <Text style={[styles.time, { color: t.uiTextTertiary }]}>{stamp}</Text> : null;
 
@@ -134,14 +137,15 @@ function ActionBarImpl({ message, plan, onReadAloud }: { message: Message; plan:
           {time}
           <CopyButton label="Copy" name="copy" color={t.uiTextTertiary} text={text} />
           {plan.fullAvailable ? <CopyButton label="Copy full response" name="clone" color={t.uiTextTertiary} text={full} /> : null}
-          {onReadAloud ? (
+          {speech.available ? (
             <GlyphButton
-              label="Read aloud"
-              name="unmute"
+              label={reading ? 'Stop reading' : 'Read aloud'}
+              name={reading ? 'mute' : 'unmute'}
               color={t.uiTextTertiary}
               onPress={() => {
                 tap('selection');
-                onReadAloud(text());
+                if (reading) stopReadAloud();
+                else readAloud(text(), message.id).catch(() => actions.notify('Read aloud failed'));
               }}
             />
           ) : null}

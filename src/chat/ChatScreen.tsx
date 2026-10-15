@@ -27,8 +27,12 @@ import type { DraftStore } from '../store/drafts.ts';
 import { Codicon } from '../ui/Codicon.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { Wordmark } from '../ui/Wordmark.tsx';
+import { AttachMenu, AttachmentChips } from './AttachmentChips.tsx';
+import { ATTACH_WHILE_RUNNING, type ComposerAttachment } from './attachments.ts';
 import { DRAFT_KEY, type ChatController, type ChatEntry, type ModelCatalog } from './controller.ts';
 import { ComposerSheets } from './ComposerSheets.tsx';
+import { useDictation } from './dictation.ts';
+import { DictationActivity, MicButton } from './DictationControls.tsx';
 import { FOLLOW_UP_PLACEHOLDERS, introBody, NEW_SESSION_PLACEHOLDERS } from './intro.ts';
 import { EditBanner, MessageActionsProvider, useEditingText, useMessageChrome, type MessageEdit } from './messageChrome.tsx';
 import { MessageView } from './MessageView.tsx';
@@ -39,6 +43,7 @@ import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
 import { ShowEarlier } from './ShowEarlier.tsx';
 import { uiSlash, type SlashUi } from './slash.ts';
 import type { Message } from './transcript.ts';
+import { useAttachments } from './useAttachments.ts';
 import { useComposerDraft } from './useComposerDraft.ts';
 import { useComposerTriggers, type ComposerSheet } from './useComposerTriggers.ts';
 import { useImeBack } from './useImeBack.ts';
@@ -113,6 +118,7 @@ export default function ChatScreen({
     },
     [openPicker, onOpenDrawer, onProfile],
   );
+  const notify = useCallback((text: string) => controller.notify(text), [controller]);
   const { messages, running } = entry.transcript;
 
   const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
@@ -193,13 +199,13 @@ export default function ChatScreen({
             edit={chrome.edit}
             modelLabel={modelPillLabel(currentModel?.model)}
             onSheet={setSheet}
-            onSend={(text) => {
-              const ui = uiSlash(text);
+            onSend={(text, attachments) => {
+              const ui = attachments.length === 0 ? uiSlash(text) : null;
               if (ui) openUi(ui);
-              else void controller.send(text);
+              else void controller.send(text, attachments);
             }}
             onStop={() => void controller.stop()}
-            onAttach={() => controller.notify('Attachments are not on the phone yet.')}
+            onNotice={notify}
             onModelPicker={openPicker}
           />
           <StatusRow t={t} link={link} profileLabel={profileLabel} onProfile={onProfile} />
@@ -372,7 +378,7 @@ function Composer({
   onSend,
   onSheet,
   onStop,
-  onAttach,
+  onNotice,
   onModelPicker,
 }: {
   t: Tokens;
@@ -385,19 +391,23 @@ function Composer({
   followUp: boolean;
   edit: MessageEdit;
   modelLabel: string;
-  onSend: (text: string) => void;
+  onSend: (text: string, attachments: ComposerAttachment[]) => void;
   onSheet: (sheet: ComposerSheet | null) => void;
   onStop: () => void;
-  onAttach: () => void;
+  onNotice: (text: string) => void;
   onModelPicker: () => void;
 }) {
   const { text, setText, clear } = useComposerDraft(drafts, profile, session);
   const inputRef = useRef<TextInput>(null);
   const triggers = useComposerTriggers({ text, setText, inputRef, onSheet });
   useEditingText(edit, text, setText, () => inputRef.current?.focus());
+  const [attachOpen, setAttachOpen] = useState(false);
+  const attachments = useAttachments(onNotice);
+  const dictation = useDictation({ getText: () => text, setText, onNotice });
   const [seed] = useState(() => Math.floor(Math.random() * 100000));
-  const canSend = text.trim() !== '' && !disabled;
-  const showStop = running && text.trim() === '';
+  const hasPayload = text.trim() !== '' || attachments.items.length > 0;
+  const canSend = hasPayload && !disabled;
+  const showStop = running && !hasPayload;
   const placeholders = followUp ? FOLLOW_UP_PLACEHOLDERS : NEW_SESSION_PLACEHOLDERS;
   const placeholder = running ? 'Steer the running turn…' : botLabel ? `Message ${botLabel}` : placeholders[seed % placeholders.length];
   const primaryActive = showStop || canSend;
@@ -408,21 +418,34 @@ function Composer({
       void edit.submit(text);
       return;
     }
-    onSend(text);
+    if (running && attachments.items.length > 0) {
+      onNotice(ATTACH_WHILE_RUNNING);
+      return;
+    }
+    dictation.cancel();
+    onSend(text, attachments.items);
     clear();
+    attachments.clear();
   };
 
   return (
     <View style={styles.composerDock}>
       {session === DRAFT_KEY ? <RestoredDraftNotice drafts={drafts} profile={profile} liveText={text} /> : null}
       <EditBanner edit={edit} />
+      {dictation.status !== 'idle' ? (
+        <View style={styles.dictationRow}>
+          <DictationActivity dictation={dictation} />
+        </View>
+      ) : null}
       <View
         style={[styles.composer, { backgroundColor: t.uiBgEditor, borderColor: t.uiStrokeSecondary, borderRadius: t.radius['2xl'] }]}
       >
+        <AttachmentChips items={attachments.items} onRemove={attachments.remove} />
+        <View style={styles.composerRow}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Add context"
-          onPress={onAttach}
+          onPress={() => setAttachOpen(true)}
           hitSlop={8}
           style={({ pressed }) => [styles.ghostButton, styles.menuCell, { borderRadius: t.radius.md }, pressed && { backgroundColor: t.uiControlHoverBackground }]}
         >
@@ -435,6 +458,7 @@ function Composer({
             onChangeText={triggers.onChangeText}
             onSelectionChange={triggers.onSelectionChange}
             multiline
+            editable={dictation.status === 'idle'}
             style={[styles.input, { color: t.uiTextPrimary, fontSize: t.type.text, lineHeight: t.type.text * 1.5 }]}
             selectionColor={t.uiAccent}
             accessibilityLabel="Message"
@@ -464,6 +488,7 @@ function Composer({
           </Text>
           <Codicon name="chevron-down" size={10} color={t.uiTextTertiary} style={{ opacity: 0.5 }} />
         </Pressable>
+        {dictation.available ? <MicButton dictation={dictation} disabled={disabled} /> : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={showStop ? 'Stop' : edit.target ? 'Send edited message' : running ? 'Steer' : 'Send'}
@@ -481,7 +506,9 @@ function Composer({
             <Codicon name="arrow-up" size={14} color={t.dtBackground} />
           )}
         </Pressable>
+        </View>
       </View>
+      <AttachMenu visible={attachOpen} onClose={() => setAttachOpen(false)} attachments={attachments} />
     </View>
   );
 }
@@ -547,7 +574,9 @@ const styles = StyleSheet.create({
   runStatus: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SIDE_INSET - 6, paddingBottom: 4 },
   // desktop composer tokens: control 24, primary 26, gap 4, surface padding 8 × 5, input 26–150
   composerDock: { paddingHorizontal: 16, paddingTop: COMPOSER_DOCK_TOP, paddingBottom: 6 },
-  composer: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5 },
+  composer: { borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5 },
+  composerRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dictationRow: { paddingBottom: 6 },
   ghostButton: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
   menuCell: { alignSelf: 'flex-start', marginTop: 3 },
   inputCell: { flex: 1, justifyContent: 'center' },

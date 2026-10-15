@@ -23,6 +23,7 @@ const GLYPHS = {
   discard: 0xeae2,
   edit: 0xea73,
   mute: 0xeb24,
+  mic: 0xec12,
   pulse: 0xeb31,
   reactions: 0xeb35,
   refresh: 0xeb37,

@@ -37,7 +37,7 @@ function blocks(parts: Part[]): Block[] {
   return out;
 }
 
-function MessageViewImpl({ message, bar, onReadAloud }: { message: Message; bar?: BarPlan; onReadAloud?: (text: string) => void }) {
+function MessageViewImpl({ message, bar }: { message: Message; bar?: BarPlan }) {
   const t = useTokens();
 
   if (message.role === 'user') {
@@ -99,7 +99,7 @@ function MessageViewImpl({ message, bar, onReadAloud }: { message: Message; bar?
       {message.status === 'interrupted' ? (
         <Text style={[styles.footnote, { color: t.uiTextTertiary, fontSize: t.type.caption }]}>Stopped.</Text>
       ) : null}
-      {bar ? <ActionBar message={message} plan={bar} onReadAloud={onReadAloud} /> : null}
+      {bar ? <ActionBar message={message} plan={bar} /> : null}
     </EnterView>
   );
 }
