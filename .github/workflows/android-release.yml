@@ -29,6 +29,11 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v5
         with:
+          # Build the tip of main, not the commit that triggered the run. Runs
+          # queue behind each other, so by the time a queued run starts the
+          # previous one has pushed its version bump and tag; starting from the
+          # triggering commit would miss both and re-release the same version.
+          ref: main
           # Tags drive the version bump, so the whole history is needed.
           fetch-depth: 0
 
