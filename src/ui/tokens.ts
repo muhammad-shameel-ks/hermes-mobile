@@ -149,6 +149,13 @@ function resolve({ skin = DEFAULT_SKIN, mode, accent = null, chatTextScale = CHA
     uiCyan: semantic.cyan,
     uiBlue: semantic.blue,
     uiPurple: semantic.purple,
+    // styles.css `--tool-memory-legendary-*`: a landed memory write is gold → purple, never the amber warning
+    toolMemoryLegendaryFrom: mixPct(semantic.yellow, 0.72, '#f5d08a'),
+    toolMemoryLegendaryMid: mixPct(semantic.orange, 0.55, semantic.purple),
+    toolMemoryLegendaryTo: mixPct(semantic.purple, 0.82, '#c4b5fd'),
+    toolMemoryLegendaryIcon: mixPct(semantic.yellow, 0.55, semantic.purple),
+    toolMemoryLegendaryMeta: mixPct(semantic.purple, 0.58, uiTextTertiary),
+    toolMemoryLegendaryGlow: mixPct(semantic.purple, 0.38, 'transparent'),
     uiDiffAddBorder: semantic.green,
     uiDiffAddBackground: mixPct(semantic.green, 0.12, 'transparent'),
     uiDiffAddForeground: isDark ? mixPct(semantic.green, 0.62, '#ffffff') : mixPct(semantic.green, 0.7, '#000000'),

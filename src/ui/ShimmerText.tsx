@@ -19,17 +19,29 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { shimmerRings, shimmerTiming, type ShimmerRing } from './shimmer.ts';
+import { shimmerHighlight, shimmerRings, shimmerTiming, type ShimmerRing } from './shimmer.ts';
+import { useTokens } from './tokens.ts';
 
 type Props = {
   children: string;
   style: StyleProp<TextStyle>;
   fontSize: number;
-  /** the colour the band's centre turns the text toward, and how far */
-  highlight: { color: string; peak: number };
+  /** the colour the band's centre turns the text toward, and how far; the transcript scaffold's by default */
+  highlight?: { color: string; peak: number };
 };
 
-export function ShimmerText({ children, style, fontSize, highlight }: Props) {
+/** the highlight for text in the transcript's scaffold ink on the chat surface */
+export function useScaffoldShimmer(): { color: string; peak: number } {
+  const t = useTokens();
+  return useMemo(
+    () => shimmerHighlight(t.conversationScaffoldText, t.uiChatSurfaceBackground, t.renderedMode === 'dark'),
+    [t.conversationScaffoldText, t.uiChatSurfaceBackground, t.renderedMode],
+  );
+}
+
+export function ShimmerText({ children, style, fontSize, highlight: given }: Props) {
+  const fallback = useScaffoldShimmer();
+  const highlight = given ?? fallback;
   const reduced = useReducedMotion();
   const [width, setWidth] = useState(0);
   const timing = useMemo(() => shimmerTiming(fontSize), [fontSize]);

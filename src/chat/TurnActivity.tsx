@@ -6,14 +6,13 @@
  * turnActivity.ts.
  */
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { mixPct } from '../ui/color.ts';
 import { Dither } from '../ui/Dither.tsx';
 import { StatusPulse } from '../ui/loaders/StatusPulse.tsx';
-import { shimmerHighlight } from '../ui/shimmer.ts';
-import { ShimmerText } from '../ui/ShimmerText.tsx';
+import { ShimmerText, useScaffoldShimmer } from '../ui/ShimmerText.tsx';
 import { SCAFFOLD_OPACITY, useTokens } from '../ui/tokens.ts';
 import { formatElapsed } from './actionBar.ts';
 import { awaitingInput as isAwaitingInput } from './requests.ts';
@@ -100,10 +99,7 @@ function ActivityRow({ hint, elapsed, inset }: { hint: string; elapsed: number; 
   const load = hint ? parseModelLoadWait(hint) : null;
   const label = hint ? (load?.label ?? hint) : 'Hermes is working';
   const labelStyle = { color: t.conversationScaffoldText, fontSize: t.type.tool, lineHeight: t.type.lineHeight };
-  const highlight = useMemo(
-    () => shimmerHighlight(t.conversationScaffoldText, t.uiChatSurfaceBackground, t.renderedMode === 'dark'),
-    [t.conversationScaffoldText, t.uiChatSurfaceBackground, t.renderedMode],
-  );
+  const highlight = useScaffoldShimmer();
 
   return (
     <View

@@ -13,6 +13,7 @@
 
 import { reactionsFromMetadata, withAgentReactions, type Reaction } from './actionBar.ts';
 import { parseObject } from './json.ts';
+import { reviewNoteText } from './reviewNote.ts';
 import { applyWaitEvent, idleWait, type TurnWait } from './turnActivity.ts';
 
 export type ToolPart = {
@@ -402,6 +403,11 @@ function applyStreamEvent(state: Transcript, type: string, payload: Record<strin
       const message = str('message') || 'The gateway reported an error.';
       const settled = state.liveId ? updateMessage(state, state.liveId, (m) => settle(m, 'error')) : state;
       return { ...addSystemNotice(settled, message), running: false, liveId: null, wait: idleWait() };
+    }
+    case 'review.summary': {
+      // the background self-improvement review saved to memory or skills; a persistent row, never a toast
+      const text = reviewNoteText(str('text'));
+      return text ? addSystemNotice(state, text) : state;
     }
     case 'session.info': {
       if (payload.running !== false) return payload.running === true ? { ...state, running: true } : state;

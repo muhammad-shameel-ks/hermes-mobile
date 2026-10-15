@@ -20,6 +20,7 @@ import { formatDurationSeconds } from '../toolView.ts';
 import type { ToolPart } from '../transcript.ts';
 import { cardEnv, useLiveSubagents } from './env.ts';
 import { GlyphSpinner } from '../../ui/loaders/GlyphSpinner.tsx';
+import { ShimmerText } from '../../ui/ShimmerText.tsx';
 
 /** the model's own name without its provider path */
 const modelLabel = (model: string) => model.split('/').pop() || model;
@@ -77,12 +78,20 @@ function Row({ row }: { row: DelegateRow }) {
         <Codicon name="agent" size={10} color={t.conversationScaffoldText} style={styles.agent} />
       </Pressable>
       {activity ? (
-        <Text
-          numberOfLines={1}
-          style={[styles.activity, { color: t.conversationScaffoldMeta, opacity: SCAFFOLD_OPACITY, fontSize: t.type.tool, lineHeight: t.type.lineHeight }]}
-        >
-          {activity}
-        </Text>
+        live ? (
+          <View style={[styles.activity, { opacity: SCAFFOLD_OPACITY }]}>
+            <ShimmerText style={{ color: t.conversationScaffoldMeta, fontSize: t.type.tool, lineHeight: t.type.lineHeight }} fontSize={t.type.tool}>
+              {activity}
+            </ShimmerText>
+          </View>
+        ) : (
+          <Text
+            numberOfLines={1}
+            style={[styles.activity, { color: t.conversationScaffoldMeta, opacity: SCAFFOLD_OPACITY, fontSize: t.type.tool, lineHeight: t.type.lineHeight }]}
+          >
+            {activity}
+          </Text>
+        )
       ) : null}
     </View>
   );

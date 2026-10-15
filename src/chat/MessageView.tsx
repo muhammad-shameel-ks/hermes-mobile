@@ -13,6 +13,7 @@ import { Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native'
 
 import { FadeText } from '../ui/Fade.tsx';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
+import { ShimmerText } from '../ui/ShimmerText.tsx';
 import { DisclosureCaret, EnterView } from '../ui/motion.tsx';
 import { MONO, SCAFFOLD_OPACITY, useTokens, type Tokens } from '../ui/tokens.ts';
 import { AlertGlyph, ToolIcon } from '../ui/ToolIcon.tsx';
@@ -24,6 +25,8 @@ import { ToolCard } from './cards/ToolCard.tsx';
 import { ToolDiffStats, ToolExtras } from './cards/ToolExtras.tsx';
 import { generatedImageEchoSources, stripGeneratedImageEchoes } from './generatedImage.ts';
 import { Markdown } from './Markdown.tsx';
+import { MemoryGlyph, MemoryTitle, ReviewNote } from './MemoryChrome.tsx';
+import { parseReviewNote } from './reviewNote.ts';
 import { ApprovalTimedOutAction } from './ApprovalTimedOutAction.tsx';
 import { buildToolView, isFileEditTool, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
 import { APPROVAL_COPY } from './requests.ts';
@@ -71,6 +74,8 @@ function MessageViewImpl({ message, bar, latest = false }: { message: Message; b
 
   if (message.role === 'system') {
     const text = message.parts.map((p) => (p.kind === 'text' ? p.text : '')).join('\n');
+    const review = parseReviewNote(text);
+    if (review) return <ReviewNote label={review.label} detail={review.detail} />;
     return (
       <View style={[styles.notice, { borderColor: t.uiStrokeTertiary, borderRadius: t.radius['2xl'] }]}>
         <Text style={{ color: t.uiTextSecondary, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight }}>{text}</Text>
@@ -178,7 +183,13 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
   return (
     <View style={styles.scaffold}>
       <ScaffoldRow open={open} onToggle={() => setOpen((v) => !v)} caretRest={0.4} label={label}>
-        <Text style={scaffoldLabel(t)}>{label}</Text>
+        {live ? (
+          <ShimmerText style={scaffoldLabel(t)} fontSize={t.type.tool}>
+            {label}
+          </ShimmerText>
+        ) : (
+          <Text style={scaffoldLabel(t)}>{label}</Text>
+        )}
       </ScaffoldRow>
       {open ? (
         <Text selectable style={[styles.reasoningText, { color: t.conversationScaffoldText, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight }]}>
@@ -221,9 +232,15 @@ function ToolRun({ tools, live }: { tools: ToolPart[]; live: boolean }) {
     <View style={styles.toolBlock}>
       <View style={styles.scaffold}>
         <ScaffoldRow open={open} onToggle={() => setOpen((v) => !v)} caretRest={0} label={summary}>
-          <FadeText style={scaffoldLabel(t)} fadeColor={t.uiChatSurfaceBackground}>
-            {summary}
-          </FadeText>
+          {live ? (
+            <ShimmerText style={scaffoldLabel(t)} fontSize={t.type.tool}>
+              {summary}
+            </ShimmerText>
+          ) : (
+            <FadeText style={scaffoldLabel(t)} fadeColor={t.uiChatSurfaceBackground}>
+              {summary}
+            </FadeText>
+          )}
         </ScaffoldRow>
       </View>
       {open ? tools.map((tool) => <ToolRow key={tool.id} tool={tool} />) : live ? <ToolRow tool={tools[tools.length - 1]} /> : null}
@@ -233,10 +250,12 @@ function ToolRun({ tools, live }: { tools: ToolPart[]; live: boolean }) {
 
 const AMBER = { light: '#b45309', dark: '#fcd34d' } as const;
 
-function ToolGlyph({ view, color }: { view: ToolView; color: string }) {
+function ToolGlyph({ view, color, legendary = false }: { view: ToolView; color: string; legendary?: boolean }) {
   const t = useTokens();
   let glyph: ReactNode = null;
-  if (view.status === 'running') {
+  if (legendary) {
+    glyph = <MemoryGlyph size={GLYPH} />;
+  } else if (view.status === 'running') {
     glyph = <GlyphSpinner spinner="breathe" size={GLYPH} label="Running" />;
   } else if (view.status === 'error' || view.status === 'warning') {
     glyph = <AlertGlyph size={GLYPH} color={color} />;
@@ -256,6 +275,9 @@ function ToolRow({ tool }: { tool: ToolPart }) {
   // an edit that landed with no diff to review is a bare, dead row (a `write_file` create after a reload)
   if (isFileEditTool(tool.name) && tool.status === 'done' && view.status !== 'error' && !view.inlineDiff) return null;
   const failed = view.status === 'error';
+  // a landed memory write wears the desktop's gold → purple chrome instead of the scaffold grey
+  const legendary = tool.name === 'memory' && view.status === 'success';
+  const meta = legendary ? [scaffoldMeta(t), { color: t.toolMemoryLegendaryMeta }] : scaffoldMeta(t);
   const titleColor =
     failed ? t.dtDestructive : view.status === 'warning' ? AMBER[t.renderedMode] : view.status === 'running' ? t.conversationScaffoldMeta : t.conversationScaffoldText;
 
@@ -265,13 +287,21 @@ function ToolRow({ tool }: { tool: ToolPart }) {
     >
       <View style={open ? [styles.toolShellHeader, { borderBottomColor: t.uiStrokeTertiary }] : undefined}>
         <ScaffoldRow open={open} onToggle={expandable ? () => setPicked(!open) : undefined} caretRest={0} label={view.title}>
-          <ToolGlyph view={view} color={view.status === 'warning' ? AMBER[t.renderedMode] : t.dtDestructive} />
-          <FadeText style={scaffoldLabel(t, titleColor)} fadeColor={t.uiChatSurfaceBackground}>
-            {view.title}
-          </FadeText>
-          {view.status !== 'running' && view.countLabel ? <Text style={scaffoldMeta(t)}>{view.countLabel}</Text> : null}
+          <ToolGlyph view={view} color={view.status === 'warning' ? AMBER[t.renderedMode] : t.dtDestructive} legendary={legendary} />
+          {view.status === 'running' ? (
+            <ShimmerText style={scaffoldLabel(t, titleColor)} fontSize={t.type.tool}>
+              {view.title}
+            </ShimmerText>
+          ) : legendary ? (
+            <MemoryTitle style={scaffoldLabel(t)}>{view.title}</MemoryTitle>
+          ) : (
+            <FadeText style={scaffoldLabel(t, titleColor)} fadeColor={t.uiChatSurfaceBackground}>
+              {view.title}
+            </FadeText>
+          )}
+          {view.status !== 'running' && view.countLabel ? <Text style={meta}>{view.countLabel}</Text> : null}
           <ToolDiffStats view={view} />
-          {view.durationLabel ? <Text style={scaffoldMeta(t)}>{view.durationLabel}</Text> : null}
+          {view.durationLabel ? <Text style={meta}>{view.durationLabel}</Text> : null}
         </ScaffoldRow>
       </View>
       {open ? (
