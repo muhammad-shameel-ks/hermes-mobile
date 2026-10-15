@@ -24,7 +24,9 @@ import { ToolCard } from './cards/ToolCard.tsx';
 import { ToolDiffStats, ToolExtras } from './cards/ToolExtras.tsx';
 import { generatedImageEchoSources, stripGeneratedImageEchoes } from './generatedImage.ts';
 import { Markdown } from './Markdown.tsx';
+import { ApprovalTimedOutAction } from './ApprovalTimedOutAction.tsx';
 import { buildToolView, isFileEditTool, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
+import { APPROVAL_COPY } from './requests.ts';
 import type { Message, Part, ToolPart } from './transcript.ts';
 
 type Block = { kind: 'text'; text: string } | { kind: 'reasoning'; text: string } | { kind: 'tools'; tools: ToolPart[] };
@@ -71,6 +73,7 @@ function MessageViewImpl({ message, bar, latest = false }: { message: Message; b
     return (
       <View style={[styles.notice, { borderColor: t.uiStrokeTertiary, borderRadius: t.radius['2xl'] }]}>
         <Text style={{ color: t.uiTextSecondary, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight }}>{text}</Text>
+        {text === APPROVAL_COPY.timedOutSystemLine ? <ApprovalTimedOutAction /> : null}
       </View>
     );
   }

@@ -19,6 +19,7 @@ export const APPROVAL_COPY = {
   sendFailed: 'Could not send your answer',
   timedOutSystemLine:
     'Approval timed out — the command was not run. Ask Hermes to try again, or raise the limit in Settings → Safety → Approval timeout.',
+  openSafetySettings: 'Open Safety settings',
   run: 'Run',
   command: 'Command',
   commandDetails: 'Command details',
