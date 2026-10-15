@@ -6,6 +6,7 @@
  * door, no live subagents - and degrades.
  */
 
+import type { PreviewTarget } from '../../files/preview.ts';
 import type { SubagentProgress } from '../delegate.ts';
 import type { MediaResolver } from '../mediaResolver.ts';
 
@@ -13,6 +14,10 @@ export type CardEnv = {
   media: MediaResolver | null;
   /** open the Review surface, at a file when given; absent until that surface lands */
   openReview?: (path?: string) => void;
+  /** open a file or url in the preview viewer; absent outside the signed-in tree */
+  openPreview?: (target: PreviewTarget) => void;
+  /** the open chat's working directory, which a relative file path is read against */
+  openCwd?: () => string | null;
   /** open a delegated child's own session */
   openSession?: (sessionId: string) => void;
   /** a hook returning the open session's live subagents */

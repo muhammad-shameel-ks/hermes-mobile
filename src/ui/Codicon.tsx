@@ -48,6 +48,7 @@ const GLYPHS = {
   ellipsis: 0xea7c,
   error: 0xea87,
   export: 0xebac,
+  eye: 0xea70,
   'eye-closed': 0xeae7,
   file: 0xea7b,
   'file-media': 0xeaea,
