@@ -53,7 +53,7 @@ export function mediaName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() || path;
 }
 
-/** `0:07`, `12:30`: elapsed and total on the audio panel */
+/** `0:07`, `12:30`: the audio panel's elapsed and total, the dictation bar's recording time */
 export function formatClock(seconds: number): string {
   const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;

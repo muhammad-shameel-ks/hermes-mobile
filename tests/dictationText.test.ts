@@ -3,7 +3,6 @@ import { test } from 'node:test';
 
 import {
   applyResult,
-  formatElapsed,
   heardSomething,
   joinSpeech,
   levelFromVolume,
@@ -53,9 +52,6 @@ test('the cap follows the desktop: unset is two minutes, and it clamps to 1..600
 });
 
 test('the clock and level readouts', () => {
-  assert.equal(formatElapsed(0), '0:00');
-  assert.equal(formatElapsed(65.9), '1:05');
-  assert.equal(formatElapsed(-3), '0:00');
   assert.equal(levelFromVolume(-2), 0);
   assert.equal(levelFromVolume(5), 0.5);
   assert.equal(levelFromVolume(12), 1);

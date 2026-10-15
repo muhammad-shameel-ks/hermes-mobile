@@ -198,3 +198,14 @@ test('a fade target keeps the surface colour at zero alpha', () => {
   assert.equal(transparentOf('#0d1015f0'), '#0d101500');
   assert.equal(transparentOf('nope'), '#00000000');
 });
+
+test('diff tints are the desktop green and red at 12%, foregrounds mix toward the page', () => {
+  const dark = resolveTokens('dark');
+  const light = resolveTokens('light');
+  assert.equal(light.uiGreen, '#1f8a65');
+  assert.equal(dark.uiGreen, '#55a583');
+  assert.equal(light.uiDiffAddBackground, '#1f8a651f');
+  assert.equal(dark.uiDiffRemoveBackground, '#e75e781f');
+  assert.equal(light.uiDiffAddBorder, light.uiGreen);
+  assert.notEqual(light.uiDiffAddForeground, dark.uiDiffAddForeground);
+});

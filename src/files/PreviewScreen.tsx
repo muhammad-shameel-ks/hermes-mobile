@@ -17,7 +17,9 @@ import { Markdown } from '../chat/Markdown.tsx';
 import { DiffView } from '../review/DiffView.tsx';
 import { diffRows, fullFileDiffRows } from '../review/diff.ts';
 import { ActionSheet, type SheetAction } from '../ui/Sheet.tsx';
+import { copyText } from '../ui/clipboard.ts';
 import { MONO, useTokens } from '../ui/tokens.ts';
+import { prepareSvg, type PreparedSvg } from '../ui/svg.ts';
 import { ZoomableImage } from '../ui/ZoomableImage.tsx';
 import { gateway } from './gateway.ts';
 import { displayPath, formatPreviewBytes, linkedPath } from './path.ts';
@@ -33,8 +35,7 @@ import {
 } from './preview.ts';
 import { createFilesRest, errorMessage } from './rest.ts';
 import { SourceView } from './SourceView.tsx';
-import { prepareSvg, type PreparedSvg } from './svg.ts';
-import { copyText, downloadToCache, shareFile, writeCacheText } from './transfer.ts';
+import { downloadToCache, shareFile, writeCacheText } from './transfer.ts';
 import { EmptyState, HeaderAction, Loading, ModeSwitcher, useToast } from './ui.tsx';
 
 type Mode = 'rendered' | 'source' | 'diff';

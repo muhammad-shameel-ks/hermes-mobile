@@ -7,7 +7,9 @@
  * describe the same call in the same words. Pure, so it is tested directly.
  */
 
-import { countDiffLineStats, inlineDiffFromResult, type DiffStats } from './diff.ts';
+import { diffStats, type DiffStats } from '../review/diff.ts';
+import { inlineDiffFromResult } from './inlineDiff.ts';
+import { isRecord, parseObject, type Json } from './json.ts';
 import { toolImageUrl } from './media.ts';
 import type { ToolPart } from './transcript.ts';
 
@@ -46,21 +48,6 @@ export type ToolView = {
   /** an image the row's body shows (a screenshot, an analysed picture) */
   imageUrl?: string;
 };
-
-type Json = Record<string, unknown>;
-
-const isRecord = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
-
-function parseMaybeObject(value: unknown): Json {
-  if (isRecord(value)) return value;
-  if (typeof value !== 'string' || !value.trim()) return {};
-  try {
-    const parsed = JSON.parse(value);
-    return isRecord(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
 
 function firstStringField(record: Json, keys: readonly string[]): string {
   for (const key of keys) {
@@ -464,7 +451,7 @@ function toolStatus(tool: ToolPart, result: Json): { status: ToolStatus; error: 
 }
 
 export const toolFailed = (tool: ToolPart) => {
-  const { status } = toolStatus(tool, parseMaybeObject(tool.result));
+  const { status } = toolStatus(tool, parseObject(tool.result));
   return status === 'error' || status === 'warning';
 };
 
@@ -593,7 +580,7 @@ function prettyResult(tool: ToolPart, result: Json): string {
 
 export function buildToolView(tool: ToolPart): ToolView {
   const args = tool.args;
-  const result = parseMaybeObject(tool.result);
+  const result = parseObject(tool.result);
   const meta = toolMeta(tool.name);
   const { status, error } = toolStatus(tool, result);
   const pending = status === 'running';
@@ -615,7 +602,7 @@ export function buildToolView(tool: ToolPart): ToolView {
     command: tool.name === 'terminal' ? shellCommand(args) || undefined : undefined,
     detail,
     inlineDiff: inlineDiff || undefined,
-    diffStats: inlineDiff && isFileEditTool(tool.name) ? countDiffLineStats(inlineDiff) : undefined,
+    diffStats: inlineDiff && isFileEditTool(tool.name) ? diffStats(inlineDiff) : undefined,
     imageUrl: pending ? undefined : toolImageUrl(args, result) || undefined,
   };
 }

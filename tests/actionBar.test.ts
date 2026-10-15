@@ -97,6 +97,8 @@ test('stamps read as a clock today, "Yesterday, …" a day back and a date beyon
 
 test('elapsed time reads in seconds, then minutes', () => {
   assert.equal(formatElapsed(42), '42s');
+  assert.equal(formatElapsed(9), '9s');
+  assert.equal(formatElapsed(65), '1:05');
   assert.equal(formatElapsed(75), '1:15');
 });
 

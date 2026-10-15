@@ -3,7 +3,9 @@
  * one row per file. Port of the desktop's thread/changed-files.ts. Pure.
  */
 
-import { countDiffLineStats, htmlPathFromInlineDiff, inlineDiffFromResult } from './diff.ts';
+import { diffStats } from '../review/diff.ts';
+import { htmlPathFromInlineDiff, inlineDiffFromResult } from './inlineDiff.ts';
+import { parseObject } from './json.ts';
 import { isFileEditTool } from './toolView.ts';
 import type { Part, ToolPart } from './transcript.ts';
 
@@ -15,17 +17,6 @@ export type ChangedFile = {
   /** the path as the tool reported it */
   path: string;
 };
-
-function recordOf(value: unknown): Record<string, unknown> {
-  if (typeof value === 'object' && value !== null && !Array.isArray(value)) return value as Record<string, unknown>;
-  if (typeof value !== 'string' || !value.trim()) return {};
-  try {
-    const parsed = JSON.parse(value);
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
 
 function firstString(record: Record<string, unknown>, keys: readonly string[]): string {
   for (const key of keys) {
@@ -56,9 +47,9 @@ export function deriveChangedFiles(parts: readonly Part[]): ChangedFile[] {
     const tool: ToolPart = part;
     const diff = inlineDiffFromResult(tool.result);
     if (!diff) continue;
-    const path = fileEditPath(tool.args, recordOf(tool.result));
+    const path = fileEditPath(tool.args, parseObject(tool.result));
     if (!path) continue;
-    const stats = countDiffLineStats(diff);
+    const stats = diffStats(diff);
     const existing = byPath.get(path);
     if (existing) {
       existing.added += stats.added;

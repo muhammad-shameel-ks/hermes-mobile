@@ -9,7 +9,6 @@
 import { memo, useMemo } from 'react';
 import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { paletteFor, type Palette } from '../files/palette.ts';
 import { displayLine, MAX_COLUMNS } from '../files/text.ts';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
 import { gutterDigits, overviewRuns, type DiffLine } from './diff.ts';
@@ -18,9 +17,9 @@ const FONT = 11.2;
 const LINE = 20;
 const CHAR = FONT * 0.6;
 
-type RowProps = { row: DiffLine; text: string; gutter: number; width: number; t: Tokens; palette: Palette };
+type RowProps = { row: DiffLine; text: string; gutter: number; width: number; t: Tokens };
 
-const Row = memo(function Row({ row, text, gutter, width, t, palette }: RowProps) {
+const Row = memo(function Row({ row, text, gutter, width, t }: RowProps) {
   const add = row.kind === 'add';
   const remove = row.kind === 'remove';
   const font = { fontFamily: MONO, fontSize: FONT, lineHeight: LINE, includeFontPadding: false } as const;
@@ -30,17 +29,17 @@ const Row = memo(function Row({ row, text, gutter, width, t, palette }: RowProps
         width,
         height: LINE,
         flexDirection: 'row',
-        backgroundColor: add ? palette.diffAddBackground : remove ? palette.diffRemoveBackground : undefined,
+        backgroundColor: add ? t.uiDiffAddBackground : remove ? t.uiDiffRemoveBackground : undefined,
       }}
     >
       <Text allowFontScaling={false} style={[font, { width: gutter, paddingRight: 8, textAlign: 'right', color: t.uiTextQuaternary }]}>
         {row.newNo ?? ''}
       </Text>
-      <View style={{ width: 2, backgroundColor: add ? palette.diffAddBorder : remove ? palette.diffRemoveBorder : 'transparent' }} />
+      <View style={{ width: 2, backgroundColor: add ? t.uiDiffAddBorder : remove ? t.uiDiffRemoveBorder : 'transparent' }} />
       <Text
         allowFontScaling={false}
         numberOfLines={1}
-        style={[font, { paddingLeft: 10, color: add ? palette.diffAddForeground : remove ? palette.diffRemoveForeground : t.uiTextSecondary }]}
+        style={[font, { paddingLeft: 10, color: add ? t.uiDiffAddForeground : remove ? t.uiDiffRemoveForeground : t.uiTextSecondary }]}
       >
         {text || ' '}
       </Text>
@@ -50,7 +49,6 @@ const Row = memo(function Row({ row, text, gutter, width, t, palette }: RowProps
 
 export function DiffView({ rows }: { rows: readonly DiffLine[] }) {
   const t = useTokens();
-  const palette = paletteFor(t);
   const { texts, gutter, width } = useMemo(() => {
     const shown = rows.map((row) => displayLine(row.text));
     const gutterWidth = Math.max(36, Math.ceil(gutterDigits(rows) * CHAR) + 16);
@@ -72,7 +70,7 @@ export function DiffView({ rows }: { rows: readonly DiffLine[] }) {
           maxToRenderPerBatch={40}
           windowSize={9}
           contentContainerStyle={{ paddingVertical: 8 }}
-          renderItem={({ item, index }) => <Row row={item} text={texts[index]} gutter={gutter} width={width} t={t} palette={palette} />}
+          renderItem={({ item, index }) => <Row row={item} text={texts[index]} gutter={gutter} width={width} t={t} />}
         />
       </ScrollView>
       {runs.length ? (
@@ -87,7 +85,7 @@ export function DiffView({ rows }: { rows: readonly DiffLine[] }) {
                 top: `${run.startPct}%`,
                 height: `${run.sizePct}%`,
                 minHeight: 2,
-                backgroundColor: run.kind === 'add' ? palette.diffAddBorder : palette.diffRemoveBorder,
+                backgroundColor: run.kind === 'add' ? t.uiDiffAddBorder : t.uiDiffRemoveBorder,
               }}
             />
           ))}

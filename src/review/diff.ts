@@ -1,9 +1,10 @@
 /**
- * The Review surface's unified-diff parser. The rows follow the desktop's
+ * The unified-diff parser the Review surface, the Files DIFF view and the
+ * transcript's inline diffs share. The rows follow the desktop's
  * `components/chat/diff-lines.tsx`: git's file header is dropped, hunks are
  * separated by one blank row, the `+/-` gutter is stripped so a change reads by
- * its tint, and line numbers come from each `@@ -a,b +c,d @@` header.
- * Self-contained; the inline transcript cards parse diffs in src/chat/.
+ * its tint, and line numbers come from each `@@ -a,b +c,d @@` header. Pure, so
+ * it is tested directly.
  */
 
 export type DiffKind = 'add' | 'context' | 'remove';
@@ -15,6 +16,8 @@ export type DiffLine = {
   oldNo?: number;
   newNo?: number;
 };
+
+export type DiffStats = { added: number; removed: number };
 
 export type DiffHunk = {
   header: string;
@@ -71,6 +74,45 @@ export function diffRows(diff: string): DiffLine[] {
   return out;
 }
 
+// A tool's edit diff can come without hunk headers; each line then reads by its own
+// marker. The git preamble repeats the path the tool row already shows (and reads
+// badly for absolute paths: `a//Users/…`), so everything before the first hunk goes.
+const HEADER_PREFIXES = ['diff --git', 'index ', '--- ', '+++ ', 'similarity ', 'rename ', 'new file', 'deleted file'];
+
+function isArrowHeader(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.includes('→') && /^\S.*→\s*\S+$/.test(trimmed) && !/^[+\-@]/.test(trimmed);
+}
+
+export function stripDiffFileHeaders(diff: string): string {
+  const lines = diff.split('\n');
+  let start = 0;
+  for (; start < lines.length; start += 1) {
+    const line = lines[start];
+    if (line.startsWith('@@')) break;
+    if (line.trim() === '' || isArrowHeader(line) || HEADER_PREFIXES.some((prefix) => line.startsWith(prefix))) continue;
+    break;
+  }
+  return lines.slice(start).join('\n');
+}
+
+function looseKind(line: string): DiffKind {
+  if (line.startsWith('+') && !line.startsWith('+++')) return 'add';
+  if (line.startsWith('-') && !line.startsWith('---')) return 'remove';
+  return 'context';
+}
+
+/** `diffRows` for a payload that may carry no hunk headers: those fall back to colouring each line */
+export function inlineDiffRows(diff: string): DiffLine[] {
+  if (parseHunks(diff).length > 0) return diffRows(diff);
+  return stripDiffFileHeaders(diff)
+    .split('\n')
+    .map((line) => {
+      const kind = looseKind(line);
+      return { kind, text: kind !== 'context' || line.startsWith(' ') ? line.slice(1) : line };
+    });
+}
+
 /**
  * The preview's DIFF view: every line of the current file with its real number,
  * the hunks only marking rows as added and slotting the removed rows in between,
@@ -117,10 +159,19 @@ export function fullFileDiffRows(diff: string, fullText: string): DiffLine[] {
   return out;
 }
 
-export function diffStats(diff: string): { added: number; removed: number } {
+export function diffStats(diff: string): DiffStats {
   let added = 0;
   let removed = 0;
-  for (const hunk of parseHunks(diff)) {
+  const hunks = parseHunks(diff);
+  if (hunks.length === 0) {
+    for (const line of diff.split('\n')) {
+      const kind = looseKind(line);
+      if (kind === 'add') added += 1;
+      else if (kind === 'remove') removed += 1;
+    }
+    return { added, removed };
+  }
+  for (const hunk of hunks) {
     for (const line of hunk.lines) {
       if (line.kind === 'add') added += 1;
       else if (line.kind === 'remove') removed += 1;

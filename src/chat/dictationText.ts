@@ -13,12 +13,6 @@ export function recordingCapSeconds(value: unknown): number {
   return Math.max(1, Math.min(Math.trunc(configured), 600));
 }
 
-/** desktop `VoiceActivity`'s clock */
-export function formatElapsed(seconds: number): string {
-  const whole = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(whole / 60)}:${(whole % 60).toString().padStart(2, '0')}`;
-}
-
 /** the recogniser reports -2..10 and anything at or under 0 is inaudible; the bars take 0..1 */
 export const levelFromVolume = (value: number) => Math.max(0, Math.min(value / 10, 1));
 

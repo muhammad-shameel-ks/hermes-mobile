@@ -5,6 +5,8 @@
  * of the desktop's tool/delegate-model. Pure.
  */
 
+import { parseObject, type Json } from './json.ts';
+
 export type SubagentStatus = 'completed' | 'failed' | 'interrupted' | 'queued' | 'running';
 
 /** the slice of a live subagent a row reads; the status stack's store satisfies it structurally */
@@ -37,19 +39,6 @@ export type DelegateRow = {
   sessionId?: string;
   status: DelegateRowStatus;
 };
-
-type Json = Record<string, unknown>;
-
-function parseObject(value: unknown): Json {
-  if (typeof value === 'object' && value !== null && !Array.isArray(value)) return value as Json;
-  if (typeof value !== 'string' || !value.trim()) return {};
-  try {
-    const parsed = JSON.parse(value);
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as Json) : {};
-  } catch {
-    return {};
-  }
-}
 
 const field = (record: Json, key: string): string => {
   const value = record[key];

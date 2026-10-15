@@ -12,11 +12,10 @@ import Svg, { Path } from 'react-native-svg';
 
 import { mixPct } from '../ui/color.ts';
 import { useTokens } from '../ui/tokens.ts';
-import { FileGlyph, type FileGlyphName } from './glyphs.tsx';
-import { paletteFor } from './palette.ts';
+import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
-export function HeaderAction({ icon, label, onPress, busy, disabled }: { icon: FileGlyphName; label: string; onPress: () => void; busy?: boolean; disabled?: boolean }) {
+export function HeaderAction({ icon, label, onPress, busy, disabled }: { icon: CodiconName; label: string; onPress: () => void; busy?: boolean; disabled?: boolean }) {
   const t = useTokens();
   return (
     <Pressable
@@ -27,7 +26,7 @@ export function HeaderAction({ icon, label, onPress, busy, disabled }: { icon: F
       accessibilityLabel={label}
       style={({ pressed }) => [styles.headerAction, (pressed || disabled) && { opacity: 0.5 }]}
     >
-      {busy ? <GlyphSpinner size={14} color={t.uiTextTertiary} /> : <FileGlyph name={icon} size={16} color={t.uiTextSecondary} />}
+      {busy ? <GlyphSpinner size={14} color={t.uiTextTertiary} /> : <Codicon name={icon} size={16} color={t.uiTextSecondary} />}
     </Pressable>
   );
 }
@@ -68,9 +67,8 @@ export function EmptyState({
   tone?: 'neutral' | 'warning';
 }) {
   const t = useTokens();
-  const palette = paletteFor(t);
   const warning = tone === 'warning';
-  const cube = warning ? mixPct(palette.yellow, 0.7, 'transparent') : mixPct(t.dtForeground, 0.35, 'transparent');
+  const cube = warning ? mixPct(t.uiYellow, 0.7, 'transparent') : mixPct(t.dtForeground, 0.35, 'transparent');
   return (
     <View style={styles.center}>
       <Svg width={64} height={64} viewBox="0 0 64 64" accessible={false}>
@@ -88,8 +86,8 @@ export function EmptyState({
           style={({ pressed }) => [
             styles.pill,
             {
-              backgroundColor: warning ? mixPct(palette.yellow, 0.15, 'transparent') : t.uiChatSurfaceBackground,
-              borderColor: warning ? mixPct(palette.yellow, 0.4, 'transparent') : t.uiStrokePrimary,
+              backgroundColor: warning ? mixPct(t.uiYellow, 0.15, 'transparent') : t.uiChatSurfaceBackground,
+              borderColor: warning ? mixPct(t.uiYellow, 0.4, 'transparent') : t.uiStrokePrimary,
             },
             (pressed || primary.disabled) && { opacity: 0.6 },
           ]}

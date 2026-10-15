@@ -20,7 +20,7 @@ import { useTokens } from '../ui/tokens.ts';
 import { detectArtifact, sanitizeLanguageTag } from './artifact.ts';
 import { AlertBlock, extractAlert } from './cards/AlertBlock.tsx';
 import { ArtifactCard } from './cards/ArtifactCard.tsx';
-import { copyPath } from './cards/copyPath.ts';
+import { copyText } from '../ui/clipboard.ts';
 import { DiffView } from './cards/DiffView.tsx';
 import { ListingSet } from './cards/ListingCard.tsx';
 import { MediaAttachment } from './cards/MediaAttachment.tsx';
@@ -77,7 +77,7 @@ export class TranscriptRenderer extends Renderer {
         selectable
         accessibilityRole="button"
         accessibilityLabel={`Copy the path ${path}`}
-        onPress={() => void copyPath(path)}
+        onPress={() => void copyText(path)}
         style={styles}
       >
         {children}

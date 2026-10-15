@@ -12,7 +12,7 @@ import { Image, Linking, Pressable, StyleSheet, Text, View, type ImageLoadEventD
 import { useTokens } from '../../ui/tokens.ts';
 import { useOpenLightbox } from '../Lightbox.tsx';
 import { isInlineMediaSrc, mediaKind, mediaName } from '../media.ts';
-import { copyPath } from './copyPath.ts';
+import { copyText } from '../../ui/clipboard.ts';
 import { SvgBlock } from './SvgBlock.tsx';
 import { useImageSource } from './useMedia.ts';
 
@@ -80,7 +80,7 @@ function MediaImageImpl({
         <Text
           accessibilityRole="button"
           style={{ color: t.uiTextPrimary, fontWeight: '500' }}
-          onPress={() => (local ? void copyPath(src) : void Linking.openURL(src).catch(() => {}))}
+          onPress={() => (local ? void copyText(src) : void Linking.openURL(src).catch(() => {}))}
         >
           {local ? 'Copy path' : 'Open image'}
         </Text>

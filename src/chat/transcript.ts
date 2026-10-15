@@ -12,6 +12,7 @@
  */
 
 import { reactionsFromMetadata, withAgentReactions, type Reaction } from './actionBar.ts';
+import { parseObject } from './json.ts';
 
 export type ToolPart = {
   kind: 'tool';
@@ -105,17 +106,6 @@ export function textOf(value: unknown): string {
       .join('\n');
   }
   return '';
-}
-
-function parseObject(value: unknown): Record<string, unknown> {
-  if (typeof value === 'string') {
-    try {
-      return asRecord(JSON.parse(value)) ?? {};
-    } catch {
-      return {};
-    }
-  }
-  return asRecord(value) ?? {};
 }
 
 const CONTEXT_KEYS = ['context', 'command', 'path', 'file_path', 'query', 'url', 'pattern', 'name', 'goal'];

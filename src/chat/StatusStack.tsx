@@ -18,11 +18,11 @@ import Animated, { Easing, interpolate, useAnimatedStyle, useReducedMotion, useS
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { mixPct } from '../ui/color.ts';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
+import { formatElapsed } from './actionBar.ts';
 import type { ChatController, ChatEntry } from './controller.ts';
 import { QueuePanel, type QueueActions } from './QueuePanel.tsx';
 import { BrailleSpinner, MicroButton, PendingGlyph, ROW_TEXT, StateDot, StatusRow, StatusSection } from './StatusRows.tsx';
 import {
-  formatElapsed,
   groupLabel,
   groupStatusItems,
   hasRunningBackground,

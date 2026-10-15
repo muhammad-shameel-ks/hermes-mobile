@@ -106,6 +106,8 @@ test('a saved image always gets an extension a file manager can open', async () 
 });
 
 test('the audio clock reads minutes and zero-padded seconds', () => {
+  assert.equal(formatClock(0), '0:00');
+  assert.equal(formatClock(65.9), '1:05');
   assert.equal(formatClock(7.9), '0:07');
   assert.equal(formatClock(750), '12:30');
   assert.equal(formatClock(NaN), '0:00');

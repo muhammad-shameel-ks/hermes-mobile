@@ -1,7 +1,87 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { countDiffLineStats, inlineDiffFromResult, parseDiff, stripDiffFileHeaders, stripInlineDiffChrome } from '../src/chat/diff.ts';
+import { diffRows, diffStats, fullFileDiffRows, gutterDigits, inlineDiffRows, isBinaryDiff, overviewRuns, parseHunks, stripDiffFileHeaders } from '../src/review/diff.ts';
+
+const diff = [
+  'diff --git a/src/a.ts b/src/a.ts',
+  'index 1111111..2222222 100644',
+  '--- a/src/a.ts',
+  '+++ b/src/a.ts',
+  '@@ -1,4 +1,5 @@ function head()',
+  ' one',
+  '-two',
+  '+two!',
+  '+three',
+  ' four',
+  '@@ -20,2 +21,2 @@',
+  ' tail',
+  '-old',
+  '+new',
+  '\\ No newline at end of file',
+  '',
+].join('\n');
+
+test('hunks carry their start lines and typed lines, headers dropped', () => {
+  const hunks = parseHunks(diff);
+  assert.equal(hunks.length, 2);
+  assert.deepEqual([hunks[0].oldStart, hunks[0].newStart], [1, 1]);
+  assert.deepEqual([hunks[1].oldStart, hunks[1].newStart], [20, 21]);
+  assert.deepEqual(hunks[0].lines.map((l) => l.kind), ['context', 'remove', 'add', 'add', 'context']);
+  assert.equal(hunks[1].lines.length, 3);
+});
+
+test('rows number each side from the hunk headers and blank between hunks', () => {
+  const rows = diffRows(diff);
+  assert.deepEqual(rows[0], { kind: 'context', text: 'one', oldNo: 1, newNo: 1 });
+  assert.deepEqual(rows[1], { kind: 'remove', text: 'two', oldNo: 2 });
+  assert.deepEqual(rows[2], { kind: 'add', text: 'two!', newNo: 2 });
+  assert.deepEqual(rows[3], { kind: 'add', text: 'three', newNo: 3 });
+  assert.deepEqual(rows[4], { kind: 'context', text: 'four', oldNo: 3, newNo: 4 });
+  assert.deepEqual(rows[5], { kind: 'context', text: '' });
+  assert.deepEqual(rows[6], { kind: 'context', text: 'tail', oldNo: 20, newNo: 21 });
+  assert.equal(rows.length, 9);
+  assert.equal(gutterDigits(rows), 2);
+});
+
+test('a removed line that starts with dashes is still a removal', () => {
+  const rows = diffRows('@@ -1,2 +1,1 @@\n--- a comment\n keep\n');
+  assert.deepEqual(rows[0], { kind: 'remove', text: '-- a comment', oldNo: 1 });
+});
+
+test('stats count adds and removes, binary diffs are recognised', () => {
+  assert.deepEqual(diffStats(diff), { added: 3, removed: 2 });
+  assert.equal(isBinaryDiff('diff --git a/x.png b/x.png\nBinary files a/x.png and b/x.png differ\n'), true);
+  assert.equal(isBinaryDiff(diff), false);
+  assert.deepEqual(diffRows('Binary files a/x and b/x differ\n'), []);
+});
+
+test('an untracked file diff is all additions', () => {
+  const rows = diffRows('diff --git a/new.txt b/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+a\n+b\n');
+  assert.deepEqual(rows.map((r) => [r.kind, r.newNo]), [['add', 1], ['add', 2]]);
+});
+
+test('a full-file diff keeps every current line and slots removals in', () => {
+  const text = 'one\ntwo!\nthree\nfour';
+  const rows = fullFileDiffRows('@@ -1,3 +1,4 @@\n one\n-two\n+two!\n+three\n four\n', text);
+  assert.deepEqual(rows.map((r) => [r.kind, r.text, r.oldNo, r.newNo]), [
+    ['context', 'one', 1, 1],
+    ['remove', 'two', 2, undefined],
+    ['add', 'two!', undefined, 2],
+    ['add', 'three', undefined, 3],
+    ['context', 'four', 3, 4],
+  ]);
+  assert.equal(fullFileDiffRows('', 'a\nb').length, 2);
+});
+
+test('the overview ruler coalesces runs of one kind and skips context', () => {
+  const rows = diffRows('@@ -1,5 +1,5 @@\n a\n-b\n-c\n+d\n e\n');
+  assert.deepEqual(overviewRuns(rows), [
+    { kind: 'remove', startPct: 20, sizePct: 40 },
+    { kind: 'add', startPct: 60, sizePct: 20 },
+  ]);
+  assert.deepEqual(overviewRuns([]), []);
+});
 
 const GIT_DIFF = [
   'diff --git a/src/app.ts b/src/app.ts',
@@ -26,7 +106,7 @@ test('header preamble is dropped up to the first hunk', () => {
 });
 
 test('lines carry their kind, stripped marker and numbers from the hunk headers', () => {
-  const lines = parseDiff(GIT_DIFF);
+  const lines = inlineDiffRows(GIT_DIFF);
   assert.deepEqual(lines[0], { kind: 'context', text: 'import a from "a";', oldNo: 1, newNo: 1 });
   assert.deepEqual(lines[1], { kind: 'remove', text: 'const x = 1;', oldNo: 2 });
   assert.deepEqual(lines[2], { kind: 'add', text: 'const x = 2;', newNo: 2 });
@@ -35,14 +115,14 @@ test('lines carry their kind, stripped marker and numbers from the hunk headers'
 });
 
 test('a blank context row separates hunks and the second hunk restarts its numbers', () => {
-  const lines = parseDiff(GIT_DIFF);
+  const lines = inlineDiffRows(GIT_DIFF);
   assert.deepEqual(lines[5], { kind: 'context', text: '' });
   assert.deepEqual(lines[6], { kind: 'context', text: 'tail', oldNo: 10, newNo: 11 });
   assert.equal(lines.length, 9);
 });
 
 test('a payload without hunks falls back to colouring each line', () => {
-  const lines = parseDiff('-gone\n+here\n kept');
+  const lines = inlineDiffRows('-gone\n+here\n kept');
   assert.deepEqual(
     lines.map((line) => [line.kind, line.text]),
     [
@@ -55,15 +135,6 @@ test('a payload without hunks falls back to colouring each line', () => {
 
 test('"\\ No newline" markers and +++/--- file lines never count as changes', () => {
   const diff = '--- a/f\n+++ b/f\n@@ -1 +1 @@\n-a\n\\ No newline at end of file\n+b';
-  assert.deepEqual(countDiffLineStats(diff), { added: 1, removed: 1 });
-  assert.equal(parseDiff(diff).length, 2);
-});
-
-test('inline diffs come from the result, chrome and escape codes stripped', () => {
-  const diff = '┊ review diff\n\u001b[32m@@ -1 +1 @@\u001b[0m\n-a\n+b';
-  assert.equal(stripInlineDiffChrome(diff), '@@ -1 +1 @@\n-a\n+b');
-  assert.equal(inlineDiffFromResult(JSON.stringify({ success: true, diff: '@@ -1 +1 @@\n-a\n+b' })), '@@ -1 +1 @@\n-a\n+b');
-  assert.equal(inlineDiffFromResult({ inline_diff: '@@ -1 +1 @@\n-a\n+b', diff: 'ignored' }), '@@ -1 +1 @@\n-a\n+b');
-  assert.equal(inlineDiffFromResult('not json'), '');
-  assert.equal(inlineDiffFromResult(undefined), '');
+  assert.deepEqual(diffStats(diff), { added: 1, removed: 1 });
+  assert.equal(inlineDiffRows(diff).length, 2);
 });

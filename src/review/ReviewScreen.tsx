@@ -10,16 +10,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { OverlayScreen } from '../app/overlay.tsx';
-import { FileGlyph } from '../files/glyphs.tsx';
 import { gateway } from '../files/gateway.ts';
-import { paletteFor } from '../files/palette.ts';
 import { displayPath, joinPath } from '../files/path.ts';
 import { createFilesRest, createReviewRest, errorMessage, type RepoStatus } from '../files/rest.ts';
 import { EmptyState, ErrorBanner, HeaderAction, Loading } from '../files/ui.tsx';
+import { Codicon } from '../ui/Codicon.tsx';
+import { copyText } from '../ui/clipboard.ts';
 import { ActionSheet, type SheetAction } from '../ui/Sheet.tsx';
 import { mixPct } from '../ui/color.ts';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
-import { copyText } from '../files/transfer.ts';
 import { DiffCount } from './DiffCount.tsx';
 import {
   buildReviewFlatList,
@@ -62,7 +61,6 @@ const BASE_INSET = 14;
 
 export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: givenBase, focusPath, onClose, onOpenDiff, onOpenFile }: ReviewScreenProps) {
   const t = useTokens();
-  const palette = paletteFor(t);
   const { api, profile } = gateway();
   const files = useMemo(() => createFilesRest(api, profile), [api, profile]);
   const review = useMemo(() => createReviewRest(api), [api]);
@@ -147,17 +145,17 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
           accessibilityState={{ expanded: isOpen }}
           style={({ pressed }) => [styles.row, { paddingLeft: indent }, pressed && { backgroundColor: t.uiRowActiveBackground }]}
         >
-          <FileGlyph name={isOpen ? 'folder-opened' : 'folder'} size={14} color={t.uiTextTertiary} />
+          <Codicon name={isOpen ? 'folder-opened' : 'folder'} size={14} color={t.uiTextTertiary} />
           <Text numberOfLines={1} style={[styles.name, { color: t.uiTextSecondary }]}>
             {node.name}
           </Text>
-          {!isOpen ? <DiffCount added={node.added} removed={node.removed} palette={palette} /> : null}
+          {!isOpen ? <DiffCount added={node.added} removed={node.removed} /> : null}
         </Pressable>
       );
     }
     const file = node.file!;
     const glyph = STATUS_GLYPH[file.status] ?? STATUS_GLYPH.M;
-    const tint = glyph.tone === 'green' ? palette.green : glyph.tone === 'red' ? palette.red : glyph.tone === 'yellow' ? palette.statusModified : glyph.tone === 'blue' ? palette.statusRenamed : t.uiTextQuaternary;
+    const tint = glyph.tone === 'green' ? t.uiGreen : glyph.tone === 'red' ? t.uiRed : glyph.tone === 'yellow' ? t.uiStatusModified : glyph.tone === 'blue' ? t.uiStatusRenamed : t.uiTextQuaternary;
     return (
       <Pressable
         onPress={() => cwd && onOpenDiff(file, target(cwd))}
@@ -168,7 +166,7 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
         accessibilityHint="Long press for more actions"
         style={({ pressed }) => [styles.row, { paddingLeft: indent }, pressed && { backgroundColor: t.uiRowActiveBackground }]}
       >
-        <FileGlyph name={glyph.icon} size={14} color={tint} />
+        <Codicon name={glyph.icon} size={14} color={tint} />
         <View style={styles.fileText}>
           <Text numberOfLines={1} style={[styles.name, { color: t.uiTextSecondary, flexShrink: 0, maxWidth: '100%' }]}>
             {node.name}
@@ -179,8 +177,8 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
             </Text>
           ) : null}
         </View>
-        <DiffCount added={node.added} removed={node.removed} palette={palette} />
-        {file.staged ? <View accessibilityLabel="Staged" style={[styles.staged, { backgroundColor: mixPct(palette.green, 0.7, 'transparent') }]} /> : null}
+        <DiffCount added={node.added} removed={node.removed} />
+        {file.staged ? <View accessibilityLabel="Staged" style={[styles.staged, { backgroundColor: mixPct(t.uiGreen, 0.7, 'transparent') }]} /> : null}
       </Pressable>
     );
   };
@@ -199,7 +197,7 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
       }
     >
       <View style={[styles.info, { borderBottomColor: t.uiStrokeQuaternary }]}>
-        <FileGlyph name="git-branch" size={13} color={t.uiTextTertiary} />
+        <Codicon name="git-branch" size={13} color={t.uiTextTertiary} />
         <Text numberOfLines={1} style={{ flex: 1, color: t.uiTextSecondary, fontFamily: MONO, fontSize: 11 }}>
           {subtitle || displayPath(cwd) || 'Loading'}
         </Text>

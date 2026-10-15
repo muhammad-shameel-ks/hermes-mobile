@@ -1,15 +1,16 @@
-/** desktop `DiffCount`: `+A −B` line churn in the palette green and red. */
+/** desktop `DiffCount`: `+A −B` line churn in the semantic green and red. */
 
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { Palette } from '../files/palette.ts';
+import { useTokens } from '../ui/tokens.ts';
 
-export function DiffCount({ added, removed, palette, size = 10.24 }: { added: number; removed: number; palette: Palette; size?: number }) {
+export function DiffCount({ added, removed, size = 10.24 }: { added: number; removed: number; size?: number }) {
+  const t = useTokens();
   if (!added && !removed) return null;
   return (
     <View style={styles.counts}>
-      {added > 0 ? <Text style={{ color: palette.green, fontSize: size, fontVariant: ['tabular-nums'] }}>{`+${added}`}</Text> : null}
-      {removed > 0 ? <Text style={{ color: palette.red, fontSize: size, fontVariant: ['tabular-nums'] }}>{`−${removed}`}</Text> : null}
+      {added > 0 ? <Text style={{ color: t.uiGreen, fontSize: size, fontVariant: ['tabular-nums'] }}>{`+${added}`}</Text> : null}
+      {removed > 0 ? <Text style={{ color: t.uiRed, fontSize: size, fontVariant: ['tabular-nums'] }}>{`−${removed}`}</Text> : null}
     </View>
   );
 }
