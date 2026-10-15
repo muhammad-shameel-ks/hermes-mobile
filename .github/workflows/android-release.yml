@@ -51,6 +51,20 @@ jobs:
           # the action's default, so platform-tools is listed explicitly.
           packages: 'platform-tools ndk;27.1.12297006 cmake;3.22.1'
 
+      # Caches Gradle's dependencies, wrapper and build cache between runs.
+      # Only builds on main write to the cache, so every release reuses it.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The native modules' C++ is most of the build and Gradle cannot cache
+      # CMake output, so ccache does it instead.
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: android-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: android-${{ runner.os }}-
+          max-size: 2G
+
       - name: Install dependencies
         run: npm ci
 
@@ -77,9 +91,29 @@ jobs:
       - name: Generate the native Android project
         run: npx expo prebuild --platform android --no-install
 
+      # arm64-v8a only: it covers modern phones, and every extra architecture
+      # repeats the whole native compile.
       - name: Build the release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          # The NDK is reinstalled each run, so compare compilers by content
+          # rather than mtime; headers regenerated each run must not bypass
+          # the cache either.
+          CCACHE_COMPILERCHECK: content
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_NOHASHDIR: 'true'
+          CCACHE_SLOPPINESS: include_file_mtime,include_file_ctime,time_macros,pch_defines
+        run: >-
+          ./gradlew assembleRelease
+          --build-cache
+          -PreactNativeArchitectures=arm64-v8a
+          -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1g"
+
+      - name: Report the ccache hit rate
+        if: always()
+        run: ccache --show-stats
 
       - name: Collect the APK
         run: |

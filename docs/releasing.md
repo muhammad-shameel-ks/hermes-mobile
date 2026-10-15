@@ -15,7 +15,9 @@ Pushing to `main` triggers `.github/workflows/android-release.yml`, which:
    since the last tag (`scripts/changelog.mjs`);
 4. regenerates the native project with `expo prebuild` (`android/` is gitignored
    and generated, never edited by hand);
-5. builds `assembleRelease`;
+5. builds `assembleRelease` for **arm64-v8a only** (modern phones; the APK does
+   not install on 32-bit ARM phones or x86 emulators), reusing the Gradle cache
+   and a ccache of the native C++ from earlier runs;
 6. commits the version bump and changelog back to `main` as
    `chore(release): vX.Y.Z [skip ci]`, tags it `vX.Y.Z`, and publishes a GitHub
    release with `hermes-X.Y.Z.apk` attached.
