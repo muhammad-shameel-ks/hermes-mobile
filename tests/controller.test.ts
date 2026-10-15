@@ -298,3 +298,27 @@ test('a draft keeps its model pick for session.create; a live session switches o
   assert.equal(snap().entries.s1.model?.model, 'a');
   controller.dispose();
 });
+
+test('an effort picked with a model on a live session is sent over config.set reasoning', async () => {
+  const { gateway, controller, snap } = await setup();
+  gateway.handlers['model.options'] = () => ({ providers: [{ slug: 'nous', name: 'Nous', models: ['a', 'b'] }], model: 'a', provider: 'nous' });
+  gateway.handlers['session.create'] = () => ({ session_id: 'rt-1', stored_session_id: 's1', message_count: 0, messages: [], info: { model: 'a', provider: 'nous' } });
+  gateway.handlers['prompt.submit'] = () => ({ status: 'streaming' });
+  gateway.handlers['config.set'] = (p) => (p.key === 'model' ? { key: 'model', info: { model: 'b', provider: 'nous' } } : { key: 'reasoning', value: p.value });
+  await controller.refreshModels();
+  await controller.send('hello');
+  await flush();
+
+  const outcome = await controller.selectModel({ model: 'b', provider: 'nous', effort: 'none' });
+  assert.equal(outcome.kind, 'ok');
+  const sets = gateway.called('config.set').map((c) => [c.params.key, c.params.value]);
+  assert.deepEqual(sets, [
+    ['model', 'b --provider nous'],
+    ['reasoning', 'none'],
+  ]);
+  assert.equal(snap().entries.s1.model?.effort, 'none');
+
+  await controller.selectModel({ model: 'a', provider: 'nous' });
+  assert.equal(gateway.called('config.set').filter((c) => c.params.key === 'reasoning').length, 1, 'a plain model pick leaves the effort alone');
+  controller.dispose();
+});

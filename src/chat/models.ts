@@ -10,7 +10,7 @@
 
 import type { ModelOptionProvider } from '../../vendor/hermes-shared/src/gateway-contract.generated.ts';
 import { modelSearchText } from '../../vendor/hermes-shared/src/model-search-text.ts';
-import { REASONING_EFFORTS } from '../../vendor/hermes-shared/src/reasoning-effort.ts';
+import { DEFAULT_REASONING_EFFORT, isReasoningEffort, REASONING_EFFORTS } from '../../vendor/hermes-shared/src/reasoning-effort.ts';
 
 export type ModelSelection = { model: string; provider: string; effort?: string | null };
 
@@ -142,6 +142,21 @@ export function effortShortLabel(effort: string | null | undefined): string {
   return key ? (SHORT_EFFORT[key] ?? key) : '';
 }
 
+const normalizeEffort = (effort: string | null | undefined) => (effort ?? '').trim().toLowerCase();
+
+/** desktop lib/reasoning-effort.ts `resolveReasoningEffort`: the row's level, else the profile's, else Hermes' own */
+export function resolveEffort(effort: string | null | undefined, defaultEffort: string | null | undefined): string {
+  const own = normalizeEffort(effort);
+  if (isReasoningEffort(own)) return own;
+  const fallback = normalizeEffort(defaultEffort);
+  return isReasoningEffort(fallback) ? fallback : DEFAULT_REASONING_EFFORT;
+}
+
+/** desktop `isThinkingEnabled`: only an explicit `none` (on the row or inherited from the profile) turns thinking off */
+export function thinkingEnabled(effort: string | null | undefined, defaultEffort: string | null | undefined): boolean {
+  return (normalizeEffort(effort) || normalizeEffort(defaultEffort)) !== 'none';
+}
+
 // ─── catalog rows ────────────────────────────────────────────────────────────
 
 export const modelKey = (provider: string, model: string) => `${provider}::${model}`;
@@ -155,7 +170,10 @@ export type ModelRow = {
   tag: string;
   favorite: boolean;
   current: boolean;
+  /** the model takes a reasoning effort; a catalog that says nothing is read as yes, as the desktop reads it */
   reasoning: boolean;
+  /** thinking can be switched off; only an explicit `can_disable_reasoning: false` says it cannot */
+  canDisableReasoning: boolean;
 };
 
 export type ModelGroup = {
@@ -165,6 +183,35 @@ export type ModelGroup = {
   detail: string | null;
   rows: ModelRow[];
 };
+
+function reasoningSupport(provider: ModelOptionProvider | undefined, model: string): Pick<ModelRow, 'reasoning' | 'canDisableReasoning'> {
+  const caps = provider?.capabilities?.[model];
+  return { reasoning: caps?.reasoning ?? true, canDisableReasoning: caps?.can_disable_reasoning !== false };
+}
+
+/** the row for the selected model, found in the catalog or, when the catalog doesn't list it, built from the id alone */
+export function selectedModelRow(providers: readonly ModelOptionProvider[], selection: ModelSelection): ModelRow {
+  const provider = providers.find((p) => p.slug === selection.provider);
+  const { name, tag } = modelDisplayParts(selection.model);
+  return {
+    key: modelKey(selection.provider, selection.model),
+    provider: selection.provider,
+    providerName: provider?.name || selection.provider,
+    model: selection.model,
+    name,
+    tag,
+    favorite: false,
+    current: true,
+    ...reasoningSupport(provider, selection.model),
+  };
+}
+
+/** the composer's reasoning pill (`Med`, `High`, `Off`); null when the model takes no effort, so the pill hides as the desktop's does */
+export function effortPillLabel(providers: readonly ModelOptionProvider[], selection: ModelSelection | null): string | null {
+  if (!selection || !selectedModelRow(providers, selection).reasoning) return null;
+  const key = normalizeEffort(selection.effort);
+  return effortShortLabel(key === 'none' ? key : resolveEffort(key, null));
+}
 
 function accountsLabel(provider: ModelOptionProvider): string | null {
   const count = provider.usage?.accounts?.length ?? 0;
@@ -204,7 +251,7 @@ export function buildModelGroups(
         tag,
         favorite: favorites.has(key),
         current: options.current?.provider === provider.slug && options.current?.model === model,
-        reasoning: provider.capabilities?.[model]?.reasoning ?? false,
+        ...reasoningSupport(provider, model),
       };
       byKey.set(key, row);
       if (matches(row, terms)) rows.push(row);

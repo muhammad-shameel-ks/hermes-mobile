@@ -41,8 +41,8 @@ import { DictationActivity, MicButton } from './DictationControls.tsx';
 import { FOLLOW_UP_PLACEHOLDERS, introBody, NEW_SESSION_PLACEHOLDERS } from './intro.ts';
 import { EditBanner, MessageActionsProvider, useEditingText, useMessageChrome, type MessageEdit } from './messageChrome.tsx';
 import { MessageView } from './MessageView.tsx';
-import { ModelPicker } from './ModelPicker.tsx';
-import { modelPillLabel, type ModelSelection } from './models.ts';
+import { ModelPicker, type ModelPickerView } from './ModelPicker.tsx';
+import { effortPillLabel, modelPillLabel, type ModelSelection } from './models.ts';
 import { RestoredDraftNotice } from './RestoredDraftNotice.tsx';
 import { RequestsProvider } from './RequestsProvider.tsx';
 import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
@@ -118,10 +118,16 @@ export default function ChatScreen({
   const backendMenu = useBackendMenu(entry.isBotChat);
   useImeBack({ sheetOpen: sheet !== null, closeSheet: sheet?.dismiss, reorderKey: pickerOpen ? 'picker' : backendMenu.open ? 'backend' : null });
   const sheetScope = useMemo(() => ({ request: controller.request, sessionId: entry.runtimeId, profile: entry.profile }), [controller, entry.runtimeId, entry.profile]);
-  const openPicker = useCallback(() => {
-    setPickerOpen(true);
-    if (!models.providers.length || models.error) void controller.refreshModels();
-  }, [controller, models.providers.length, models.error]);
+  const [pickerView, setPickerView] = useState<ModelPickerView>('models');
+  const defaultEffort = useSyncExternalStore(controller.subscribe, () => controller.getSnapshot().defaultEffort);
+  const openPicker = useCallback(
+    (view: ModelPickerView = 'models') => {
+      setPickerView(view);
+      setPickerOpen(true);
+      if (!models.providers.length || models.error) void controller.refreshModels();
+    },
+    [controller, models.providers.length, models.error],
+  );
   const openUi = useCallback(
     (ui: SlashUi) => {
       if (ui === 'model') return openPicker();
@@ -229,6 +235,7 @@ export default function ChatScreen({
             followUp={messages.length > 0}
             edit={chrome.edit}
             modelLabel={modelPillLabel(currentModel?.model)}
+            effortLabel={effortPillLabel(models.providers, currentModel)}
             onSheet={setSheet}
             onQueue={(text) => controller.queueMessage(text)}
             onSend={(text, attachments) => {
@@ -238,7 +245,8 @@ export default function ChatScreen({
             }}
             onStop={() => void controller.stop()}
             onNotice={notify}
-            onModelPicker={openPicker}
+            onModelPicker={() => openPicker('models')}
+            onEffortPicker={() => openPicker('effort')}
           />
           <ChatStatusRow
             t={t}
@@ -256,6 +264,8 @@ export default function ChatScreen({
 
         <ModelPicker
           visible={pickerOpen}
+          view={pickerView}
+          defaultEffort={defaultEffort}
           bottom={dock.height - COMPOSER_DOCK_TOP}
           available={dock.top - 56}
           catalog={models}
@@ -435,12 +445,14 @@ function Composer({
   followUp,
   edit,
   modelLabel,
+  effortLabel,
   onSend,
   onSheet,
   onQueue,
   onStop,
   onNotice,
   onModelPicker,
+  onEffortPicker,
 }: {
   t: Tokens;
   drafts: DraftStore;
@@ -452,12 +464,15 @@ function Composer({
   followUp: boolean;
   edit: MessageEdit;
   modelLabel: string;
+  /** the reasoning pill's text; null hides it for a model with no effort control */
+  effortLabel: string | null;
   onSend: (text: string, attachments: ComposerAttachment[]) => void;
   onSheet: (sheet: ComposerSheet | null) => void;
   onQueue: (text: string) => void;
   onStop: () => void;
   onNotice: (text: string) => void;
   onModelPicker: () => void;
+  onEffortPicker: () => void;
 }) {
   const { text, setText, clear } = useComposerDraft(drafts, profile, session);
   const inputRef = useRef<TextInput>(null);
@@ -560,6 +575,19 @@ function Composer({
           </Text>
           <Codicon name="chevron-down" size={12} color={t.uiTextTertiary} style={{ opacity: 0.7 }} />
         </Pressable>
+        {effortLabel ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Thinking: ${effortLabel}`}
+            onPress={onEffortPicker}
+            hitSlop={4}
+            style={({ pressed }) => [styles.effortPill, { borderRadius: t.radius.full, backgroundColor: pressed ? t.uiControlActiveBackground : t.uiControlHoverBackground }]}
+          >
+            <Text style={[styles.modelPillText, { color: t.uiTextSecondary }]} numberOfLines={1}>
+              {effortLabel}
+            </Text>
+          </Pressable>
+        ) : null}
         <View style={styles.toolbarSpacer} />
         {dictation.available ? <MicButton dictation={dictation} disabled={disabled} /> : null}
         {running && canSend ? (
@@ -639,6 +667,7 @@ const styles = StyleSheet.create({
   placeholder: { position: 'absolute', top: 8, left: 6, right: 6 },
   input: { minHeight: 40, maxHeight: 180, paddingTop: 8, paddingBottom: 8, paddingLeft: 0, paddingRight: 0, textAlignVertical: 'top' },
   modelPill: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 14, maxWidth: 200, flexShrink: 1 },
+  effortPill: { height: 36, paddingHorizontal: 12, justifyContent: 'center', flexShrink: 0 },
   modelPillText: { fontSize: 14, fontWeight: '500', flexShrink: 1 },
   primaryButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   stopGlyph: { width: 12, height: 12, borderRadius: 3 },

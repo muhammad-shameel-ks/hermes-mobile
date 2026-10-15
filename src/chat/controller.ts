@@ -1230,7 +1230,8 @@ export class ChatController {
   /**
    * Switch the open chat's model. A draft keeps the pick for `session.create`; a
    * live session takes it over `config.set` as the desktop sends it. Expensive
-   * models come back as a question the caller answers with `confirm`.
+   * models come back as a question the caller answers with `confirm`. An
+   * `effort` on the selection is applied to the live session after the switch.
    */
   async selectModel(selection: ModelSelection, { confirm = false } = {}): Promise<ModelSwitchOutcome> {
     const key = this.snapshot.openKey;
@@ -1254,6 +1255,8 @@ export class ChatController {
       }
       if (result.info?.model) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(result.info, e.model) }));
       if (result.warning) this.notify(result.warning);
+      // the switch carries only the model; an effort picked with it goes over `reasoning`, as the desktop's `applyPreset` does
+      if (selection.effort) await this.setEffort(selection.effort);
       return { kind: 'ok', deferred: result.deferred === true };
     } catch (error) {
       this.updateEntry(key, (e) => ({ ...e, model: previous }));

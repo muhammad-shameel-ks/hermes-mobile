@@ -11,14 +11,23 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, BackHandler, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 import { Codicon } from '../ui/Codicon.tsx';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import type { ModelCatalog, ModelSwitchOutcome } from './controller.ts';
-import { buildModelGroups, EFFORT_OPTIONS, effortShortLabel, type ModelRow, type ModelSelection } from './models.ts';
+import {
+  buildModelGroups,
+  EFFORT_OPTIONS,
+  effortShortLabel,
+  resolveEffort,
+  selectedModelRow,
+  thinkingEnabled,
+  type ModelRow,
+  type ModelSelection,
+} from './models.ts';
 
 const FAVORITES_KEY = 'hermes.desktop.favorite-models';
 
@@ -46,8 +55,14 @@ function useFavorites() {
   return [favorites, toggle] as const;
 }
 
+export type ModelPickerView = 'models' | 'effort';
+
 type Props = {
   visible: boolean;
+  /** `effort` opens straight onto the current model's thinking options, as the desktop's reasoning pill does */
+  view: ModelPickerView;
+  /** the profile's `agent.reasoning_effort`, what a model inherits until one is picked */
+  defaultEffort: string | null;
   /** distance from the bottom of the chat area to the composer's top edge */
   bottom: number;
   /** room above the panel, for the list's height cap */
@@ -60,18 +75,27 @@ type Props = {
   onEffort: (effort: string) => void;
 };
 
-export function ModelPicker({ visible, bottom, available, catalog, current, onClose, onRefresh, onSelect, onEffort }: Props) {
+export function ModelPicker({ visible, view, defaultEffort, bottom, available, catalog, current, onClose, onRefresh, onSelect, onEffort }: Props) {
   const t = useTokens();
   const [favorites, toggleFavorite] = useFavorites();
   const [query, setQuery] = useState('');
-  const [options, setOptions] = useState<ModelRow | null>(null);
+  const [optionsFor, setOptionsFor] = useState<{ provider: string; model: string } | null>(null);
 
   useEffect(() => {
     if (!visible) {
       setQuery('');
-      setOptions(null);
+      setOptionsFor(null);
+    } else if (view === 'effort' && current) {
+      setOptionsFor({ provider: current.provider, model: current.model });
     }
-  }, [visible]);
+    // only opening decides the view; later catalog or selection changes must not pull the reader back in
+  }, [visible, view]);
+
+  const options = useMemo<ModelRow | null>(() => {
+    if (!optionsFor) return null;
+    const isCurrent = current?.provider === optionsFor.provider && current?.model === optionsFor.model;
+    return { ...selectedModelRow(catalog.providers, optionsFor), current: isCurrent };
+  }, [optionsFor, catalog.providers, current]);
 
   useEffect(() => {
     if (!visible) return;
@@ -99,9 +123,9 @@ export function ModelPicker({ visible, bottom, available, catalog, current, onCl
     }
   };
 
-  const pickEffort = (row: ModelRow, effort: string) => {
+  const pickEffort = (row: ModelRow, effort: string, { keepOpen = false } = {}) => {
     if (row.current) {
-      onClose();
+      if (!keepOpen) onClose();
       onEffort(effort);
     } else {
       void choose(row, effort);
@@ -128,7 +152,14 @@ export function ModelPicker({ visible, bottom, available, catalog, current, onCl
         accessibilityViewIsModal
       >
         {options ? (
-          <EffortMenu t={t} row={options} current={current} onBack={() => setOptions(null)} onPick={(effort) => pickEffort(options, effort)} />
+          <EffortMenu
+            t={t}
+            row={options}
+            current={current}
+            defaultEffort={defaultEffort}
+            onBack={() => setOptionsFor(null)}
+            onPick={(effort, pick) => pickEffort(options, effort, pick)}
+          />
         ) : (
           <>
             <View style={styles.search}>
@@ -171,10 +202,10 @@ export function ModelPicker({ visible, bottom, available, catalog, current, onCl
                         key={`${group.id}:${row.key}`}
                         t={t}
                         row={row}
-                        effort={row.current ? (current?.effort ?? null) : null}
+                        effort={row.current && row.reasoning ? (current?.effort ?? null) : null}
                         onPress={() => void choose(row)}
                         onStar={() => toggleFavorite(row.key)}
-                        onOptions={row.reasoning ? () => setOptions(row) : null}
+                        onOptions={row.reasoning ? () => setOptionsFor({ provider: row.provider, model: row.model }) : null}
                       />
                     ))}
                   </View>
@@ -241,31 +272,35 @@ function ModelRowView({
       {effortLabel ? <Badge t={t} text={effortLabel} outline /> : null}
       {row.current ? <Codicon name="check" size={12} color={t.uiTextPrimary} /> : null}
       {onOptions ? (
-        <Pressable onPress={onOptions} hitSlop={{ top: 8, bottom: 8, left: 6, right: 10 }} accessibilityRole="button" accessibilityLabel={`${row.name} options`}>
+        <Pressable onPress={onOptions} hitSlop={{ top: 8, bottom: 8, left: 6, right: 10 }} accessibilityRole="button" accessibilityLabel={`${row.name} thinking options`} style={styles.chevron}>
           <Codicon name="chevron-right" size={16} color={t.uiTextTertiary} />
         </Pressable>
       ) : (
-        <View style={{ width: 16 }} />
+        <View style={styles.chevron} />
       )}
     </Pressable>
   );
 }
 
+/** desktop app/shell/model-edit-submenu.tsx: a Thinking switch over the effort levels; `none` belongs to the switch, not the list */
 function EffortMenu({
   t,
   row,
   current,
+  defaultEffort,
   onBack,
   onPick,
 }: {
   t: Tokens;
   row: ModelRow;
   current: ModelSelection | null;
+  defaultEffort: string | null;
   onBack: () => void;
-  onPick: (effort: string) => void;
+  onPick: (effort: string, options?: { keepOpen?: boolean }) => void;
 }) {
-  const active = row.current ? (current?.effort ?? '').toLowerCase() : '';
-  const choices = [{ value: 'none', label: 'Thinking off' }, ...EFFORT_OPTIONS];
+  const rowEffort = row.current ? (current?.effort ?? null) : null;
+  const level = resolveEffort(rowEffort, defaultEffort);
+  const thinking = thinkingEnabled(rowEffort, defaultEffort);
   return (
     <View>
       <Pressable onPress={onBack} style={styles.row} accessibilityRole="button" accessibilityLabel="Back to models">
@@ -276,19 +311,33 @@ function EffortMenu({
         {row.tag ? <Badge t={t} text={row.tag} /> : null}
       </Pressable>
       <View style={[styles.separator, { backgroundColor: t.uiStrokeTertiary }]} />
+      {row.canDisableReasoning ? (
+        <View style={styles.row}>
+          <Text style={[styles.rowText, { color: t.uiTextPrimary, flex: 1 }]}>Thinking</Text>
+          <Switch
+            value={thinking}
+            accessibilityLabel="Thinking"
+            onValueChange={(on) => onPick(on ? level : 'none', { keepOpen: true })}
+            trackColor={{ false: t.uiBgQuaternary, true: t.uiAccent }}
+          />
+        </View>
+      ) : null}
       <Text style={[styles.sectionLabel, { color: t.uiTextSecondary }]}>EFFORT</Text>
-      {choices.map((choice) => (
-        <Pressable
-          key={choice.value}
-          onPress={() => onPick(choice.value)}
-          accessibilityRole="menuitem"
-          accessibilityState={{ selected: active === choice.value }}
-          style={({ pressed }) => [styles.row, pressed && { backgroundColor: t.uiControlActiveBackground }]}
-        >
-          <Text style={[styles.rowText, { color: active === choice.value ? t.uiTextPrimary : t.uiTextSecondary, flex: 1 }]}>{choice.label}</Text>
-          {active === choice.value ? <Codicon name="check" size={12} color={t.uiTextPrimary} /> : null}
-        </Pressable>
-      ))}
+      {EFFORT_OPTIONS.map((choice) => {
+        const selected = level === choice.value;
+        return (
+          <Pressable
+            key={choice.value}
+            onPress={() => onPick(choice.value)}
+            accessibilityRole="menuitem"
+            accessibilityState={{ selected: selected && thinking }}
+            style={({ pressed }) => [styles.row, pressed && { backgroundColor: t.uiControlActiveBackground }]}
+          >
+            <Text style={[styles.rowText, { color: selected && thinking ? t.uiTextPrimary : t.uiTextSecondary, flex: 1 }]}>{choice.label}</Text>
+            {selected && thinking ? <Codicon name="check" size={12} color={t.uiTextPrimary} /> : null}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -331,6 +380,7 @@ const styles = StyleSheet.create({
   sectionLabel: { paddingHorizontal: 10, paddingTop: 4, paddingBottom: 2, fontSize: 10, fontWeight: '500', letterSpacing: 0.25 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 32, paddingHorizontal: 10, paddingVertical: 6 },
   rowText: { fontSize: 13 },
+  chevron: { width: 28, height: 28, marginRight: -6, alignItems: 'center', justifyContent: 'center' },
   star: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center', marginHorizontal: -2 },
   nameGroup: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 },
   badge: { borderRadius: 3, paddingHorizontal: 4, paddingVertical: 2 },

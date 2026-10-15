@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { introBody } from '../src/chat/intro.ts';
-import { buildModelGroups, modelDisplayParts, modelPillLabel } from '../src/chat/models.ts';
+import { buildModelGroups, effortPillLabel, modelDisplayParts, modelPillLabel, resolveEffort, thinkingEnabled } from '../src/chat/models.ts';
 
 test('model ids split into the desktop display name and variant tag', () => {
   assert.deepEqual(modelDisplayParts('deepseek-v4.1-flash'), { name: 'DeepSeek V4.1', tag: 'Flash' });
@@ -34,6 +34,49 @@ test('groups put favorites first, mark the current row and filter by search', ()
 
   const searched = buildModelGroups(providers, { favorites: [], current: null, query: 'deep flash' });
   assert.deepEqual(searched.map((g) => g.rows.map((r) => r.name)), [['DeepSeek V4.1']]);
+});
+
+test('a model reads as reasoning-capable unless the catalog says otherwise, as on the desktop', () => {
+  const providers = [
+    {
+      slug: 'nous',
+      name: 'Nous',
+      models: ['silent', 'plain', 'sticky'],
+      capabilities: {
+        plain: { fast: false, reasoning: false },
+        sticky: { fast: false, reasoning: true, can_disable_reasoning: false },
+      },
+    },
+  ];
+  const [group] = buildModelGroups(providers, { favorites: [], current: null });
+  assert.deepEqual(
+    group.rows.map((r) => [r.model, r.reasoning, r.canDisableReasoning]),
+    [
+      ['silent', true, true],
+      ['plain', false, true],
+      ['sticky', true, false],
+    ],
+  );
+});
+
+test('effort resolves from the row, then the profile, then Hermes; only none turns thinking off', () => {
+  assert.equal(resolveEffort('HIGH', 'low'), 'high');
+  assert.equal(resolveEffort('none', 'low'), 'low');
+  assert.equal(resolveEffort(null, null), 'medium');
+  assert.equal(resolveEffort('', 'none'), 'medium');
+  assert.equal(thinkingEnabled('none', 'high'), false);
+  assert.equal(thinkingEnabled('', 'none'), false);
+  assert.equal(thinkingEnabled('', 'high'), true);
+  assert.equal(thinkingEnabled(null, null), true);
+});
+
+test('the composer pill shows the live level, Off for none, and hides for models without effort', () => {
+  const providers = [{ slug: 'nous', name: 'Nous', models: ['a', 'b'], capabilities: { b: { fast: false, reasoning: false } } }];
+  assert.equal(effortPillLabel(providers, { model: 'a', provider: 'nous', effort: 'xhigh' }), 'XHigh');
+  assert.equal(effortPillLabel(providers, { model: 'a', provider: 'nous', effort: 'none' }), 'Off');
+  assert.equal(effortPillLabel(providers, { model: 'a', provider: 'nous', effort: null }), 'Med');
+  assert.equal(effortPillLabel(providers, { model: 'b', provider: 'nous', effort: 'high' }), null);
+  assert.equal(effortPillLabel(providers, null), null);
 });
 
 test('intro copy follows the personality, with the custom fallback for unknown names', () => {
