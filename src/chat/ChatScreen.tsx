@@ -10,7 +10,6 @@
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import {
   AssistantRuntimeProvider,
@@ -33,6 +32,8 @@ import { StatusPulse } from '../ui/loaders/StatusPulse.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { Wordmark } from '../ui/Wordmark.tsx';
 import { AttachMenu, AttachmentChips } from './AttachmentChips.tsx';
+import { BackendPopover, useBackendMenu } from './BackendPopover.tsx';
+import { ChatStatusRow } from './ChatStatusRow.tsx';
 import { ATTACH_WHILE_RUNNING, type ComposerAttachment } from './attachments.ts';
 import { PendingApprovals } from './ApprovalCard.tsx';
 import { DRAFT_KEY, type ChatController, type ChatEntry, type ModelCatalog } from './controller.ts';
@@ -56,8 +57,8 @@ import { useAttachments } from './useAttachments.ts';
 import { useComposerDraft } from './useComposerDraft.ts';
 import { useComposerTriggers, type ComposerSheet } from './useComposerTriggers.ts';
 import { useImeBack } from './useImeBack.ts';
+import { useGatewayHealth } from './useGatewayHealth.ts';
 import { useJumpToBottom } from './useJumpToBottom.tsx';
-import { useKeyboardOpen } from './useKeyboardOpen.ts';
 
 const SIDE_INSET = 24;
 /** the composer dock's top padding: the picker sits on the surface, not the dock */
@@ -114,7 +115,9 @@ export default function ChatScreen({
   const [dock, setDock] = useState({ top: 0, height: 0 });
   const closePicker = useCallback(() => setPickerOpen(false), []);
   const [sheet, setSheet] = useState<ComposerSheet | null>(null);
-  useImeBack({ sheetOpen: sheet !== null, closeSheet: sheet?.dismiss, reorderKey: pickerOpen });
+  const gateway = useGatewayHealth(controller, link, entry.profile, !entry.isBotChat);
+  const backendMenu = useBackendMenu(entry.isBotChat);
+  useImeBack({ sheetOpen: sheet !== null, closeSheet: sheet?.dismiss, reorderKey: pickerOpen ? 'picker' : backendMenu.open ? 'backend' : null });
   const sheetScope = useMemo(() => ({ request: controller.request, sessionId: entry.runtimeId, profile: entry.profile }), [controller, entry.runtimeId, entry.profile]);
   const openPicker = useCallback(() => {
     setPickerOpen(true);
@@ -230,7 +233,15 @@ export default function ChatScreen({
             onNotice={notify}
             onModelPicker={openPicker}
           />
-          <StatusRow t={t} link={link} profileLabel={profileLabel} onProfile={onProfile} />
+          <ChatStatusRow
+            t={t}
+            health={gateway.health}
+            profileLabel={profileLabel}
+            botChat={entry.isBotChat}
+            backendOpen={backendMenu.open}
+            onProfile={onProfile}
+            onBackend={backendMenu.show}
+          />
         </View>
 
         <ComposerSheets sheet={sheet} scope={sheetScope} bottom={dock.height - COMPOSER_DOCK_TOP + 4} available={dock.top - 56} onUi={openUi} />
@@ -246,6 +257,16 @@ export default function ChatScreen({
           onRefresh={() => void controller.refreshModels(true)}
           onSelect={(selection, options) => controller.selectModel(selection, options)}
           onEffort={(effort) => void controller.setEffort(effort)}
+        />
+
+        <BackendPopover
+          visible={backendMenu.open}
+          anchor={backendMenu.anchor}
+          controller={controller}
+          link={link}
+          profile={entry.profile}
+          model={gateway}
+          onClose={backendMenu.close}
         />
       </View>
     </KeyboardAvoidingView>
@@ -578,36 +599,6 @@ function Composer({
   );
 }
 
-/** desktop app/shell/statusbar-controls.tsx, trimmed to what the phone has: the profile and the backend link */
-function StatusRow({ t, link, profileLabel, onProfile }: { t: Tokens; link: LinkState; profileLabel: string; onProfile: () => void }) {
-  const insets = useSafeAreaInsets();
-  const keyboardVisible = useKeyboardOpen();
-  const backendColor =
-    link.kind === 'open' ? t.uiTextTertiary : link.kind === 'unsupported' || link.kind === 'signed-out' ? t.dtDestructive : '#d97706';
-  const backendDetail = link.kind === 'open' ? null : link.kind === 'connecting' ? 'connecting' : link.kind === 'waiting' ? 'reconnecting' : link.kind === 'paused' ? 'paused' : 'offline';
-  return (
-    <View style={[styles.statusRow, { paddingBottom: keyboardVisible ? 4 : Math.max(insets.bottom, 4) }]}>
-      <Pressable
-        onPress={onProfile}
-        accessibilityRole="button"
-        accessibilityLabel={`Profile: ${profileLabel}`}
-        style={({ pressed }) => [styles.statusItem, pressed && { backgroundColor: t.uiControlHoverBackground }]}
-      >
-        <Codicon name="account" size={12} color={t.uiTextTertiary} />
-        <Text style={[styles.statusText, { color: t.uiTextTertiary, maxWidth: 160 }]} numberOfLines={1}>
-          {profileLabel}
-        </Text>
-        <Codicon name="chevron-down" size={14} color={t.uiTextTertiary} style={{ opacity: 0.6 }} />
-      </Pressable>
-      <View style={styles.statusItem} accessibilityLabel={`Backend ${backendDetail ?? 'ready'}`}>
-        <Codicon name="pulse" size={12} color={backendColor} />
-        <Text style={[styles.statusText, { color: backendColor }]}>Backend</Text>
-        {backendDetail ? <Text style={[styles.statusText, { color: t.uiTextQuaternary }]}>{backendDetail}</Text> : null}
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1 },
   appBar: {
@@ -654,7 +645,4 @@ const styles = StyleSheet.create({
   modelPillText: { fontSize: 12, flexShrink: 1 },
   primaryButton: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   stopGlyph: { width: 10, height: 10, borderRadius: 3 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 12, minHeight: 20 },
-  statusItem: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 20, paddingHorizontal: 6 },
-  statusText: { fontSize: 11 },
 });
