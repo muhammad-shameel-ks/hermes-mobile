@@ -8,7 +8,8 @@
  */
 
 import type { ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
@@ -87,6 +88,81 @@ export function ListRow({
     >
       {body}
     </Pressable>
+  );
+}
+
+/** `ToggleRow`: the one boolean row, a Switch beside the title and description */
+export function ToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  description?: ReactNode;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  disabled?: boolean;
+}) {
+  const t = useTokens();
+  return (
+    <ListRow
+      title={label}
+      description={description}
+      trailing={
+        <Switch
+          value={checked}
+          disabled={disabled}
+          accessibilityLabel={label}
+          onValueChange={(on) => {
+            void Haptics.selectionAsync().catch(() => {});
+            onChange(on);
+          }}
+          trackColor={{ false: t.uiBgQuaternary, true: t.uiAccent }}
+        />
+      }
+    />
+  );
+}
+
+/** `SegmentedControl`: a tinted track with a raised active pill, for a short closed choice */
+export function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  options: readonly { id: T; label: string }[];
+  value: T;
+  onChange: (id: T) => void;
+  disabled?: boolean;
+}) {
+  const t = useTokens();
+  return (
+    <View style={[styles.track, { backgroundColor: t.uiBgTertiary }, disabled && { opacity: 0.5 }]}>
+      {options.map((option) => {
+        const active = option.id === value;
+        return (
+          <Pressable
+            key={option.id}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active, disabled }}
+            disabled={disabled}
+            onPress={() => {
+              if (active) return;
+              void Haptics.selectionAsync().catch(() => {});
+              onChange(option.id);
+            }}
+            style={[styles.segment, active && { backgroundColor: t.uiBgChrome }]}
+          >
+            <Text numberOfLines={1} style={{ color: active ? t.uiTextPrimary : t.uiTextTertiary, fontSize: 12, fontWeight: '500' }}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -181,5 +257,7 @@ const styles = StyleSheet.create({
   detail: { flexDirection: 'row', justifyContent: 'space-between', gap: 16, paddingVertical: 6 },
   detailValue: { flex: 1, textAlign: 'right' },
   pill: { paddingHorizontal: 8, paddingVertical: 2 },
+  track: { flexDirection: 'row', alignSelf: 'flex-start', padding: 2, gap: 2, borderRadius: 5 },
+  segment: { minHeight: 36, minWidth: 64, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 3 },
   button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 14, minHeight: 40 },
 });
