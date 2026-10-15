@@ -3,6 +3,13 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.19] - 2026-10-15
+
+- Keep the app responsive while a reply streams (#28) ([7813dde](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/7813dde))
+- Bump actions/setup-node from 5 to 7 (#24) ([4f1c7e4](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/4f1c7e4))
+- Bump actions/checkout from 5 to 7 (#25) ([45187c7](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/45187c7))
+- Bump gradle/actions from 4 to 6 (#26) ([4e843b7](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/4e843b7))
+
 ## [0.1.18] - 2026-10-15
 
 - Use hi@shameel.dev as the contact address in the security policy and code of conduct ([9eb72b5](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/9eb72b5))
