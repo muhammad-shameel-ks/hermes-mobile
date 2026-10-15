@@ -5,11 +5,11 @@ import { dataUrlParts, decodeBase64, downloadFilename } from '../imageFile.ts';
 import { mediaMime } from '../media.ts';
 
 /**
- * Hand an image to the system share sheet, whose targets include saving it. The
- * file is written under the cache directory first (the system trims it), since
- * a data URL or a remote URL is not something a share target can open.
+ * A file under the cache directory (the system trims it) holding the image, since
+ * a data URL or a remote URL is not something a share target or the photo library
+ * can open.
  */
-export async function shareImage(src: string): Promise<void> {
+export async function imageToCacheFile(src: string): Promise<{ uri: string; mime: string }> {
   const parts = dataUrlParts(src);
   const name = downloadFilename(src, parts?.mime);
   const file = new File(Paths.cache, `hermes-${Date.now()}-${name}`);
@@ -19,5 +19,11 @@ export async function shareImage(src: string): Promise<void> {
   } else {
     await File.downloadFileAsync(src, file, { idempotent: true });
   }
-  await Sharing.shareAsync(file.uri, { mimeType: parts?.mime ?? mediaMime(name), dialogTitle: 'Save image' });
+  return { uri: file.uri, mime: parts?.mime ?? mediaMime(name) };
+}
+
+/** Hand an image to the system share sheet. */
+export async function shareImage(src: string): Promise<void> {
+  const file = await imageToCacheFile(src);
+  await Sharing.shareAsync(file.uri, { mimeType: file.mime, dialogTitle: 'Share image' });
 }

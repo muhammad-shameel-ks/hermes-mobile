@@ -1,22 +1,24 @@
 /**
  * The preview viewer: a full-screen renderer for one file or artifact target
  * (issue "Panes and desktop-only power on a phone"). Text and code show as
- * monospace source, markdown through the transcript's renderer, images natively,
+ * monospace source, markdown through the transcript's renderer, images natively with pinch and pan,
  * static SVG through react-native-svg, and HTML as source with a share hand-off.
  * No web view: PDF and media get a notice and the share sheet. The binary and
  * large-file gates and their copy are the desktop's `LocalFilePreview`.
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 
 import { OverlayScreen } from '../app/overlay.tsx';
+import { saveImageToLibrary } from '../chat/cards/saveImage.ts';
 import { Markdown } from '../chat/Markdown.tsx';
 import { DiffView } from '../review/DiffView.tsx';
 import { diffRows, fullFileDiffRows } from '../review/diff.ts';
 import { ActionSheet, type SheetAction } from '../ui/Sheet.tsx';
 import { MONO, useTokens } from '../ui/tokens.ts';
+import { ZoomableImage } from '../ui/ZoomableImage.tsx';
 import { gateway } from './gateway.ts';
 import { displayPath, formatPreviewBytes, linkedPath } from './path.ts';
 import {
@@ -115,7 +117,13 @@ function FilePreview({ target, onClose }: { target: FileTarget; onClose: () => v
     }
   };
 
+  const saveImage = async (uri: string) => {
+    const notice = await saveImageToLibrary(uri);
+    toast.show(notice.text, notice.tone);
+  };
+
   const actions: SheetAction[] = [
+    ...(state.kind === 'image' ? [{ label: 'Save to Photos', onPress: () => void saveImage(state.uri) }] : []),
     { label: 'Share', onPress: () => void share() },
     ...(cls === 'html' ? [{ label: 'Open in browser', onPress: () => void share('text/html', 'Open in browser') }] : []),
     { label: 'Copy path', onPress: () => void copyText(path) },
@@ -159,11 +167,7 @@ function FilePreview({ target, onClose }: { target: FileTarget; onClose: () => v
           />
         );
       case 'image':
-        return (
-          <View style={styles.image}>
-            <Image source={{ uri: state.uri }} resizeMode="contain" style={styles.fill} accessibilityLabel={label} />
-          </View>
-        );
+        return <ZoomableImage uri={state.uri} alt={label} />;
       case 'text':
         return (
           <TextBody
@@ -300,7 +304,6 @@ function ArtifactPreview({ target, onClose }: { target: ArtifactTarget; onClose:
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  image: { flex: 1, padding: 16 },
   markdown: { paddingHorizontal: 16, paddingVertical: 12 },
   svg: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   pathBar: { paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },

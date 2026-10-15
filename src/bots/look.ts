@@ -17,6 +17,15 @@ export type LookPatch = BotMeta & { image?: string | null };
 /** `profiles.set_asset` takes PNG/JPEG/WebP up to 2 MB */
 export const AVATAR_MAX_BYTES = 2_000_000;
 
+/** the desktop's `normalizeAvatarImage`: a 256 px square PNG */
+export const AVATAR_EDGE = 256;
+
+/** the centred square the desktop crops before scaling to AVATAR_EDGE */
+export function avatarCrop(width: number, height: number): { originX: number; originY: number; width: number; height: number } {
+  const side = Math.floor(Math.min(width, height));
+  return { originX: Math.floor((width - side) / 2), originY: Math.floor((height - side) / 2), width: side, height: side };
+}
+
 /** untouched fields stay out of the patch: a value seeded minutes ago is not an edit, and sending it would revert a newer write elsewhere */
 export function editedLook(opened: EditableLook, current: EditableLook): LookPatch | null {
   const patch: LookPatch = {};

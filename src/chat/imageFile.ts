@@ -43,3 +43,14 @@ export function decodeBase64(base64: string): Uint8Array {
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
+
+export type SaveOutcome = 'saved' | 'denied' | { error: unknown };
+export type SaveNotice = { text: string; tone: 'success' | 'error' };
+
+/** the notice after saving to the photo library: the desktop's "Image saved", and why a save did not happen */
+export function saveNotice(outcome: SaveOutcome): SaveNotice {
+  if (outcome === 'saved') return { text: 'Image saved', tone: 'success' };
+  if (outcome === 'denied') return { text: 'Allow Hermes to add photos in Settings to save images.', tone: 'error' };
+  const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error ?? '');
+  return { text: message ? `Could not save image: ${message}` : 'Could not save image', tone: 'error' };
+}

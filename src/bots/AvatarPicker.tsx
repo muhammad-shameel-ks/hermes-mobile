@@ -12,7 +12,7 @@ import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { errorText } from '../gateway/http.ts';
 import { rankPets, type AvatarApi, type PetEntry } from './avatarApi.ts';
-import { generatedAsDataUrl, pickImageFromDevice } from './avatarImage.ts';
+import { normalizeGeneratedAvatar, pickImageFromDevice } from './avatarImage.ts';
 import { BotAvatar } from './BotAvatar.tsx';
 import {
   AVATAR_PICKER_SHAPES,
@@ -323,7 +323,7 @@ function GenerateTab({
     try {
       const custom = describe.trim();
       const prompt = custom ? customAvatarPrompt(custom) : generatedAvatarPrompt(seed.name || 'agent', seed.title, seed.description);
-      const image = await generatedAsDataUrl(await api.generate(prompt));
+      const image = await normalizeGeneratedAvatar(await api.generate(prompt));
       const refused = avatarImageError(image);
       if (refused) throw new Error(refused);
       if (alive.current) onImage(image);
