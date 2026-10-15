@@ -7,9 +7,9 @@
  * row renders our own message by id.
  */
 
-import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { KeyboardAvoidingView, useKeyboardState } from 'react-native-keyboard-controller';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import {
@@ -27,13 +27,18 @@ import { Codicon } from '../ui/Codicon.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { Wordmark } from '../ui/Wordmark.tsx';
 import type { ChatController, ChatEntry, ModelCatalog } from './controller.ts';
+import { ComposerSheets } from './ComposerSheets.tsx';
 import { FOLLOW_UP_PLACEHOLDERS, introBody, NEW_SESSION_PLACEHOLDERS } from './intro.ts';
 import { MessageView } from './MessageView.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
 import { modelPillLabel, type ModelSelection } from './models.ts';
 import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
+import { uiSlash, type SlashUi } from './slash.ts';
 import type { Message } from './transcript.ts';
+import { useComposerTriggers, type ComposerSheet } from './useComposerTriggers.ts';
+import { useImeBack } from './useImeBack.ts';
 import { useJumpToBottom } from './useJumpToBottom.tsx';
+import { useKeyboardOpen } from './useKeyboardOpen.ts';
 
 const SIDE_INSET = 24;
 /** the composer dock's top padding: the picker sits on the surface, not the dock */
@@ -87,6 +92,22 @@ export default function ChatScreen({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [dock, setDock] = useState({ top: 0, height: 0 });
   const closePicker = useCallback(() => setPickerOpen(false), []);
+  const [sheet, setSheet] = useState<ComposerSheet | null>(null);
+  useImeBack({ sheetOpen: sheet !== null, closeSheet: sheet?.dismiss, reorderKey: pickerOpen });
+  const sheetScope = useMemo(() => ({ request: controller.request, sessionId: entry.runtimeId, profile: entry.profile }), [controller, entry.runtimeId, entry.profile]);
+  const openPicker = useCallback(() => {
+    setPickerOpen(true);
+    if (!models.providers.length || models.error) void controller.refreshModels();
+  }, [controller, models.providers.length, models.error]);
+  const openUi = useCallback(
+    (ui: SlashUi) => {
+      if (ui === 'model') return openPicker();
+      Keyboard.dismiss();
+      if (ui === 'sessions') onOpenDrawer();
+      else onProfile();
+    },
+    [openPicker, onOpenDrawer, onProfile],
+  );
   const { messages, running } = entry.transcript;
 
   const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
@@ -155,16 +176,20 @@ export default function ChatScreen({
             botLabel={entry.isBotChat && bot ? bot.label : null}
             followUp={messages.length > 0}
             modelLabel={modelPillLabel(currentModel?.model)}
-            onSend={(text) => void controller.send(text)}
+            onSheet={setSheet}
+            onSend={(text) => {
+              const ui = uiSlash(text);
+              if (ui) openUi(ui);
+              else void controller.send(text);
+            }}
             onStop={() => void controller.stop()}
             onAttach={() => controller.notify('Attachments are not on the phone yet.')}
-            onModelPicker={() => {
-              setPickerOpen(true);
-              if (!models.providers.length || models.error) void controller.refreshModels();
-            }}
+            onModelPicker={openPicker}
           />
           <StatusRow t={t} link={link} profileLabel={profileLabel} onProfile={onProfile} />
         </View>
+
+        <ComposerSheets sheet={sheet} scope={sheetScope} bottom={dock.height - COMPOSER_DOCK_TOP + 4} available={dock.top - 56} onUi={openUi} />
 
         <ModelPicker
           visible={pickerOpen}
@@ -324,6 +349,7 @@ function Composer({
   followUp,
   modelLabel,
   onSend,
+  onSheet,
   onStop,
   onAttach,
   onModelPicker,
@@ -335,11 +361,14 @@ function Composer({
   followUp: boolean;
   modelLabel: string;
   onSend: (text: string) => void;
+  onSheet: (sheet: ComposerSheet | null) => void;
   onStop: () => void;
   onAttach: () => void;
   onModelPicker: () => void;
 }) {
   const [text, setText] = useState('');
+  const inputRef = useRef<TextInput>(null);
+  const triggers = useComposerTriggers({ text, setText, inputRef, onSheet });
   const [seed] = useState(() => Math.floor(Math.random() * 100000));
   const canSend = text.trim() !== '' && !disabled;
   const showStop = running && text.trim() === '';
@@ -369,8 +398,10 @@ function Composer({
         </Pressable>
         <View style={styles.inputCell}>
           <TextInput
+            ref={inputRef}
             value={text}
-            onChangeText={setText}
+            onChangeText={triggers.onChangeText}
+            onSelectionChange={triggers.onSelectionChange}
             multiline
             style={[styles.input, { color: t.uiTextPrimary, fontSize: t.type.text, lineHeight: t.type.text * 1.5 }]}
             selectionColor={t.uiAccent}
@@ -426,7 +457,7 @@ function Composer({
 /** desktop app/shell/statusbar-controls.tsx, trimmed to what the phone has: the profile and the backend link */
 function StatusRow({ t, link, profileLabel, onProfile }: { t: Tokens; link: LinkState; profileLabel: string; onProfile: () => void }) {
   const insets = useSafeAreaInsets();
-  const keyboardVisible = useKeyboardState((state) => state.isVisible);
+  const keyboardVisible = useKeyboardOpen();
   const backendColor =
     link.kind === 'open' ? t.uiTextTertiary : link.kind === 'unsupported' || link.kind === 'signed-out' ? t.dtDestructive : '#d97706';
   const backendDetail = link.kind === 'open' ? null : link.kind === 'connecting' ? 'connecting' : link.kind === 'waiting' ? 'reconnecting' : link.kind === 'paused' ? 'paused' : 'offline';

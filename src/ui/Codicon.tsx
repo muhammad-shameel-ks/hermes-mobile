@@ -23,6 +23,17 @@ const GLYPHS = {
   'star-empty': 0xea6a,
   'star-full': 0xeb59,
   sync: 0xea77,
+  diff: 0xeae1,
+  'diff-added': 0xeadc,
+  file: 0xea7b,
+  'file-media': 0xeaea,
+  folder: 0xea83,
+  'git-branch': 0xec6f,
+  globe: 0xeb01,
+  'symbol-misc': 0xeb63,
+  terminal: 0xea85,
+  tools: 0xeb6d,
+  zap: 0xea86,
 } as const;
 
 export type CodiconName = keyof typeof GLYPHS;
