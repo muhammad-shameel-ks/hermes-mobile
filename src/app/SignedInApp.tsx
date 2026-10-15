@@ -21,6 +21,7 @@ import { ChatController } from '../chat/controller.ts';
 import Drawer, { type DrawerTab } from '../drawer/Drawer.tsx';
 import { createGatewayApi } from '../gateway/api.ts';
 import { gatewaySocketUrl, GatewayLink } from '../gateway/link.ts';
+import { createPersistence } from '../store/index.ts';
 import { ActionSheet, type SheetAction } from '../ui/Sheet.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { OverlayProvider } from './overlay.tsx';
@@ -50,7 +51,7 @@ function useController({ connection, credentials, onReauthRequired }: Props) {
       },
       onAuthRejected: onReauthRequired,
     });
-    return new ChatController(link, api);
+    return new ChatController(link, api, undefined, createPersistence(connection.id));
   }, [connection.id]);
 }
 

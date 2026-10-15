@@ -35,9 +35,22 @@ import {
   type BotMeta,
   type Roster,
 } from '../bots/roster.ts';
-import type { GatewayApi } from '../gateway/api.ts';
+import { ApiError, type GatewayApi } from '../gateway/api.ts';
 import { errorText } from '../gateway/http.ts';
 import type { GatewayLink, LinkState } from '../gateway/link.ts';
+import { DraftStore, FRESH_DRAFT_KEY } from '../store/drafts.ts';
+import type { Persistence } from '../store/index.ts';
+import { evictions, Recency, SESSION_STATE_LRU } from '../store/lru.ts';
+import {
+  graftTail,
+  HISTORY_LIMIT,
+  historyFromPage,
+  NO_HISTORY,
+  prependOlder,
+  unhideOpeningUserRows,
+  type HistoryState,
+  type MessagesPage,
+} from './history.ts';
 import { normalizePersonality } from './intro.ts';
 import type { ModelSelection } from './models.ts';
 import {
@@ -50,9 +63,10 @@ import {
   type Transcript,
 } from './transcript.ts';
 
-export const DRAFT_KEY = 'draft';
+export const DRAFT_KEY = FRESH_DRAFT_KEY;
 const SESSION_LIST_LIMIT = 60;
-const HISTORY_LIMIT = 120;
+/** the notice a replay gap leaves where the transcript was reloaded from saved history */
+export const REPLAY_GAP_NOTICE = 'Some updates were missed while the connection was down. The conversation was reloaded from its saved history.';
 const PROMPT_TIMEOUT_MS = 1_800_000;
 /** desktop `use-session-list-actions.ts`: sources that never list as conversations */
 const UNLISTED_SOURCES = new Set(['acp', 'cron', 'kanban', 'oneshot', 'subagent', 'tool']);
@@ -82,6 +96,8 @@ export type ChatEntry = {
   error: string | null;
   /** the session's live model, or the draft's pick before its session exists */
   model: ModelSelection | null;
+  /** how far back the history has been paged */
+  history: HistoryState;
 };
 
 export type ModelCatalog = {
@@ -130,6 +146,7 @@ const newEntry = (key: string, profile: string, extra: Partial<ChatEntry> = {}):
   loading: false,
   error: null,
   model: null,
+  history: NO_HISTORY,
   ...extra,
 });
 
@@ -153,10 +170,17 @@ export class ChatController {
   private listTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly link: GatewayLink;
   private readonly api: GatewayApi;
+  private readonly persistence: Persistence | null;
+  private readonly recency = new Recency();
+  /** the transcript last handed to the tail writer, so unrelated entry updates do not rewrite it */
+  private readonly saved = new Map<string, unknown>();
+  readonly drafts: DraftStore;
 
-  constructor(link: GatewayLink, api: GatewayApi, initialProfile = 'default') {
+  constructor(link: GatewayLink, api: GatewayApi, initialProfile = 'default', persistence: Persistence | null = null) {
     this.link = link;
     this.api = api;
+    this.persistence = persistence;
+    this.drafts = persistence?.drafts ?? new DraftStore(null, '');
     this.rpc = (method, params, timeoutMs) =>
       this.link.client.request(method, params as unknown as Record<string, unknown>, timeoutMs);
     this.snapshot = {
@@ -200,6 +224,46 @@ export class ChatController {
 
   private putEntry(entry: ChatEntry) {
     this.set({ entries: { ...this.snapshot.entries, [entry.key]: entry } });
+    this.recency.touch(entry.key);
+    this.saveTail(entry);
+  }
+
+  /** a settled transcript is written to the warm tail once it has been quiet */
+  private saveTail(entry: ChatEntry) {
+    const { messages, running } = entry.transcript;
+    if (!this.persistence || entry.key === DRAFT_KEY || entry.loading || running || messages.length === 0) return;
+    if (this.saved.get(entry.key) === messages) return;
+    this.saved.set(entry.key, messages);
+    this.persistence.tails.schedule(entry.profile, entry.key, messages);
+  }
+
+  /** drop the settled sessions beyond the retention cap; their warm tails stay on disk */
+  private prune() {
+    const entries = this.snapshot.entries;
+    const keys = Object.keys(entries);
+    if (keys.length <= SESSION_STATE_LRU) return;
+    for (const key of keys) if (!this.recency.has(key)) this.recency.touch(key);
+    const held = (key: string) => {
+      const entry = entries[key];
+      return (
+        key === DRAFT_KEY ||
+        key === this.snapshot.openKey ||
+        entry.loading ||
+        this.buffered.has(key) ||
+        entry.transcript.running ||
+        entry.transcript.messages.some((m) => m.status === 'streaming')
+      );
+    };
+    const drop = evictions(this.recency.keys().filter((key) => key in entries), held, SESSION_STATE_LRU);
+    if (drop.length === 0) return;
+    const next = { ...entries };
+    for (const key of drop) {
+      delete next[key];
+      this.recency.forget(key);
+      this.saved.delete(key);
+      for (const [runtime, mapped] of this.runtimeToKey) if (mapped === key) this.runtimeToKey.delete(runtime);
+    }
+    this.set({ entries: next });
   }
 
   private updateEntry(key: string, update: (entry: ChatEntry) => ChatEntry) {
@@ -228,6 +292,7 @@ export class ChatController {
   /** the app left the foreground: the socket closes and redials on return */
   pause() {
     this.link.pause();
+    void this.persistence?.flush();
   }
 
   clearNotice = () => {
@@ -238,6 +303,7 @@ export class ChatController {
     for (const off of this.unsubscribe) off();
     if (this.listTimer) clearTimeout(this.listTimer);
     this.link.pause();
+    void this.persistence?.flush();
   }
 
   // ─── link + events ─────────────────────────────────────────────────────────
@@ -267,7 +333,7 @@ export class ChatController {
     }
     if (event.type === 'session.replay_gap') {
       const key = event.session_id ? this.runtimeToKey.get(event.session_id) : undefined;
-      if (key) void this.load(key);
+      if (key) void this.load(key, { gap: true });
       return;
     }
     const key = event.session_id ? this.runtimeToKey.get(event.session_id) : undefined;
@@ -282,7 +348,10 @@ export class ChatController {
       if (info?.model) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(info, e.model) }));
     }
     this.updateTranscript(key, (t) => applyEvent(t, event));
-    if (event.type === 'message.complete' || (wasRunning && !this.entry(key)?.transcript.running)) this.scheduleListRefresh();
+    if (event.type === 'message.complete' || (wasRunning && !this.entry(key)?.transcript.running)) {
+      this.scheduleListRefresh();
+      this.prune();
+    }
   }
 
   /** Approvals and other server questions are not shown on the phone yet: decline them visibly. */
@@ -444,27 +513,101 @@ export class ChatController {
     }
   }
 
-  /** history over REST plus a resume that binds live events; events that race the history are held */
-  private async load(key: string) {
+  /**
+   * history over REST plus a resume that binds live events; events that race the history are held.
+   * The warm tail paints first, and a refreshed page keeps the older pages the reader pulled in.
+   * `gap` marks a reload after the replay could not cover what the socket missed.
+   */
+  private async load(key: string, { gap = false }: { gap?: boolean } = {}) {
     const entry = this.entry(key);
     if (!entry || key === DRAFT_KEY) return;
     this.updateEntry(key, (e) => ({ ...e, loading: true, error: null }));
     this.buffered.set(key, []);
+    if (this.persistence && entry.transcript.messages.length === 0) void this.paintWarmTail(key);
     try {
       const resumed = this.link.current.kind === 'open' ? await this.resume(key, { rebind: false }) : null;
-      const page = await this.api.get<{ messages?: SessionMessage[]; pagination?: { order?: string } }>(
-        `/api/sessions/${encodeURIComponent(key)}/messages`,
-        { limit: HISTORY_LIMIT, order: 'latest', include_compacted: true, profile: entry.profile },
-      );
-      let transcript: Transcript = { ...emptyTranscript(), messages: fromHistory(page?.messages ?? []) };
+      const page = await this.api.get<MessagesPage>(`/api/sessions/${encodeURIComponent(key)}/messages`, {
+        limit: HISTORY_LIMIT,
+        order: 'latest',
+        include_compacted: true,
+        profile: entry.profile,
+      });
+      const held = this.entry(key) ?? entry;
+      const refreshed = fromHistory(page?.messages ?? []);
+      const messages = graftTail(held.transcript.messages, refreshed);
+      const paged = historyFromPage(page, held.history);
+      const history = messages.length > refreshed.length ? { ...paged, nextOffset: Math.max(paged.nextOffset, held.history.nextOffset) } : paged;
+      let transcript: Transcript = { ...emptyTranscript(), messages };
+      if (gap) transcript = addSystemNotice(transcript, REPLAY_GAP_NOTICE);
       if (resumed?.running) transcript = withInflight(transcript, resumed);
       for (const event of this.buffered.get(key) ?? []) transcript = applyEvent(transcript, event);
-      this.updateEntry(key, (e) => ({ ...e, transcript, loading: false }));
+      this.updateEntry(key, (e) => ({ ...e, transcript, history, loading: false }));
     } catch (error) {
+      if (isSessionGone(error)) {
+        this.dropGone(key);
+        return;
+      }
       this.updateEntry(key, (e) => ({ ...e, loading: false, error: errorText(error) }));
     } finally {
       this.buffered.delete(key);
+      this.prune();
     }
+  }
+
+  /** the cached tail fills an empty transcript until the server's history lands */
+  private async paintWarmTail(key: string) {
+    const entry = this.entry(key);
+    const tail = entry ? await this.persistence?.tails.load(entry.profile, key) : null;
+    const current = this.entry(key);
+    if (!tail || !current?.loading || current.transcript.messages.length > 0) return;
+    this.updateTranscript(key, (t) => ({ ...t, messages: tail }));
+  }
+
+  /** "Show earlier": the page immediately older than the rows held, counted back from the newest row */
+  async showEarlier(key: string) {
+    const entry = this.entry(key);
+    if (!entry || key === DRAFT_KEY || !entry.history.more || entry.history.loadingEarlier) return;
+    const requested = entry.history;
+    this.updateEntry(key, (e) => ({ ...e, history: { ...e.history, loadingEarlier: true } }));
+    const read = (query: Record<string, string | number | boolean>) =>
+      this.api.get<MessagesPage>(`/api/sessions/${encodeURIComponent(key)}/messages`, { ...query, include_compacted: true, profile: entry.profile });
+    try {
+      const page = await read({ limit: HISTORY_LIMIT, offset: requested.nextOffset, order: 'latest' });
+      let older = fromHistory(unhideOpeningUserRows(page?.messages ?? []));
+      const history = historyFromPage(page, requested);
+      // paging can reach the top while the opening user turn stays missing (hidden by compaction): read it once
+      if (!history.more && !older.some((m) => m.role === 'user')) {
+        try {
+          const origin = await read({ limit: 20, offset: 0, order: 'oldest' });
+          older = prependOlder(older, fromHistory(unhideOpeningUserRows(origin?.messages ?? [])));
+        } catch {
+          // the older page that landed stays
+        }
+      }
+      const current = this.entry(key);
+      // a reload while the page was in flight owns the history now
+      if (!current || current.history.nextOffset !== requested.nextOffset) return;
+      this.updateEntry(key, (e) => ({ ...e, transcript: { ...e.transcript, messages: prependOlder(e.transcript.messages, older) }, history }));
+    } catch {
+      // the pill stays for another try
+      this.updateEntry(key, (e) => ({ ...e, history: { ...e.history, loadingEarlier: false } }));
+    }
+  }
+
+  /** a session that no longer exists: the open chat falls back to a fresh one and keeps its unsent text */
+  private dropGone(key: string) {
+    const entry = this.entry(key);
+    if (!entry) return;
+    void this.persistence?.tails.drop(entry.profile, key);
+    this.drafts.adoptGone(entry.profile, key);
+    const { [key]: _gone, ...entries } = this.snapshot.entries;
+    for (const [runtime, mapped] of this.runtimeToKey) if (mapped === key) this.runtimeToKey.delete(runtime);
+    this.recency.forget(key);
+    this.saved.delete(key);
+    const wasOpen = this.snapshot.openKey === key;
+    this.set({ entries });
+    if (wasOpen) this.newChat();
+    void this.refreshSessions();
   }
 
   private async resume(key: string, { rebind }: { rebind: boolean }): Promise<SessionResumeResult | null> {
@@ -599,6 +742,7 @@ export class ChatController {
       const result = await this.rpc('session.compress', { session_id: runtimeId, profile: entry.profile }, 600_000);
       const messages = Array.isArray(result.messages) ? fromHistory(result.messages as SessionMessage[]) : null;
       this.updateTranscript(key, (t) => ({ ...t, messages: messages ?? t.messages, running: false, status: null }));
+      if (messages) this.updateEntry(key, (e) => ({ ...e, history: NO_HISTORY }));
       this.updateTranscript(key, (t) => addSystemNotice(t, result.message || 'Conversation compacted.'));
     } catch (error) {
       this.updateTranscript(key, (t) => ({ ...addSystemNotice(t, `Compacting failed: ${errorText(error)}`), running: false, status: null }));
@@ -816,6 +960,11 @@ export class ChatController {
     this.setProfile(profile);
     this.newChat();
   }
+}
+
+/** a deleted session answers its history with a 404 */
+function isSessionGone(error: unknown): boolean {
+  return (error instanceof ApiError && error.status === 404) || /session not found/i.test(errorText(error));
 }
 
 /** a run already under way when the session opened: show what it has streamed so far */
