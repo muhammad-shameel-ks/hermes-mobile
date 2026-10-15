@@ -3,7 +3,8 @@
  * one row per file. Port of the desktop's thread/changed-files.ts. Pure.
  */
 
-import { countDiffLineStats, htmlPathFromInlineDiff, inlineDiffFromResult } from './diff.ts';
+import { diffStats } from '../review/diff.ts';
+import { htmlPathFromInlineDiff, inlineDiffFromResult } from './inlineDiff.ts';
 import { isFileEditTool } from './toolView.ts';
 import type { Part, ToolPart } from './transcript.ts';
 
@@ -58,7 +59,7 @@ export function deriveChangedFiles(parts: readonly Part[]): ChangedFile[] {
     if (!diff) continue;
     const path = fileEditPath(tool.args, recordOf(tool.result));
     if (!path) continue;
-    const stats = countDiffLineStats(diff);
+    const stats = diffStats(diff);
     const existing = byPath.get(path);
     if (existing) {
       existing.added += stats.added;

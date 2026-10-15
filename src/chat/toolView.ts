@@ -7,7 +7,8 @@
  * describe the same call in the same words. Pure, so it is tested directly.
  */
 
-import { countDiffLineStats, inlineDiffFromResult, type DiffStats } from './diff.ts';
+import { diffStats, type DiffStats } from '../review/diff.ts';
+import { inlineDiffFromResult } from './inlineDiff.ts';
 import { toolImageUrl } from './media.ts';
 import type { ToolPart } from './transcript.ts';
 
@@ -615,7 +616,7 @@ export function buildToolView(tool: ToolPart): ToolView {
     command: tool.name === 'terminal' ? shellCommand(args) || undefined : undefined,
     detail,
     inlineDiff: inlineDiff || undefined,
-    diffStats: inlineDiff && isFileEditTool(tool.name) ? countDiffLineStats(inlineDiff) : undefined,
+    diffStats: inlineDiff && isFileEditTool(tool.name) ? diffStats(inlineDiff) : undefined,
     imageUrl: pending ? undefined : toolImageUrl(args, result) || undefined,
   };
 }

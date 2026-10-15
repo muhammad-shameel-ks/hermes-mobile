@@ -10,7 +10,7 @@ import { memo, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { MONO, useTokens } from '../../ui/tokens.ts';
-import { parseDiff, type DiffKind } from '../diff.ts';
+import { inlineDiffRows, type DiffKind } from '../../review/diff.ts';
 import { diffColors } from './diffColors.ts';
 
 const FONT_SIZE = 11.2;
@@ -24,7 +24,7 @@ const MAX_ROWS = 800;
 function DiffViewImpl({ diff }: { diff: string }) {
   const t = useTokens();
   const colors = useMemo(() => diffColors(t.renderedMode), [t.renderedMode]);
-  const lines = useMemo(() => parseDiff(diff), [diff]);
+  const lines = useMemo(() => inlineDiffRows(diff), [diff]);
   const [open, setOpen] = useState(false);
   const [width, setWidth] = useState(0);
 
