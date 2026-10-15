@@ -23,6 +23,8 @@ type Props = {
   connectionUrl: string;
   profileName: string;
   profileLabel: string;
+  /** desktop statusbar `profile-switcher`: shown only while the sessions list is, never in Bot Mode */
+  showProfile: boolean;
   onProfileChip: () => void;
   onSignOut: () => void;
   onClose: () => void;
@@ -48,7 +50,7 @@ function ProfileGlyph({ name, label }: { name: string; label: string }) {
   );
 }
 
-export function Footer({ link, connectionLabel, connectionUrl, profileName, profileLabel, onProfileChip, onSignOut, onClose }: Props) {
+export function Footer({ link, connectionLabel, connectionUrl, profileName, profileLabel, showProfile, onProfileChip, onSignOut, onClose }: Props) {
   const t = useTokens();
   const routes = useDrawerRoutes(onClose);
   const healthy = link.kind === 'open';
@@ -66,15 +68,17 @@ export function Footer({ link, connectionLabel, connectionUrl, profileName, prof
         </Text>
         <View style={[styles.health, { backgroundColor: health }]} />
       </View>
-      <Pressable onPress={onProfileChip} accessibilityRole="button" accessibilityLabel={`Active profile ${profileLabel}`} style={chip}>
-        <ProfileGlyph name={profileName} label={profileLabel} />
-        <Text numberOfLines={1} style={[styles.chipText, { color: t.uiTextSecondary, maxWidth: 96 }]}>
-          {profileLabel}
-        </Text>
-        <View style={{ opacity: 0.6 }}>
-          <Codicon name="chevron-down" size={14} color={t.uiTextSecondary} />
-        </View>
-      </Pressable>
+      {showProfile ? (
+        <Pressable onPress={onProfileChip} accessibilityRole="button" accessibilityLabel={`Active profile ${profileLabel}`} style={chip}>
+          <ProfileGlyph name={profileName} label={profileLabel} />
+          <Text numberOfLines={1} style={[styles.chipText, { color: t.uiTextSecondary, maxWidth: 96 }]}>
+            {profileLabel}
+          </Text>
+          <View style={{ opacity: 0.6 }}>
+            <Codicon name="chevron-down" size={14} color={t.uiTextSecondary} />
+          </View>
+        </Pressable>
+      ) : null}
       <Pressable onPress={routes.openSettings} accessibilityRole="button" accessibilityLabel="Settings" style={chip}>
         <View style={styles.glyph}>
           <Codicon name="settings-gear" size={12} color={t.uiTextSecondary} />

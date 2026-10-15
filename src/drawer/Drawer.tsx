@@ -123,6 +123,7 @@ export default function Drawer(props: Props) {
           connectionUrl={props.connectionUrl}
           profileName={props.snapshot.profile}
           profileLabel={props.profileLabel}
+          showProfile={props.tab === 'sessions'}
           onProfileChip={props.onProfileChip}
           onSignOut={props.onSignOut}
           onClose={onClose}
