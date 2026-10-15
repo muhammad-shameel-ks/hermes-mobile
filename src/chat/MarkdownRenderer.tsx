@@ -28,6 +28,7 @@ import { MediaImage } from './cards/MediaImage.tsx';
 import { SvgBlock } from './cards/SvgBlock.tsx';
 import { VideoCard } from './cards/VideoCard.tsx';
 import { AudioCard } from './cards/AudioCard.tsx';
+import { InlineCode } from './InlineCode.tsx';
 import { parseListings } from './listing.ts';
 import { isFileMediaPath, mediaKind, mediaPathFromMarkdownHref } from './media.ts';
 
@@ -64,6 +65,10 @@ export class TranscriptRenderer extends Renderer {
       default:
         return <MediaImage key={key} src={uri} alt={alt || title} />;
     }
+  }
+
+  override codespan(text: string, styles?: TextStyle): ReactNode {
+    return <InlineCode key={this.getKey()} text={text} style={styles ?? {}} />;
   }
 
   override link(children: string | ReactNode[], href: string, styles?: TextStyle, title?: string): ReactNode {

@@ -29,11 +29,14 @@ function stylesFor(t: Tokens): MarkedStyles {
     h4: { ...heading, fontSize: t.type.text, lineHeight: t.type.lineHeight },
     h5: { ...heading, fontSize: t.type.text, lineHeight: t.type.lineHeight },
     h6: { ...heading, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight },
+    // the library's own codespan is italic and light; the desktop's is upright mono on a neutral gray chip
     codespan: {
       fontFamily: MONO,
       fontSize: t.type.text * 0.92,
-      color: t.uiTextPrimary,
-      backgroundColor: t.uiBgTertiary,
+      fontStyle: 'normal',
+      fontWeight: '400',
+      color: t.uiInlineCodeForeground,
+      backgroundColor: t.uiInlineCodeBackground,
     },
     code: {
       backgroundColor: t.uiWidgetSurfaceBackground,
