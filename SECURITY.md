@@ -8,7 +8,7 @@ Only the [latest release](https://github.com/muhammad-shameel-ks/hermes-mobile/r
 
 Please do **not** open a public issue for a security problem.
 
-Report it privately through GitHub: go to the repository's **Security** tab and choose **Report a vulnerability**. If that is not available to you, email muhammadshameelks@gmail.com.
+Report it privately through GitHub: go to the repository's **Security** tab and choose **Report a vulnerability**. If that is not available to you, email hi@shameel.dev.
 
 Include what you found, how to reproduce it, and the app version and platform. You can expect an acknowledgement within a few days. Please give us reasonable time to fix the problem before disclosing it publicly.
 
