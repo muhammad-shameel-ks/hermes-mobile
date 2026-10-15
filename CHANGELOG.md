@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.12] - 2026-10-15
+
+- Show what a tool call did: name session searches by query and subtitle untitled tools ([6ee63d8](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/6ee63d8))
+
 ## [0.1.11] - 2026-10-15
 
 - Clear Android's Bold text adjustment natively so labels stop clipping ([a76f1cb](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/a76f1cb))
