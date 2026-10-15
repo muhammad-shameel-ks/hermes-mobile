@@ -6,12 +6,13 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 import { BotAvatar } from '../bots/BotAvatar.tsx';
+import { faceMood } from '../bots/face.ts';
 import { compactAge, filterBots, type Bot } from '../bots/roster.ts';
 import type { ChatSnapshot, SessionInfo } from '../chat/controller.ts';
 import type { LinkState } from '../gateway/link.ts';
@@ -32,6 +33,7 @@ type Props = {
   onOpenBot: (bot: Bot) => void;
   onBotActions: (bot: Bot) => void;
   onNewBot: () => void;
+  onRetryRoster: () => void;
   onProfileChip: () => void;
   onSignOut: () => void;
   loadImage: (name: string) => Promise<string | null>;
@@ -221,7 +223,27 @@ function SessionsPane({ t, snapshot, onNewSession, onOpenSession }: Props & { t:
   );
 }
 
-function BotRow({ t, bot, now, selected, onPress, onLongPress, loadImage }: { t: Tokens; bot: Bot; now: number; selected: boolean; onPress: () => void; onLongPress: () => void; loadImage: (name: string) => Promise<string | null> }) {
+function BotRow({
+  t,
+  bot,
+  now,
+  selected,
+  opening,
+  thinking,
+  onPress,
+  onLongPress,
+  loadImage,
+}: {
+  t: Tokens;
+  bot: Bot;
+  now: number;
+  selected: boolean;
+  opening: boolean;
+  thinking: boolean;
+  onPress: () => void;
+  onLongPress: () => void;
+  loadImage: (name: string) => Promise<string | null>;
+}) {
   return (
     <Pressable
       onPress={onPress}
@@ -233,7 +255,7 @@ function BotRow({ t, bot, now, selected, onPress, onLongPress, loadImage }: { t:
       style={({ pressed }) => [styles.botRow, { borderRadius: t.radius['2xl'] }, (selected || pressed) && { backgroundColor: t.uiRowActiveBackground }]}
     >
       <View>
-        <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={34} loadImage={loadImage} />
+        <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={34} loadImage={loadImage} mood={faceMood(thinking, bot.working)} />
         {bot.active ? <View style={[styles.activeDot, { backgroundColor: t.uiSuccess, borderColor: t.uiBgSidebar }]} /> : null}
       </View>
       <View style={styles.botText}>
@@ -246,6 +268,7 @@ function BotRow({ t, bot, now, selected, onPress, onLongPress, loadImage }: { t:
               <Path d="M9.5 1.5 14.5 6.5 12 7.3 9 10.3 9.5 13.5 2.5 6.5 5.7 7 8.7 4Z" fill={t.uiTextQuaternary} />
             </Svg>
           ) : null}
+          {opening ? <ActivityIndicator size="small" color={t.uiTextSecondary} style={styles.rowSpinner} accessibilityLabel="Opening chat…" /> : null}
           <Text style={{ color: t.uiTextTertiary, fontSize: 10 }}>{compactAge(bot.lastActive, now)}</Text>
         </View>
         <Text numberOfLines={1} style={{ color: t.uiTextTertiary, fontSize: 12, marginTop: 2 }}>
@@ -256,7 +279,7 @@ function BotRow({ t, bot, now, selected, onPress, onLongPress, loadImage }: { t:
   );
 }
 
-function BotsPane({ t, snapshot, onOpenBot, onBotActions, onNewBot, loadImage }: Props & { t: Tokens }) {
+function BotsPane({ t, snapshot, onOpenBot, onBotActions, onNewBot, onRetryRoster, loadImage }: Props & { t: Tokens }) {
   const [query, setQuery] = useState('');
   const [showHidden, setShowHidden] = useState(false);
   const now = Math.floor(Date.now() / 1000);
@@ -264,6 +287,9 @@ function BotsPane({ t, snapshot, onOpenBot, onBotActions, onNewBot, loadImage }:
   const shown = filterBots(visible, query);
   const shownHidden = filterBots(hidden, query);
   const selectedBot = snapshot.entries[snapshot.openKey]?.isBotChat ? snapshot.entries[snapshot.openKey]?.bot : null;
+  const thinkingBot = selectedBot && snapshot.entries[snapshot.openKey].transcript.running ? selectedBot : null;
+  const gatewayUp = snapshot.link.kind === 'open';
+  const empty = visible.length === 0 && hidden.length === 0;
 
   const renderBot = (bot: Bot) => (
     <BotRow
@@ -272,6 +298,8 @@ function BotsPane({ t, snapshot, onOpenBot, onBotActions, onNewBot, loadImage }:
       bot={bot}
       now={now}
       selected={bot.name === selectedBot}
+      opening={bot.name === snapshot.openingBot}
+      thinking={bot.name === thinkingBot}
       onPress={() => onOpenBot(bot)}
       onLongPress={() => onBotActions(bot)}
       loadImage={loadImage}
@@ -296,8 +324,35 @@ function BotsPane({ t, snapshot, onOpenBot, onBotActions, onNewBot, loadImage }:
           </Svg>
         </Pressable>
       </View>
+      {error && !empty ? (
+        <View style={[styles.stale, { backgroundColor: t.uiRowActiveBackground, borderRadius: t.radius['2xl'] }]} accessibilityLiveRegion="polite">
+          <Text style={{ flex: 1, color: t.uiTextTertiary, fontSize: 11, lineHeight: 15 }}>
+            {`Roster refresh failed — showing the last good list.${gatewayUp ? '' : ' Waiting for the gateway to reconnect…'}`}
+          </Text>
+          <Pressable onPress={onRetryRoster} hitSlop={8} accessibilityRole="button">
+            <Text style={{ color: t.uiAccent, fontSize: 11, fontWeight: '600' }}>Retry now</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {empty && !loaded && !error ? <ActivityIndicator color={t.uiTextTertiary} style={styles.rosterEmpty} /> : null}
+      {error && empty ? (
+        <View style={styles.rosterUnavailable}>
+          <Text style={{ color: t.uiTextTertiary, fontSize: 12, lineHeight: 17 }}>
+            {gatewayUp
+              ? `Roster unavailable: ${error}. If your gateway predates profiles.list, update Hermes and restart the gateway.`
+              : 'Waiting for the gateway connection… (remote gateways can take a few seconds; retries automatically)'}
+          </Text>
+          <Pressable
+            onPress={onRetryRoster}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.retry, { backgroundColor: t.uiBgSecondary, borderRadius: t.radius['2xl'] }, pressed && { opacity: 0.6 }]}
+          >
+            <Text style={{ color: t.uiTextSecondary, fontSize: 12 }}>Retry now</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {shown.map(renderBot)}
-      {loaded && visible.length === 0 && hidden.length === 0 ? (
+      {loaded && !error && empty ? (
         <View style={styles.rosterEmpty}>
           <Text style={{ color: t.uiTextSecondary, fontSize: 13, fontWeight: '600' }}>No bots yet</Text>
           <Text style={{ color: t.uiTextTertiary, fontSize: 12, marginTop: 4 }}>Create your first bot.</Text>
@@ -320,7 +375,6 @@ function BotsPane({ t, snapshot, onOpenBot, onBotActions, onNewBot, loadImage }:
           {showHidden ? shownHidden.map(renderBot) : null}
         </>
       ) : null}
-      {error ? <Text style={[styles.emptyText, { color: t.dtDestructive }]}>{error}</Text> : null}
     </ScrollView>
   );
 }
@@ -368,6 +422,10 @@ const styles = StyleSheet.create({
   botText: { flex: 1, minWidth: 0 },
   botTitleLine: { flexDirection: 'row', alignItems: 'center' },
   rosterEmpty: { alignItems: 'center', paddingVertical: 24 },
+  rosterUnavailable: { gap: 10, paddingHorizontal: 8, paddingVertical: 16 },
+  retry: { alignSelf: 'flex-start', minHeight: 30, justifyContent: 'center', paddingHorizontal: 12 },
+  stale: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 4 },
+  rowSpinner: { marginRight: 4, transform: [{ scale: 0.7 }] },
   hiddenToggle: { flexDirection: 'row', alignItems: 'center', minHeight: 36, paddingHorizontal: 8, marginTop: 8 },
   footer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, minHeight: 28 },
