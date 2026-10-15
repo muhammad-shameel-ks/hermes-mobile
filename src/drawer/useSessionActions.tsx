@@ -14,7 +14,7 @@ import { errorText } from '../gateway/http.ts';
 import { ActionButton } from '../settings/primitives.tsx';
 import { ActionSheet, Sheet, type SheetAction } from '../ui/Sheet.tsx';
 import { useTokens } from '../ui/tokens.ts';
-import { createSessionActions, deleteSessionDescription } from './session-actions.ts';
+import { createSessionActions, deleteSessionDescription, isGatewayOwnedProfile } from './session-actions.ts';
 
 // the vendored mutation client mints request ids with `crypto.randomUUID`, which React Native lacks;
 // getRandomValues rides along so nothing that feature-detects `crypto` finds half of it
@@ -43,6 +43,7 @@ const COPY = {
   deleted: 'Session deleted',
   deleteFailed: 'Delete failed',
   pinFailed: 'Could not update the pin',
+  gatewayOwned: 'Hermes does not allow editing sessions from an app while its gateway is running. Stop the gateway on the server to use this until Hermes supports it.',
 };
 
 const sessionTitle = (session: SessionInfo) => session.title || session.preview || COPY.untitled;
@@ -57,7 +58,7 @@ export function useSessionActions(controller: ChatController) {
       await work();
       if (done) controller.notify(done);
     } catch (error) {
-      controller.notify(`${failed}. ${errorText(error)}`);
+      controller.notify(`${failed}. ${isGatewayOwnedProfile(error) ? COPY.gatewayOwned : errorText(error)}`);
     }
     void controller.refreshSessions();
   };

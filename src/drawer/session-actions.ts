@@ -17,6 +17,12 @@ export function isUnroutedRestPath(error: unknown): boolean {
   return /no such api endpoint|endpoint is likely missing/i.test(message) || /404:.*headless backend \(hermes serve\): web ui disabled/i.test(message);
 }
 
+/** the gateway's 409 when a standalone `hermes serve` is asked to edit a profile a running gateway owns */
+export function isGatewayOwnedProfile(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /exclusive maintenance refused|gateway runtime already owns profile/i.test(message);
+}
+
 class MissingSnapshotRoute extends Error {}
 
 export type SessionActionsApi = Pick<GatewayApi, 'get' | 'patch' | 'del'>;

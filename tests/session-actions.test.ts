@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createSessionActions, deleteSessionDescription, type SessionActionsApi } from '../src/drawer/session-actions.ts';
+import { createSessionActions, deleteSessionDescription, isGatewayOwnedProfile, type SessionActionsApi } from '../src/drawer/session-actions.ts';
 
 type Call = { method: string; path: string; body?: unknown; query?: unknown };
 
@@ -84,4 +84,11 @@ test('opening a session reads it: unread=false goes through the fenced write', a
   assert.equal(body.unread, false);
   assert.equal(body.profile, 'work');
   assert.equal(body.expected_revision, 7);
+});
+
+test('the gateway-owns-the-profile refusal is recognised, other errors are not', () => {
+  const refusal = new Error('PATCH /api/sessions/s1 answered 409: {"detail":"Exclusive maintenance refused: Gateway runtime already owns profile /home/me/.hermes. Drain and stop the gateway, then retry."}');
+  assert.equal(isGatewayOwnedProfile(refusal), true);
+  assert.equal(isGatewayOwnedProfile(new Error('PATCH /api/sessions/s1 answered 409: {"detail":"revision_conflict"}')), false);
+  assert.equal(isGatewayOwnedProfile(new Error('timeout')), false);
 });
