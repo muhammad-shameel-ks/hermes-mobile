@@ -36,6 +36,7 @@
       "expo-secure-store",
       "expo-web-browser",
       "./plugins/with-ios-scene-lifecycle.js",
+      "./plugins/with-android-text-metrics.js",
       "expo-font",
       "expo-sqlite",
       "expo-video",
