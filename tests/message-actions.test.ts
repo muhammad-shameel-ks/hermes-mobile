@@ -127,6 +127,29 @@ test('retry rewinds to the prompt a reply answers: truncate by row id, rebind th
   controller.dispose();
 });
 
+test('a rewind discards the background rows of the abandoned turns: live processes are killed and a late process.list cannot bring them back', async () => {
+  const { gateway, controller } = await setup();
+  gateway.handlers['process.list'] = () => ({
+    processes: [
+      { session_id: 'p-live', command: 'npm run dev', status: 'running' },
+      { session_id: 'p-done', command: 'make', status: 'exited', exit_code: 0 },
+    ],
+  });
+  gateway.handlers['process.kill'] = () => ({ status: 'killed' });
+  gateway.handlers['prompt.submit'] = () => ({ status: 'streaming' });
+  await controller.status.refreshProcesses('s1');
+  assert.deepEqual(controller.getSnapshot().entries.s1.stack.status.background.map((b) => b.id), ['p-live', 'p-done']);
+
+  assert.equal(await controller.rewind('row-13'), 'ok');
+  await flush();
+  assert.deepEqual(gateway.called('process.kill').map((c) => c.params.process_id), ['p-live'], 'only the running process is killed');
+  assert.deepEqual(controller.getSnapshot().entries.s1.stack.status.background, []);
+
+  await controller.status.refreshProcesses('s1');
+  assert.deepEqual(controller.getSnapshot().entries.s1.stack.status.background, [], 'the registry still reports them; they stay gone');
+  controller.dispose();
+});
+
 test('an edit of an older turn sends the new text; a running turn is interrupted first', async () => {
   const { gateway, controller } = await setup();
   gateway.event('message.start', 'rt-s1');

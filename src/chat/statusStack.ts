@@ -541,6 +541,19 @@ export function dismissBackground(state: StatusState, id: string): StatusState {
   };
 }
 
+/**
+ * Rewind cleanup (desktop `resetSessionBackground`): the turns that spawned these
+ * processes were discarded, so every row goes and every id is remembered as
+ * dismissed, which keeps an in-flight `process.list` from resurrecting a process
+ * whose kill is still on its way.
+ */
+export function resetBackground(state: StatusState): StatusState {
+  if (state.background.length === 0) return state;
+  const dismissed = new Set(state.dismissedBackground);
+  for (const item of state.background) dismissed.add(item.id);
+  return { ...state, background: [], dismissedBackground: [...dismissed] };
+}
+
 // ─── the state ──────────────────────────────────────────────────────────────
 
 export type StatusState = {

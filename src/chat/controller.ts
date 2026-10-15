@@ -968,6 +968,7 @@ export class ChatController {
       if (!entry.runtimeId) await this.resume(key, { rebind: false });
       const runtimeId = this.entry(key)?.runtimeId;
       if (!runtimeId) throw new Error('The session is not attached to the gateway.');
+      this.status.resetBackground(key);
       const interruptFirst = this.interrupts.shouldInterruptFirst({ busy: before.running, sessionId: runtimeId });
       this.updateTranscript(key, (t) => rewindOptimistic(t, plan));
       const result = await this.submitRewind(entry, runtimeId, plan, interruptFirst, options.confirmDeep === true);

@@ -22,6 +22,7 @@ import {
   isStatusEvent,
   markControlUnsupported,
   reduceStatus,
+  resetBackground,
   STATUS_COPY,
   statusNextExpiry,
   emptyStatus,
@@ -185,6 +186,17 @@ export class StatusSync {
     } catch (error) {
       this.host.notify(`Could not stop the process. ${errorText(error)}`);
     }
+  }
+
+  /** a rewind discarded the turns that spawned the background rows: kill the live processes and drop every row */
+  resetBackground(key: string) {
+    const params = this.params(key);
+    if (params) {
+      for (const item of this.host.get(key)?.background ?? []) {
+        if (item.state === 'running') void this.host.request('process.kill', { ...params, process_id: item.id }).catch(() => undefined);
+      }
+    }
+    this.apply(key, resetBackground);
   }
 
   async steerSubagent(key: string, subagentId: string, text: string): Promise<string> {

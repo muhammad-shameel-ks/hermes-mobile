@@ -111,6 +111,25 @@ test('stopping a process drops its row only after the kill is confirmed', async 
   assert.deepEqual(calls.at(-1)?.params, { session_id: 'rt-1', profile: 'default', process_id: 'p' });
 });
 
+test('resetting the background kills what still runs and drops every row for good', async () => {
+  const { sync, store, calls } = setup({
+    'process.list': () => ({
+      processes: [
+        { session_id: 'a', command: 'serve', status: 'running' },
+        { session_id: 'b', command: 'make', status: 'exited', exit_code: 0 },
+      ],
+    }),
+    'process.kill': () => ({ status: 'killed' }),
+  });
+  await sync.refreshProcesses('s');
+  sync.resetBackground('s');
+  await settle();
+  assert.deepEqual(store.status.background, []);
+  assert.deepEqual(calls.filter((c) => c.method === 'process.kill').map((c) => c.params.process_id), ['a']);
+  await sync.refreshProcesses('s');
+  assert.deepEqual(store.status.background, [], 'a registry that still lists them does not resurrect the rows');
+});
+
 test('subagent steering and stopping answer with the desktop copy', async () => {
   const { sync } = setup({ 'subagent.steer': () => ({ status: 'queued' }), 'subagent.interrupt': () => ({ found: false }) });
   assert.equal(await sync.steerSubagent('s', 'sa', ' go left '), 'Queued for the next checkpoint');
