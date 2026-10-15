@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { reasoningArgs, runSlash, subcommandRefusal, type SlashEnv } from '../src/chat/slashRun.ts';
+import { BUSY_KICKOFF_TEXT, reasoningArgs, runSlash, subcommandRefusal, type SlashEnv } from '../src/chat/slashRun.ts';
 import { resolveCommand } from '../src/chat/slash.ts';
 
 type Call = { method: string; params: Record<string, unknown> };
@@ -12,6 +12,7 @@ function fakeEnv(options: Partial<Pick<SlashEnv, 'isBotChat' | 'running' | 'hasS
   const notices: string[] = [];
   const log: string[] = [];
   const submitted: Array<{ text: string; display?: string }> = [];
+  const queued: Array<{ text: string; display?: string }> = [];
   const env: SlashEnv = {
     isBotChat: false,
     running: false,
@@ -33,8 +34,12 @@ function fakeEnv(options: Partial<Pick<SlashEnv, 'isBotChat' | 'running' | 'hasS
     setEffort: async (effort) => void log.push(`effort:${effort}`),
     retitle: (title) => void log.push(`title:${title}`),
     submit: async (text, display) => void submitted.push({ text, display }),
+    enqueue: (text, display) => {
+      queued.push({ text, display });
+      return true;
+    },
   };
-  return { env, calls, said, notices, log, submitted };
+  return { env, calls, said, notices, log, submitted, queued };
 }
 
 test('prose that only starts with a slash is not a command', async () => {
@@ -161,11 +166,30 @@ test('a skill dispatch falls back to what was typed when the gateway projects no
   assert.deepEqual(submitted, [{ text: 'do the thing', display: '/goal ship it' }]);
 });
 
-test('a skill is not sent while a turn runs', async () => {
-  const { env, submitted, said } = fakeEnv({ running: true }, { 'slash.exec': { type: 'skill', name: 'work', message: 'body' } });
+test('a skill kickoff is queued, not sent, while a turn runs', async () => {
+  const { env, submitted, queued, said } = fakeEnv({ running: true }, { 'slash.exec': { type: 'skill', name: 'work', message: 'body', display: '/work x' } });
   await runSlash(env, '/work x');
   assert.deepEqual(submitted, []);
-  assert.match(said[0], /Session busy/);
+  assert.deepEqual(queued, [{ text: 'body', display: '/work x' }]);
+  assert.equal(said[0], '/work\n' + BUSY_KICKOFF_TEXT.queued);
+});
+
+test('a kickoff that cannot be queued tells the reader to stop the reply first', async () => {
+  const { env, said } = fakeEnv({ running: true }, { 'slash.exec': { type: 'send', message: 'go' } });
+  env.enqueue = () => false;
+  await runSlash(env, '/goal ship');
+  assert.match(said[0], /stop the current reply first/);
+});
+
+test('commands that run on their own execute at once while a turn runs', async () => {
+  const { env, calls, said, log } = fakeEnv({ running: true }, { 'slash.exec': { output: 'Hermes 9.9' }, 'session.status': { output: 'busy: yes' }, 'process.stop': { killed: 0 } });
+  await runSlash(env, '/version');
+  await runSlash(env, '/status');
+  await runSlash(env, '/stop');
+  assert.deepEqual(log, ['stop']);
+  assert.deepEqual(calls.map((c) => c.method), ['slash.exec', 'session.status', 'process.stop']);
+  assert.match(said[0], /Hermes 9.9/);
+  assert.match(said[1], /busy: yes/);
 });
 
 test('an alias directive runs its target with the same argument', async () => {

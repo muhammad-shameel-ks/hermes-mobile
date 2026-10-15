@@ -23,6 +23,7 @@ import type {
 } from '../../vendor/hermes-shared/src/gateway-contract.generated.ts';
 import type { GatewayEvent } from '../../vendor/hermes-shared/src/json-rpc-gateway.ts';
 import type { ServerRequest } from '../../vendor/hermes-shared/src/json-rpc-channel.ts';
+import { looksLikeSlashCommand } from '../../vendor/hermes-shared/src/slash.ts';
 import {
   BOT_CHAT_TITLE,
   BOT_KICKOFF,
@@ -73,6 +74,7 @@ import {
   truncateParams,
   type RewindPlan,
 } from './rewind.ts';
+import { noteTurnStart, startedTurnCwds } from '../review/turn-base.ts';
 import { busySendAction } from './queue.ts';
 import { QueueDriver } from './queueDrain.ts';
 import { emptyStack, persistedStack, restoreStack, StatusSync, type PersistedStack, type SessionStack, type StackStore } from './statusSync.ts';
@@ -116,6 +118,8 @@ export type ChatEntry = {
   isBotChat: boolean;
   /** the bot this chat belongs to, when opened from the roster */
   bot: string | null;
+  /** the session's working directory, from the gateway's session info; the Review surface's repository */
+  cwd: string | null;
   transcript: Transcript;
   loading: boolean;
   error: string | null;
@@ -186,6 +190,7 @@ const newEntry = (key: string, profile: string, extra: Partial<ChatEntry> = {}):
   title: null,
   isBotChat: false,
   bot: null,
+  cwd: null,
   transcript: emptyTranscript(),
   loading: false,
   error: null,
@@ -195,6 +200,8 @@ const newEntry = (key: string, profile: string, extra: Partial<ChatEntry> = {}):
   requests: emptyRequests(),
   ...extra,
 });
+
+const cwdFromInfo = (info: SessionLiveInfo | null | undefined, previous: string | null): string | null => info?.cwd?.trim() || previous;
 
 function selectionFromInfo(info: SessionLiveInfo | null | undefined, previous: ModelSelection | null): ModelSelection | null {
   if (!info?.model) return previous;
@@ -300,7 +307,7 @@ export class ChatController {
         const entry = this.entry(key);
         return Boolean(entry && key !== DRAFT_KEY && !entry.loading && this.link.current.kind === 'open');
       },
-      send: (key, text) => this.submitQueued(key, text),
+      send: (key, text, display) => this.submitQueued(key, text, display),
       steer: (key, text) => this.steerRunning(key, text),
       interrupt: (key) => this.interrupt(key),
       notify: (text) => this.notify(text),
@@ -325,7 +332,9 @@ export class ChatController {
   getSnapshot = () => this.snapshot;
 
   private set(patch: Partial<ChatSnapshot>) {
+    const before = this.snapshot.entries;
     this.snapshot = { ...this.snapshot, ...patch };
+    for (const cwd of startedTurnCwds(before, this.snapshot.entries)) void noteTurnStart(cwd, this.api);
     for (const listener of this.listeners) listener();
     // the queue drains whenever its session is idle, not only on the edge a turn ends
     for (const entry of Object.values(this.snapshot.entries)) if (entry.stack.queue.entries.length) this.queue.sweep(entry.key);
@@ -466,7 +475,7 @@ export class ChatController {
     const wasRunning = this.entry(key)?.transcript.running;
     if (event.type === 'session.info') {
       const info = event.payload as SessionLiveInfo | undefined;
-      if (info?.model) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(info, e.model) }));
+      if (info?.model || info?.cwd) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(info, e.model), cwd: cwdFromInfo(info, e.cwd) }));
     }
     this.updateTranscript(key, (t) => applyEvent(t, event));
     if (event.type === 'message.complete' || (wasRunning && !this.entry(key)?.transcript.running)) {
@@ -610,7 +619,7 @@ export class ChatController {
     }
     const key = created.stored_session_id;
     this.setProfile(profile);
-    this.putEntry(newEntry(key, profile, { title: BOT_CHAT_TITLE, isBotChat: true, bot: profile, model: selectionFromInfo(created.info, null) }));
+    this.putEntry(newEntry(key, profile, { title: BOT_CHAT_TITLE, isBotChat: true, bot: profile, model: selectionFromInfo(created.info, null), cwd: cwdFromInfo(created.info, null) }));
     this.bindRuntime(key, created.session_id);
     this.set({ openKey: key });
     if (kickoff) {
@@ -733,7 +742,7 @@ export class ChatController {
       this.bindRuntime(key, result.session_id);
       this.status.hydrate(key, result);
       this.serverRequests.onResumed(key, result, startedAt);
-      if (result.info?.model) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(result.info, e.model) }));
+      if (result.info?.model || result.info?.cwd) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(result.info, e.model), cwd: cwdFromInfo(result.info, e.cwd) }));
       if (rebind && !result.running && entry.transcript.running) {
         this.updateTranscript(key, (t) => applyEvent(t, { type: 'session.info', payload: { running: false } }));
       }
@@ -808,10 +817,12 @@ export class ChatController {
   }
 
   /** a queued prompt as a new turn; a refusal leaves nothing behind so the drain can try again */
-  private async submitQueued(key: string, text: string): Promise<boolean> {
+  private async submitQueued(key: string, text: string, display?: string): Promise<boolean> {
     const entry = this.entry(key);
     if (!entry || key === DRAFT_KEY) return false;
-    this.updateTranscript(key, (t) => addUserMessage(t, text));
+    // a command parked with the Queue control runs when its turn comes, as the desktop's drain routes it through the slash dispatcher
+    if (!display && looksLikeSlashCommand(text) && (await runSlash(this.slashEnv(key), text.trim()))) return true;
+    this.updateTranscript(key, (t) => addUserMessage(t, display ?? text));
     const messageId = this.entry(key)?.transcript.messages.at(-1)?.id;
     try {
       if (!entry.runtimeId) await this.resume(key, { rebind: false });
@@ -860,7 +871,7 @@ export class ChatController {
     this.set({
       entries: {
         ...this.snapshot.entries,
-        [key]: { ...moved, key, model: selectionFromInfo(created.info, moved.model) },
+        [key]: { ...moved, key, model: selectionFromInfo(created.info, moved.model), cwd: cwdFromInfo(created.info, moved.cwd) },
         [DRAFT_KEY]: newEntry(DRAFT_KEY, draft.profile, { model: pick }),
       },
       openKey: this.snapshot.openKey === DRAFT_KEY ? key : this.snapshot.openKey,
@@ -968,6 +979,7 @@ export class ChatController {
       if (!entry.runtimeId) await this.resume(key, { rebind: false });
       const runtimeId = this.entry(key)?.runtimeId;
       if (!runtimeId) throw new Error('The session is not attached to the gateway.');
+      this.status.resetBackground(key);
       const interruptFirst = this.interrupts.shouldInterruptFirst({ busy: before.running, sessionId: runtimeId });
       this.updateTranscript(key, (t) => rewindOptimistic(t, plan));
       const result = await this.submitRewind(entry, runtimeId, plan, interruptFirst, options.confirmDeep === true);
@@ -1028,18 +1040,21 @@ export class ChatController {
   private async compact(key: string, focusTopic = '') {
     const entry = this.entry(key);
     if (!entry || key === DRAFT_KEY) return;
+    // mid-turn the gateway refuses (or defers) a compress, and the live turn's own running flag is not this method's to clear
+    let flagged = false;
     try {
       if (!entry.runtimeId) await this.resume(key, { rebind: false });
       const runtimeId = this.entry(key)?.runtimeId;
       if (!runtimeId) throw new Error('The session is not attached to the gateway.');
-      this.updateTranscript(key, (t) => ({ ...t, running: true, status: 'Compacting…' }));
+      flagged = !this.entry(key)?.transcript.running;
+      if (flagged) this.updateTranscript(key, (t) => ({ ...t, running: true, status: 'Compacting…' }));
       const result = await this.rpc('session.compress', { session_id: runtimeId, profile: entry.profile, ...(focusTopic ? { focus_topic: focusTopic } : {}) }, 600_000);
       const messages = Array.isArray(result.messages) ? fromHistory(result.messages as SessionMessage[]) : null;
-      this.updateTranscript(key, (t) => ({ ...t, messages: messages ?? t.messages, running: false, status: null }));
+      this.updateTranscript(key, (t) => ({ ...t, messages: messages ?? t.messages, ...(flagged ? { running: false, status: null } : {}) }));
       if (messages) this.updateEntry(key, (e) => ({ ...e, history: NO_HISTORY }));
       this.updateTranscript(key, (t) => addSystemNotice(t, result.message || 'Conversation compacted.'));
     } catch (error) {
-      this.updateTranscript(key, (t) => ({ ...addSystemNotice(t, `Compacting failed: ${errorText(error)}`), running: false, status: null }));
+      this.updateTranscript(key, (t) => ({ ...addSystemNotice(t, `Compacting failed: ${errorText(error)}`), ...(flagged ? { running: false, status: null } : {}) }));
     }
   }
 
@@ -1070,6 +1085,7 @@ export class ChatController {
       say: (text) => this.updateTranscript(key, (t) => addSystemNotice(t, text)),
       notify: (text) => this.notify(text),
       newChat: () => this.newChat(),
+      enqueue: (text, display) => this.queue.enqueue(key, text, display) !== null,
       compact: (focusTopic) => this.compact(key, focusTopic),
       stop: () => this.stop(),
       setEffort: (effort) => this.setEffort(effort),
@@ -1140,6 +1156,11 @@ export class ChatController {
     } catch {
       // the intro falls back to the neutral copy
     }
+  }
+
+  /** the open chat's working directory, when the gateway has told us; where the Review surface looks */
+  openCwd(): string | null {
+    return this.entry(this.snapshot.openKey)?.cwd ?? null;
   }
 
   /** the open chat's model: its live session's, else the draft's pick, else the profile default */

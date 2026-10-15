@@ -34,7 +34,15 @@ export type SlashEnv = {
   retitle: (title: string) => void;
   /** send `text` as a user turn; `display` is what the bubble reads when it differs */
   submit: (text: string, display?: string) => Promise<void>;
+  /** park `text` on the session's queue to send when the running turn ends; false when nothing could be queued */
+  enqueue: (text: string, display?: string) => boolean;
 };
+
+/** desktop slash.ts BUSY_KICKOFF_TEXT */
+export const BUSY_KICKOFF_TEXT = {
+  queued: 'session busy — message queued to send when the current turn finishes',
+  busy: 'session busy — stop the current reply first (Stop button or Esc), then send this command',
+} as const;
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -212,8 +220,10 @@ async function runExec(env: SlashEnv, text: string, name: string, arg: string, c
       return say(`/${name}: ${dispatch.type === 'skill' ? 'skill payload missing message' : 'empty message'}`);
     }
     if (dispatch.type === 'prefill') return say(message);
-    if (env.running) return say('Session busy — stop the current reply first, then send this command.');
-    await env.submit(message, dispatchDisplay(dispatch, message, text.trim()));
+    const display = dispatchDisplay(dispatch, message, text.trim());
+    // the command already ran; its kickoff waits for the turn rather than being dropped
+    if (env.running) return say(BUSY_KICKOFF_TEXT[env.enqueue(message, display) ? 'queued' : 'busy']);
+    await env.submit(message, display);
   };
 
   let execError: unknown = null;

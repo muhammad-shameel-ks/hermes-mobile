@@ -15,7 +15,10 @@ export function CardEnvBridge({ controller }: { controller: ChatController }) {
   const overlay = useOverlay();
   useEffect(() => {
     setCardEnv({
-      openReview: (path) => openReview(overlay, path ? { path } : {}),
+      openReview: (path) => {
+        const cwd = controller.openCwd();
+        openReview(overlay, { ...(cwd ? { cwd } : {}), ...(path ? { path } : {}) });
+      },
       openSession: (sessionId) => {
         overlay.clear();
         controller.openSession({ id: sessionId, title: null });
