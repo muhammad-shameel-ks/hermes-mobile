@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono/400Regular';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
@@ -16,9 +16,11 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import { refreshCredentials } from './src/auth/native-flow.ts';
 import { clearCredentials, loadConnection, loadCredentials, saveCredentials, type SavedConnection } from './src/auth/store.ts';
-import { isStale, nowSeconds, type Credentials } from './src/auth/tokens.ts';
-import { probeGateway, type GatewayStatus } from './src/gateway/status.ts';
+import { isStale, nowSeconds } from './src/auth/tokens.ts';
+import { probeGateway } from './src/gateway/status.ts';
+import { restoreSession, type AppState } from './src/app/boot-state.ts';
 import SignedInApp from './src/app/SignedInApp.tsx';
+import { ConnectingScreen, SignInAgainScreen, UnreachableScreen } from './src/screens/BootScreens.tsx';
 import ConnectScreen from './src/screens/ConnectScreen.tsx';
 import { theme } from './src/ui/theme.ts';
 import { resolveTokens, TokensContext } from './src/ui/tokens.ts';
@@ -26,41 +28,8 @@ import { resolveTokens, TokensContext } from './src/ui/tokens.ts';
 // One skin and one appearance until the appearance settings land: the desktop's `nous` dark.
 const tokens = resolveTokens('dark');
 
-type AppState =
-  | { kind: 'starting' }
-  | { kind: 'connect'; connection: SavedConnection | null; address: string; notice: string | null }
-  | { kind: 'signed-in'; connection: SavedConnection; credentials: Credentials; status: GatewayStatus | null };
-
-async function restore(): Promise<AppState> {
-  try {
-    const connection = await loadConnection();
-    if (!connection) return { kind: 'connect', connection: null, address: '', notice: null };
-    const stored = await loadCredentials(connection.id);
-    if (!stored) return { kind: 'connect', connection, address: connection.baseUrl, notice: null };
-
-    let credentials = stored;
-    if (isStale(stored, nowSeconds())) {
-      const refreshed = await refreshCredentials(connection.baseUrl, stored.refreshToken);
-      if (refreshed.kind !== 'refreshed') {
-        const notice =
-          refreshed.kind === 'unavailable'
-            ? 'The gateway could not reach its sign-in provider.'
-            : 'The session needs a fresh sign-in.';
-        return { kind: 'connect', connection, address: connection.baseUrl, notice };
-      }
-      credentials = refreshed.credentials;
-      await saveCredentials(connection.id, credentials);
-    }
-
-    const probe = await probeGateway(connection.baseUrl);
-    if (probe.kind === 'ok') {
-      return { kind: 'signed-in', connection, credentials, status: probe.status };
-    }
-    return { kind: 'connect', connection, address: connection.baseUrl, notice: 'The saved gateway did not answer.' };
-  } catch {
-    return { kind: 'connect', connection: null, address: '', notice: null };
-  }
-}
+const restore = () =>
+  restoreSession({ loadConnection, loadCredentials, saveCredentials, refreshCredentials, probeGateway, isStale, nowSeconds });
 
 export default function App() {
   const [state, setState] = useState<AppState>({ kind: 'starting' });
@@ -82,12 +51,20 @@ export default function App() {
     };
   }, []);
 
-  const leave = useCallback((connection: SavedConnection, notice: string) => {
+  const leave = useCallback((connection: SavedConnection, reason: string | null) => {
     void (async () => {
       await clearCredentials(connection.id);
-      setState({ kind: 'connect', connection, address: connection.baseUrl, notice });
+      setState(reason === null ? { kind: 'signed-out', connection } : { kind: 'reauth', connection, reason });
     })();
   }, []);
+
+  const retry = useCallback(() => {
+    setState({ kind: 'starting' });
+    void restore().then(setState);
+  }, []);
+
+  const gatewaySettings = (connection: SavedConnection) =>
+    setState({ kind: 'connect', connection, address: connection.baseUrl, notice: null });
 
   return (
     <SafeAreaProvider>
@@ -99,10 +76,23 @@ export default function App() {
             edges={state.kind === 'signed-in' ? ['left', 'right'] : ['top', 'bottom', 'left', 'right']}
           >
             <StatusBar style="light" />
-            {state.kind === 'starting' ? (
-              <View style={styles.starting}>
-                <ActivityIndicator size="large" color={theme.text} />
-              </View>
+            {state.kind === 'starting' ? <ConnectingScreen /> : null}
+            {state.kind === 'unreachable' ? (
+              <UnreachableScreen
+                headline={state.headline}
+                detail={state.detail}
+                onRetry={retry}
+                onGatewaySettings={() => gatewaySettings(state.connection)}
+              />
+            ) : null}
+            {state.kind === 'reauth' || state.kind === 'signed-out' ? (
+              <SignInAgainScreen
+                variant={state.kind}
+                connection={state.connection}
+                reason={state.kind === 'reauth' ? state.reason : undefined}
+                onSignedIn={(credentials) => setState({ kind: 'signed-in', connection: state.connection, credentials, status: null })}
+                onGatewaySettings={() => gatewaySettings(state.connection)}
+              />
             ) : null}
             {state.kind === 'connect' ? (
               <ConnectScreen
@@ -117,7 +107,7 @@ export default function App() {
               <SignedInApp
                 connection={state.connection}
                 credentials={state.credentials}
-                onSignOut={() => leave(state.connection, 'Signed out — the gateway keeps the token until it lapses.')}
+                onSignOut={() => leave(state.connection, null)}
                 onReauthRequired={(reason) => leave(state.connection, reason)}
               />
             ) : null}
@@ -130,5 +120,4 @@ export default function App() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.background },
-  starting: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });
