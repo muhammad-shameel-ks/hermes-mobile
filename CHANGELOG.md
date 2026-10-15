@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.15] - 2026-10-15
+
+- Draw inline code as the desktop does: upright mono on a rounded gray chip ([0499601](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/0499601))
+
 ## [0.1.14] - 2026-10-15
 
 - No user-facing changes.
