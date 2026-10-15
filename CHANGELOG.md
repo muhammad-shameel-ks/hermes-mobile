@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.11] - 2026-10-15
+
+- Clear Android's Bold text adjustment natively so labels stop clipping ([a76f1cb](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/a76f1cb))
+
 ## [0.1.10] - 2026-10-15
 
 - Name a weight on Android text so Bold text stops clipping labels ([1fb1d9a](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/1fb1d9a))
