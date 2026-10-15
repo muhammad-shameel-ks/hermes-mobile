@@ -74,6 +74,7 @@ import {
   truncateParams,
   type RewindPlan,
 } from './rewind.ts';
+import { noteTurnStart, startedTurnCwds } from '../review/turn-base.ts';
 import { busySendAction } from './queue.ts';
 import { QueueDriver } from './queueDrain.ts';
 import { emptyStack, persistedStack, restoreStack, StatusSync, type PersistedStack, type SessionStack, type StackStore } from './statusSync.ts';
@@ -117,6 +118,8 @@ export type ChatEntry = {
   isBotChat: boolean;
   /** the bot this chat belongs to, when opened from the roster */
   bot: string | null;
+  /** the session's working directory, from the gateway's session info; the Review surface's repository */
+  cwd: string | null;
   transcript: Transcript;
   loading: boolean;
   error: string | null;
@@ -187,6 +190,7 @@ const newEntry = (key: string, profile: string, extra: Partial<ChatEntry> = {}):
   title: null,
   isBotChat: false,
   bot: null,
+  cwd: null,
   transcript: emptyTranscript(),
   loading: false,
   error: null,
@@ -196,6 +200,8 @@ const newEntry = (key: string, profile: string, extra: Partial<ChatEntry> = {}):
   requests: emptyRequests(),
   ...extra,
 });
+
+const cwdFromInfo = (info: SessionLiveInfo | null | undefined, previous: string | null): string | null => info?.cwd?.trim() || previous;
 
 function selectionFromInfo(info: SessionLiveInfo | null | undefined, previous: ModelSelection | null): ModelSelection | null {
   if (!info?.model) return previous;
@@ -326,7 +332,9 @@ export class ChatController {
   getSnapshot = () => this.snapshot;
 
   private set(patch: Partial<ChatSnapshot>) {
+    const before = this.snapshot.entries;
     this.snapshot = { ...this.snapshot, ...patch };
+    for (const cwd of startedTurnCwds(before, this.snapshot.entries)) void noteTurnStart(cwd, this.api);
     for (const listener of this.listeners) listener();
     // the queue drains whenever its session is idle, not only on the edge a turn ends
     for (const entry of Object.values(this.snapshot.entries)) if (entry.stack.queue.entries.length) this.queue.sweep(entry.key);
@@ -467,7 +475,7 @@ export class ChatController {
     const wasRunning = this.entry(key)?.transcript.running;
     if (event.type === 'session.info') {
       const info = event.payload as SessionLiveInfo | undefined;
-      if (info?.model) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(info, e.model) }));
+      if (info?.model || info?.cwd) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(info, e.model), cwd: cwdFromInfo(info, e.cwd) }));
     }
     this.updateTranscript(key, (t) => applyEvent(t, event));
     if (event.type === 'message.complete' || (wasRunning && !this.entry(key)?.transcript.running)) {
@@ -611,7 +619,7 @@ export class ChatController {
     }
     const key = created.stored_session_id;
     this.setProfile(profile);
-    this.putEntry(newEntry(key, profile, { title: BOT_CHAT_TITLE, isBotChat: true, bot: profile, model: selectionFromInfo(created.info, null) }));
+    this.putEntry(newEntry(key, profile, { title: BOT_CHAT_TITLE, isBotChat: true, bot: profile, model: selectionFromInfo(created.info, null), cwd: cwdFromInfo(created.info, null) }));
     this.bindRuntime(key, created.session_id);
     this.set({ openKey: key });
     if (kickoff) {
@@ -734,7 +742,7 @@ export class ChatController {
       this.bindRuntime(key, result.session_id);
       this.status.hydrate(key, result);
       this.serverRequests.onResumed(key, result, startedAt);
-      if (result.info?.model) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(result.info, e.model) }));
+      if (result.info?.model || result.info?.cwd) this.updateEntry(key, (e) => ({ ...e, model: selectionFromInfo(result.info, e.model), cwd: cwdFromInfo(result.info, e.cwd) }));
       if (rebind && !result.running && entry.transcript.running) {
         this.updateTranscript(key, (t) => applyEvent(t, { type: 'session.info', payload: { running: false } }));
       }
@@ -863,7 +871,7 @@ export class ChatController {
     this.set({
       entries: {
         ...this.snapshot.entries,
-        [key]: { ...moved, key, model: selectionFromInfo(created.info, moved.model) },
+        [key]: { ...moved, key, model: selectionFromInfo(created.info, moved.model), cwd: cwdFromInfo(created.info, moved.cwd) },
         [DRAFT_KEY]: newEntry(DRAFT_KEY, draft.profile, { model: pick }),
       },
       openKey: this.snapshot.openKey === DRAFT_KEY ? key : this.snapshot.openKey,
@@ -1148,6 +1156,11 @@ export class ChatController {
     } catch {
       // the intro falls back to the neutral copy
     }
+  }
+
+  /** the open chat's working directory, when the gateway has told us; where the Review surface looks */
+  openCwd(): string | null {
+    return this.entry(this.snapshot.openKey)?.cwd ?? null;
   }
 
   /** the open chat's model: its live session's, else the draft's pick, else the profile default */
