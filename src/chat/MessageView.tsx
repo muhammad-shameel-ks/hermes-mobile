@@ -1,17 +1,21 @@
 /**
  * One transcript message. User turns are bubbles; assistant turns render their
- * parts in order - a collapsed reasoning disclosure, markdown text, and tool calls,
- * where two or more consecutive calls collapse into one tool run row. A turn that
- * arrives live slides in with the desktop's enter motion. Tool cards, the action
- * bar and the desktop's live tool ticker are later work.
+ * parts in order - a collapsed reasoning disclosure, markdown text, and tool calls.
+ * Reasoning and tool calls are the desktop's transcript scaffolding: quiet,
+ * faded one-line rows (a glyph, a title, trailing meta, a caret right of the
+ * text) where a run of two or more calls folds into one summary line. A turn
+ * that arrives live slides in with the desktop's enter motion. Tool cards and
+ * the action bar are later work.
  */
 
-import { memo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo, useMemo, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
 
 import { DisclosureCaret, EnterView } from '../ui/motion.tsx';
-import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
+import { MONO, SCAFFOLD_OPACITY, useTokens, type Tokens } from '../ui/tokens.ts';
+import { AlertGlyph, ToolIcon } from '../ui/ToolIcon.tsx';
 import { Markdown } from './Markdown.tsx';
+import { buildToolView, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
 import type { Message, Part, ToolPart } from './transcript.ts';
 
 type Block = { kind: 'text'; text: string } | { kind: 'reasoning'; text: string } | { kind: 'tools'; tools: ToolPart[] };
@@ -73,7 +77,7 @@ function MessageViewImpl({ message }: { message: Message }) {
         if (block.kind === 'tools') {
           return (
             <EnterView key={index} enabled={streaming} animationKey={`tool-run:${key}`}>
-              <ToolBlock tools={block.tools} />
+              <ToolBlock tools={block.tools} live={streaming && last} />
             </EnterView>
           );
         }
@@ -93,34 +97,68 @@ function MessageViewImpl({ message }: { message: Message }) {
 
 export const MessageView = memo(MessageViewImpl);
 
-function Disclosure({ open, t }: { open: boolean; t: Tokens }) {
+/**
+ * One scaffold line (desktop components/chat/scaffold-row + disclosure-row): the
+ * label and its in-flow meta, then a caret to the RIGHT of the text. The press
+ * target hugs the content rather than spanning the row. With no hover on touch,
+ * `caretRest` is the caret's resting opacity: thinking headers keep a faint one,
+ * tool rows show it only once open.
+ */
+function ScaffoldRow({
+  children,
+  open,
+  onToggle,
+  caretRest,
+  label,
+}: {
+  children: ReactNode;
+  open: boolean;
+  onToggle?: () => void;
+  caretRest: number;
+  label: string;
+}) {
+  const t = useTokens();
   return (
-    <View style={styles.caret}>
-      <DisclosureCaret open={open} size={12} color={t.uiTextTertiary} />
+    <View style={[styles.scaffoldRow, { minHeight: t.type.lineHeight }]}>
+      <Pressable
+        onPress={onToggle}
+        disabled={!onToggle}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ expanded: onToggle ? open : undefined, disabled: !onToggle }}
+        style={styles.scaffoldPress}
+      >
+        <View style={styles.scaffoldContent}>{children}</View>
+        {onToggle ? (
+          <View style={[styles.caret, { opacity: open ? 0.8 : caretRest }]}>
+            <DisclosureCaret open={open} size={11} color={t.conversationScaffoldText} />
+          </View>
+        ) : null}
+      </Pressable>
     </View>
   );
+}
+
+function scaffoldLabel(t: Tokens, color = t.conversationScaffoldText): TextStyle {
+  return { color, fontSize: t.type.tool, lineHeight: t.type.lineHeight, flexShrink: 1 };
+}
+
+function scaffoldMeta(t: Tokens): TextStyle {
+  return { color: t.conversationScaffoldMeta, fontSize: t.type.tool * 0.85, flexShrink: 0, fontVariant: ['tabular-nums'] };
 }
 
 function Reasoning({ text, live }: { text: string; live: boolean }) {
   const t = useTokens();
   const [open, setOpen] = useState(false);
+  const label = live ? 'Thinking' : 'Thought';
   return (
-    <View style={styles.block}>
-      <Pressable
-        onPress={() => setOpen((v) => !v)}
-        hitSlop={6}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        style={styles.disclosureRow}
-      >
-        <Disclosure open={open} t={t} />
-        <Text style={{ color: t.uiTextTertiary, fontSize: t.type.tool }}>{live ? 'Thinking…' : 'Thought'}</Text>
-      </Pressable>
+    <View style={styles.scaffold}>
+      <ScaffoldRow open={open} onToggle={() => setOpen((v) => !v)} caretRest={0.4} label={label}>
+        <Text style={scaffoldLabel(t)}>{label}</Text>
+      </ScaffoldRow>
       {open ? (
-        <Text
-          selectable
-          style={[styles.reasoningText, { color: t.uiTextTertiary, borderLeftColor: t.uiStrokeTertiary, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight }]}
-        >
+        <Text selectable style={[styles.reasoningText, { color: t.conversationScaffoldText, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight }]}>
           {text.trim()}
         </Text>
       ) : null}
@@ -128,98 +166,127 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
   );
 }
 
-const pluralTools = (n: number) => (n === 1 ? '1 tool' : `${n} tools`);
-
-function ToolBlock({ tools }: { tools: ToolPart[] }) {
-  const t = useTokens();
-  const [open, setOpen] = useState(false);
-  if (tools.length === 1) return <ToolRow tool={tools[0]} />;
-  const running = tools.filter((tool) => tool.status === 'running').length;
+/**
+ * Consecutive tool calls, split the desktop's way (ToolGroupSlot): file edits and
+ * other cards stay on screen as their own rows, and the reads and commands
+ * between them fold into a run.
+ */
+function ToolBlock({ tools, live }: { tools: ToolPart[]; live: boolean }) {
+  const items = splitRunItems(tools.map((tool) => tool.name));
   return (
-    <View style={[styles.block, styles.toolGroup, { borderColor: t.uiStrokeQuaternary, borderRadius: t.radius['2xl'] }]}>
-      <Pressable
-        onPress={() => setOpen((v) => !v)}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        style={styles.toolHeader}
-      >
-        <Disclosure open={open} t={t} />
-        {running ? <ActivityIndicator size="small" color={t.uiTextTertiary} style={styles.toolSpinner} /> : null}
-        <Text style={{ color: t.uiTextSecondary, fontSize: t.type.tool, fontFamily: MONO, flexShrink: 1 }} numberOfLines={1}>
-          {running ? `Running ${pluralTools(tools.length)}` : `Used ${pluralTools(tools.length)}`}
-          <Text style={{ color: t.uiTextQuaternary }}>{` · ${[...new Set(tools.map((tool) => tool.name))].join(', ')}`}</Text>
-        </Text>
-      </Pressable>
-      {open ? (
-        <View style={[styles.toolGroupBody, { borderTopColor: t.uiStrokeQuaternary }]}>
-          {tools.map((tool) => (
-            <ToolRow key={tool.id} tool={tool} nested />
-          ))}
-        </View>
-      ) : null}
+    <View style={styles.toolBlock}>
+      {items.map((item, index) => {
+        if (item.kind === 'card') return <ToolRow key={tools[item.index].id} tool={tools[item.index]} />;
+        const run = tools.slice(item.start, item.end + 1);
+        if (run.length === 1) return <ToolRow key={run[0].id} tool={run[0]} />;
+        return <ToolRun key={run[0].id} tools={run} live={live && index === items.length - 1} />;
+      })}
     </View>
   );
 }
 
-function ToolRow({ tool, nested = false }: { tool: ToolPart; nested?: boolean }) {
+/** a run of two or more calls: one summary line, opening to the rows; live, the newest row ticks under it */
+function ToolRun({ tools, live }: { tools: ToolPart[]; live: boolean }) {
   const t = useTokens();
   const [open, setOpen] = useState(false);
-  const detail = tool.result?.trim() || tool.summary || '';
-  const expandable = tool.status === 'done' && detail !== '';
-  const duration = tool.durationS !== undefined && tool.durationS >= 0.1 ? `${tool.durationS.toFixed(1)}s` : '';
+  const summary = summarizeToolRun(tools, live);
   return (
-    <View style={nested ? undefined : [styles.block, styles.toolGroup, { borderColor: t.uiStrokeQuaternary, borderRadius: t.radius['2xl'] }]}>
-      <Pressable
-        onPress={() => expandable && setOpen((v) => !v)}
-        disabled={!expandable}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open, disabled: !expandable }}
-        style={styles.toolHeader}
-      >
-        {expandable ? <Disclosure open={open} t={t} /> : <View style={styles.caretSpacer} />}
-        {tool.status === 'running' ? (
-          <ActivityIndicator size="small" color={t.uiTextTertiary} style={styles.toolSpinner} />
-        ) : null}
-        <Text style={{ color: t.uiTextSecondary, fontSize: t.type.tool, fontFamily: MONO }}>{tool.name}</Text>
-        <Text style={{ color: t.uiTextTertiary, fontSize: t.type.tool, fontFamily: MONO, flex: 1 }} numberOfLines={1}>
-          {tool.summary || tool.context ? ` ${tool.summary || tool.context}` : ''}
-        </Text>
-        {duration ? <Text style={{ color: t.uiTextQuaternary, fontSize: t.type.tool, fontFamily: MONO }}>{duration}</Text> : null}
-      </Pressable>
+    <View style={styles.toolBlock}>
+      <View style={styles.scaffold}>
+        <ScaffoldRow open={open} onToggle={() => setOpen((v) => !v)} caretRest={0} label={summary}>
+          <Text style={scaffoldLabel(t)} numberOfLines={1}>
+            {summary}
+          </Text>
+        </ScaffoldRow>
+      </View>
+      {open ? tools.map((tool) => <ToolRow key={tool.id} tool={tool} />) : live ? <ToolRow tool={tools[tools.length - 1]} /> : null}
+    </View>
+  );
+}
+
+const AMBER = { light: '#b45309', dark: '#fcd34d' } as const;
+
+function ToolGlyph({ view, color }: { view: ToolView; color: string }) {
+  const t = useTokens();
+  let glyph: ReactNode = null;
+  if (view.status === 'running') {
+    glyph = <ActivityIndicator size="small" color={t.uiTextTertiary} style={styles.spinner} />;
+  } else if (view.status === 'error' || view.status === 'warning') {
+    glyph = <AlertGlyph size={GLYPH} color={color} />;
+  } else if (view.icon) {
+    glyph = <ToolIcon name={view.icon} size={GLYPH} color={t.uiTextTertiary} />;
+  }
+  return glyph ? <View style={styles.glyph}>{glyph}</View> : null;
+}
+
+function ToolRow({ tool }: { tool: ToolPart }) {
+  const t = useTokens();
+  const [open, setOpen] = useState(false);
+  const view = useMemo(() => buildToolView(tool), [tool]);
+  const expandable = view.status !== 'running' && Boolean(view.detail || view.command);
+  const failed = view.status === 'error';
+  const titleColor =
+    failed ? t.dtDestructive : view.status === 'warning' ? AMBER[t.renderedMode] : view.status === 'running' ? t.conversationScaffoldMeta : t.conversationScaffoldText;
+
+  return (
+    <View
+      style={[styles.scaffold, open && [styles.toolShell, { borderColor: t.uiStrokeTertiary }]]}
+    >
+      <View style={open ? [styles.toolShellHeader, { borderBottomColor: t.uiStrokeTertiary }] : undefined}>
+        <ScaffoldRow open={open} onToggle={expandable ? () => setOpen((v) => !v) : undefined} caretRest={0} label={view.title}>
+          <ToolGlyph view={view} color={view.status === 'warning' ? AMBER[t.renderedMode] : t.dtDestructive} />
+          <Text style={scaffoldLabel(t, titleColor)} numberOfLines={1}>
+            {view.title}
+          </Text>
+          {view.status !== 'running' && view.countLabel ? <Text style={scaffoldMeta(t)}>{view.countLabel}</Text> : null}
+          {view.durationLabel ? <Text style={scaffoldMeta(t)}>{view.durationLabel}</Text> : null}
+        </ScaffoldRow>
+      </View>
       {open ? (
-        <View style={[styles.toolResult, { backgroundColor: t.uiWidgetSurfaceBackground, borderRadius: t.radius.xl }]}>
-          {tool.context && tool.summary ? (
-            <Text style={{ color: t.uiTextTertiary, fontSize: t.type.tool, fontFamily: MONO, marginBottom: 6 }} selectable>
-              {tool.context}
+        <View style={styles.toolBody}>
+          {view.command ? (
+            <View style={[styles.terminal, { borderColor: t.uiStrokeTertiary, backgroundColor: t.uiBgTertiary }]}>
+              <Text selectable style={[styles.code, { color: t.uiTextSecondary, fontSize: t.type.tool * 0.95 }]}>
+                <Text style={{ color: t.uiAccent }}>{'$ '}</Text>
+                {view.command}
+              </Text>
+            </View>
+          ) : null}
+          {view.detail ? (
+            <Text
+              selectable
+              numberOfLines={24}
+              style={[styles.code, { color: failed ? t.dtDestructive : t.uiTextSecondary, fontSize: t.type.tool * 0.95, lineHeight: t.type.tool * 1.55 }]}
+            >
+              {view.detail}
             </Text>
           ) : null}
-          <Text
-            selectable
-            numberOfLines={24}
-            style={{ color: t.uiTextSecondary, fontSize: t.type.tool, lineHeight: t.type.tool * 1.5, fontFamily: MONO }}
-          >
-            {detail}
-          </Text>
         </View>
       ) : null}
     </View>
   );
 }
+
+const GLYPH = 14;
 
 const styles = StyleSheet.create({
   userRow: { alignItems: 'flex-end', paddingLeft: 48 },
   bubble: { paddingHorizontal: 12, paddingVertical: 8, maxWidth: '100%' },
-  assistant: { gap: 2 },
-  block: { marginBottom: 8 },
+  assistant: { gap: 6 },
   notice: { borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8 },
   footnote: { marginTop: 2 },
-  caret: { width: 12, marginRight: 4, alignItems: 'center', justifyContent: 'center' },
-  caretSpacer: { width: 16 },
-  disclosureRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingVertical: 2 },
-  reasoningText: { marginTop: 6, marginLeft: 5, paddingLeft: 10, borderLeftWidth: 1 },
-  toolGroup: { borderWidth: 1, overflow: 'hidden' },
-  toolHeader: { flexDirection: 'row', alignItems: 'center', minHeight: 32, paddingHorizontal: 10, gap: 2 },
-  toolSpinner: { transform: [{ scale: 0.7 }], marginRight: 2 },
-  toolGroupBody: { borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 2 },
-  toolResult: { marginHorizontal: 10, marginBottom: 10, padding: 10 },
+  scaffold: { opacity: SCAFFOLD_OPACITY, maxWidth: '100%', overflow: 'hidden' },
+  scaffoldRow: { flexDirection: 'row', alignItems: 'center', maxWidth: '100%' },
+  scaffoldPress: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 6 },
+  scaffoldContent: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 6 },
+  caret: { width: 12, alignItems: 'center', justifyContent: 'center' },
+  glyph: { width: GLYPH, height: GLYPH, alignItems: 'center', justifyContent: 'center' },
+  spinner: { transform: [{ scale: 0.6 }] },
+  reasoningText: { marginTop: 2, paddingBottom: 4 },
+  toolBlock: { gap: 6 },
+  toolShell: { borderWidth: 1, borderRadius: 5 },
+  toolShellHeader: { borderBottomWidth: 1, paddingHorizontal: 8, paddingVertical: 6 },
+  toolBody: { padding: 6, gap: 6 },
+  terminal: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 6 },
+  code: { fontFamily: MONO },
 });

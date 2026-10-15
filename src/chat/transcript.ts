@@ -17,9 +17,15 @@ export type ToolPart = {
   name: string;
   /** a one-line description of what the call touched */
   context: string;
+  args: Record<string, unknown>;
   status: 'running' | 'done';
   summary?: string;
+  /** the tool's raw result, JSON-encoded when it was structured */
   result?: string;
+  /** the gateway's display rendering of the result (`result_text`) */
+  resultText?: string;
+  /** the gateway's own account of a failure (`tool.complete` `error`) */
+  error?: string;
   durationS?: number;
 };
 
@@ -124,8 +130,19 @@ function storedCall(call: unknown, index: number): ToolPart {
     id: String(row.id ?? row.tool_call_id ?? `stored-tool-${index}`),
     name: String(row.name ?? row.tool_name ?? fn?.name ?? 'tool'),
     context: toolContext(args),
+    args,
     status: 'running',
   };
+}
+
+function encodeResult(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function attachResult(parts: Part[], row: SessionMessage): boolean {
@@ -177,6 +194,7 @@ export function fromHistory(rows: SessionMessage[]): Message[] {
           id: row.tool_call_id || `stored-tool-message-${index}`,
           name: row.tool_name || row.name || 'tool',
           context: toolContext(args, textOf(row.context)),
+          args,
           status: 'done',
           result: textOf(row.content ?? row.text),
         });
@@ -290,6 +308,7 @@ export function applyEvent(state: Transcript, event: LiveEvent): Transcript {
         id: str('tool_id') || nextLiveId(),
         name: str('name') || 'tool',
         context: toolContext(args, str('context') || str('preview')),
+        args: Object.keys(args).length ? args : { ...(str('context') ? { context: str('context') } : {}), ...(str('preview') ? { preview: str('preview') } : {}) },
         status: 'running',
       };
       return { ...updateMessage(next, id, (m) => ({ ...m, parts: [...m.parts, tool] })), breakText: true, status: null };
@@ -308,11 +327,16 @@ export function applyEvent(state: Transcript, event: LiveEvent): Transcript {
           parts: m.parts.map((part) => {
             if (done || part.kind !== 'tool' || part.status !== 'running' || (toolId ? part.id !== toolId : part.name !== name)) return part;
             done = true;
+            const args = parseObject(payload.args);
+            const error = typeof payload.error === 'string' ? payload.error : payload.error === true ? 'Tool returned an error.' : undefined;
             return {
               ...part,
+              args: Object.keys(args).length ? args : part.args,
               status: 'done',
               summary: str('summary') || undefined,
-              result: str('result_text') || (typeof payload.result === 'string' ? payload.result : undefined),
+              result: encodeResult(payload.result) ?? (str('result_text') || undefined),
+              resultText: str('result_text') || undefined,
+              error: error?.trim() || undefined,
               durationS: typeof payload.duration_s === 'number' ? payload.duration_s : undefined,
             };
           }),

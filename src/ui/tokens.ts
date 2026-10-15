@@ -21,6 +21,9 @@ export type Mode = 'light' | 'dark';
 /** Default Chat Text Size (desktop `DEFAULT_CHAT_TEXT_SCALE` = 110). */
 export const CHAT_TEXT_SCALE = 1.1;
 
+/** desktop styles.css `[data-conversation-scaffold]` resting fade, so prose stays primary */
+export const SCAFFOLD_OPACITY = 0.67;
+
 const NEUTRALS = {
   light: { chrome: '#f3f3f3', sidebar: '#f3f3f3', card: '#fcfcfc', mixChrome: 0.92, mixSidebar: 1, mixCard: 0.22, mixElevated: 0.28, mixBubble: 0 },
   dark: { chrome: '#0d0d0e', sidebar: '#0a0a0b', card: '#161618', mixChrome: 0.74, mixSidebar: 1, mixCard: 0.38, mixElevated: 0.46, mixBubble: 0.46 },
@@ -64,6 +67,9 @@ function resolve(mode: Mode, chatTextScale: number) {
     uiTextSecondary: mixPct(base, 0.74, 'transparent'),
     uiTextTertiary: mixPct(base, 0.54, 'transparent'),
     uiTextQuaternary: mixPct(base, 0.36, 'transparent'),
+    /** thinking headers and tool rows: one grey for all of them, faded by SCAFFOLD_OPACITY */
+    conversationScaffoldText: mixPct(base, 0.64, 'transparent'),
+    conversationScaffoldMeta: mixPct(base, 0.44, 'transparent'),
     // desktop `.wordmark`: text-foreground/90 when dark, the accent when light
     uiWordmark: isDark ? mixPct(base, 0.9, 'transparent') : accent,
 
