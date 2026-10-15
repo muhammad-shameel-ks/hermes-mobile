@@ -179,3 +179,98 @@ export function tailParts(messages: readonly Message[]): readonly Part[] {
   const last = messages[messages.length - 1];
   return last?.role === 'assistant' ? last.parts : [];
 }
+
+/** epoch ms of the newest prompt, when it carries a timestamp: where a chat opened mid-turn seeds the turn's clock */
+export function promptAt(messages: readonly Message[]): number | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.role === 'user') return message.timestamp ? message.timestamp * 1000 : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Everything the tail row reads from the transcript, reduced to primitives. A streamed delta
+ * changes `messages` every time but almost never these, so the row follows this and not the
+ * messages themselves.
+ */
+export type TailState = {
+  running: boolean;
+  wait: TurnWait;
+  /** the tail message is the assistant's reply: the row mounts inside it rather than in the footer */
+  tailIsReply: boolean;
+  placeholder: boolean;
+  narrating: boolean;
+  /** changes with every visible step of the turn; the quiet timer rearms on it, nothing renders from it */
+  signature: string;
+  promptAt: number | undefined;
+};
+
+export function deriveTail(messages: readonly Message[], running: boolean, wait: TurnWait): TailState {
+  const parts = tailParts(messages);
+  return {
+    running,
+    wait,
+    tailIsReply: messages[messages.length - 1]?.role === 'assistant',
+    placeholder: tailSlot(messages) === 'placeholder',
+    narrating: toolNarratesWait(parts),
+    signature: activitySignature(parts),
+    promptAt: promptAt(messages),
+  };
+}
+
+/** the part of a TailState that decides what the row paints; `signature` and `promptAt` are read on the side */
+export type TailRender = Omit<TailState, 'signature' | 'promptAt'>;
+
+export function sameTailRender(a: TailRender, b: TailRender): boolean {
+  return (
+    a.running === b.running &&
+    a.tailIsReply === b.tailIsReply &&
+    a.placeholder === b.placeholder &&
+    a.narrating === b.narrating &&
+    a.wait.compacting === b.wait.compacting &&
+    a.wait.providerWait === b.wait.providerWait &&
+    a.wait.drafting?.name === b.wait.drafting?.name &&
+    a.wait.drafting?.since === b.wait.drafting?.since
+  );
+}
+
+/**
+ * The open chat's turn state as a store the tail row subscribes to. `getRender` returns the
+ * same object until something the row paints changes, so a delta that only grows the reply
+ * notifies nobody; the quiet timer listens to `subscribeSignature` instead and re-renders
+ * nothing.
+ */
+export function createTailStore() {
+  const paints = ({ signature: _signature, promptAt: _promptAt, ...rest }: TailState): TailRender => rest;
+  let state = deriveTail([], false, idleWait());
+  let render = paints(state);
+  const renderListeners = new Set<() => void>();
+  const signatureListeners = new Set<() => void>();
+
+  return {
+    update(messages: readonly Message[], running: boolean, wait: TurnWait) {
+      const next = deriveTail(messages, running, wait);
+      const signatureChanged = next.signature !== state.signature;
+      const renderChanged = !sameTailRender(next, render);
+      state = next;
+      if (renderChanged) {
+        render = paints(next);
+        for (const listener of [...renderListeners]) listener();
+      }
+      if (signatureChanged) for (const listener of [...signatureListeners]) listener();
+    },
+    getRender: (): TailRender => render,
+    getPromptAt: () => state.promptAt,
+    subscribe(listener: () => void) {
+      renderListeners.add(listener);
+      return () => void renderListeners.delete(listener);
+    },
+    subscribeSignature(listener: () => void) {
+      signatureListeners.add(listener);
+      return () => void signatureListeners.delete(listener);
+    },
+  };
+}
+
+export type TailStore = ReturnType<typeof createTailStore>;

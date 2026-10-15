@@ -14,6 +14,8 @@ import { formatBytes, notesPreview } from './release.ts';
 import type { UpdateState } from './store.ts';
 import { AUTO_CHECK_ENABLED, updates } from './updater.ts';
 
+const LAUNCH_CHECK_DELAY_MS = 3000;
+
 export function useUpdates(): UpdateState {
   return useSyncExternalStore(updates.subscribe, updates.getSnapshot);
 }
@@ -35,11 +37,15 @@ export default function UpdatePrompt() {
 
   useEffect(() => {
     if (!AUTO_CHECK_ENABLED) return;
-    void updates.check('auto');
+    // the first check waits out the launch: the gateway handshake and the first paint come before a release lookup
+    const first = setTimeout(() => void updates.check('auto'), LAUNCH_CHECK_DELAY_MS);
     const sub = AppState.addEventListener('change', (next) => {
       if (next === 'active') void updates.check('auto');
     });
-    return () => sub.remove();
+    return () => {
+      clearTimeout(first);
+      sub.remove();
+    };
   }, []);
 
   const visible = AUTO_CHECK_ENABLED && updates.shouldPrompt();

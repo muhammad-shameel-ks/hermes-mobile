@@ -87,7 +87,22 @@ export function fullResponseText(messages: readonly Message[], messageId: string
   return texts.join('\n\n');
 }
 
-const samePlan = (a: BarPlan, b: BarPlan) => JSON.stringify(a) === JSON.stringify(b);
+export function samePlan(a: BarPlan, b: BarPlan): boolean {
+  if (a === b) return true;
+  if (a.kind === 'user') return b.kind === 'user' && a.latest === b.latest && a.stop === b.stop;
+  return b.kind === 'assistant' && a.live === b.live && a.fullAvailable === b.fullAvailable;
+}
+
+/**
+ * Whether a bar can keep what it painted. A reply still streaming holds its bar's height without
+ * painting anything from the message (the bar is hidden and untappable), so a delta, which swaps
+ * the message object on every event, must not re-render it; the bar catches up when it unhides.
+ */
+export function sameBar(prev: { message: Message; plan: BarPlan }, next: { message: Message; plan: BarPlan }): boolean {
+  if (!samePlan(prev.plan, next.plan)) return false;
+  if (next.plan.kind === 'assistant' && next.plan.live) return prev.message.id === next.message.id;
+  return prev.message === next.message;
+}
 
 /** `next` with each plan swapped for its `previous` twin when unchanged, so memoised rows see the same object */
 export function stablePlans(previous: Map<string, BarPlan>, next: Map<string, BarPlan>): Map<string, BarPlan> {

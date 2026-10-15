@@ -19,14 +19,14 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
   const listRef = useRef<FlatList<ThreadMessage>>(null);
   const frames = useRef(new Map<string, RowFrame>());
   const metrics = useRef({ scrollY: 0, viewport: 0 });
-  const ids = useRef<string[]>([]);
+  // the ids are only read while the pill shows, so a streamed token never maps the whole thread
+  const latest = useRef({ messages, ids: null as string[] | null });
+  if (latest.current.messages !== messages) latest.current = { messages, ids: null };
   const chasing = useRef(false);
   const visibleRef = useRef(false);
   const frame = useRef(0);
   const [visible, setVisible] = useState(false);
   const [count, setCount] = useState(0);
-
-  ids.current = useMemo(() => messages.map((m) => m.id), [messages]);
 
   const show = useCallback((next: boolean) => {
     if (visibleRef.current === next) return;
@@ -37,7 +37,9 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
   const recount = useCallback(() => {
     if (!visibleRef.current) return;
     const { scrollY, viewport } = metrics.current;
-    setCount(messagesBelow(ids.current, frames.current, scrollY + viewport));
+    const current = latest.current;
+    current.ids ??= current.messages.map((m) => m.id);
+    setCount(messagesBelow(current.ids, frames.current, scrollY + viewport));
   }, []);
 
   const schedule = useCallback(() => {
@@ -63,15 +65,16 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
       const upward = contentOffset.y < metrics.current.scrollY;
-      metrics.current = { scrollY: contentOffset.y, viewport: layoutMeasurement.height };
+      metrics.current.scrollY = contentOffset.y;
+      metrics.current.viewport = layoutMeasurement.height;
       const distance = distanceFromBottom(contentOffset.y, layoutMeasurement.height, contentSize.height);
       if (distance <= PINNED_DISTANCE) chasing.current = false;
       // Only the reader leaves the tail: programmatic follow never moves the list up.
       if (distance <= JUMP_SHOW_DISTANCE) show(false);
       else if ((upward || visibleRef.current) && !chasing.current) show(true);
-      recount();
+      schedule();
     },
-    [recount, show],
+    [schedule, show],
   );
 
   const onDrag = useCallback(() => {

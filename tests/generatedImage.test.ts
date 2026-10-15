@@ -50,3 +50,51 @@ test('prose drops the generated image but keeps other files and longer paths', (
   assert.equal(stripGeneratedImageEchoes('[x](/tmp/a.png.bak)', sources), '[x](/tmp/a.png.bak)');
   assert.equal(stripGeneratedImageEchoes('untouched', []), 'untouched');
 });
+
+// the implementation before the substring pre-checks and the pattern cache, kept as the oracle
+function referenceStrip(text: string, sources: readonly string[]): string {
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!text || sources.length === 0) return text;
+  let next = text;
+  for (const source of [...new Set(sources.filter(Boolean))]) {
+    const escaped = escape(source);
+    next = next.replace(new RegExp(String.raw`[\`"']?MEDIA:\s*[\`"']?${escaped}[\`"']?(?=$|[\s)\]}]|[.,!?](?:\s|$))`, 'g'), '');
+    next = next.replace(new RegExp(String.raw`!\[[^\]\n]*\]\(\s*<?${escaped}>?(?=$|[\s)\\])[^)\n]*\)`, 'g'), '');
+    next = next.replace(new RegExp(String.raw`\[[^\]\n]*\]\(\s*#media:${escape(encodeURIComponent(source))}\s*\)`, 'gi'), '');
+    next = next.replace(new RegExp(String.raw`(^|[\s[{])<?${escaped}>?(?=$|[\s\]}.,!?])`, 'g'), '$1');
+  }
+  return next;
+}
+
+test('the fast paths strip exactly what the unconditional scans did', () => {
+  const sources = ['/tmp/a.png', '/Users/me/My Pictures/b (1).png', 'https://cdn.example/x.png?a=1&b=2', 'C:\\img\\c.png'];
+  const pieces = [
+    'Done! ',
+    ...sources,
+    ...sources.map((source) => `MEDIA:${source}`),
+    ...sources.map((source) => `![art](${source})`),
+    ...sources.map((source) => `[open](#media:${encodeURIComponent(source)})`),
+    ...sources.map((source) => `[open](#MEDIA:${encodeURIComponent(source).toLowerCase()})`),
+    ...sources.map((source) => `\`${source}\``),
+    '/tmp/a.png.bak',
+    '[x](/tmp/a.png.bak)',
+    'MEDIA:/tmp/other.pdf',
+    '\n',
+    '\n\n',
+    ' ',
+    '.',
+  ];
+  let state = 0x1234;
+  const next = () => (state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 2 ** 32;
+  for (let sample = 0; sample < 1500; sample++) {
+    let text = '';
+    for (let index = Math.floor(next() * 10); index > 0; index--) text += pieces[Math.floor(next() * pieces.length)];
+    const chosen = sources.filter(() => next() < 0.5);
+    assert.equal(stripGeneratedImageEchoes(text, chosen), referenceStrip(text, chosen), JSON.stringify({ text, chosen }));
+  }
+});
+
+test('a reply that never mentions the image is returned as it came', () => {
+  const text = 'A long reply about something else entirely.\n\n'.repeat(50);
+  assert.equal(stripGeneratedImageEchoes(text, ['/tmp/a.png']), text);
+});

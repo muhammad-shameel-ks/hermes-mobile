@@ -8,8 +8,8 @@
  * later work.
  */
 
-import { memo, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 
 import { FadeText } from '../ui/Fade.tsx';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
@@ -23,32 +23,16 @@ import { ClarifyCard } from './ClarifyCard.tsx';
 import { ChangedFilesCard } from './cards/ChangedFilesCard.tsx';
 import { ToolCard } from './cards/ToolCard.tsx';
 import { ToolDiffStats, ToolExtras } from './cards/ToolExtras.tsx';
-import { generatedImageEchoSources, stripGeneratedImageEchoes } from './generatedImage.ts';
+import { stripGeneratedImageEchoes } from './generatedImage.ts';
 import { Markdown } from './Markdown.tsx';
 import { MemoryGlyph, MemoryTitle, ReviewNote } from './MemoryChrome.tsx';
 import { parseReviewNote } from './reviewNote.ts';
 import { ApprovalTimedOutAction } from './ApprovalTimedOutAction.tsx';
-import { buildToolView, isFileEditTool, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
+import { blocks, echoSources, sameList } from './messageBlocks.ts';
+import { buildToolView, isFileEditTool, splitRunItems, summarizeToolRun, type ToolStatus, type ToolView } from './toolView.ts';
 import { APPROVAL_COPY } from './requests.ts';
-import type { Message, Part, ToolPart } from './transcript.ts';
+import type { Message, ToolPart } from './transcript.ts';
 import { TurnActivity } from './TurnActivity.tsx';
-
-type Block = { kind: 'text'; text: string } | { kind: 'reasoning'; text: string } | { kind: 'tools'; tools: ToolPart[] };
-
-/** consecutive tool parts become one block, so a run of calls reads as one row */
-function blocks(parts: Part[]): Block[] {
-  const out: Block[] = [];
-  for (const part of parts) {
-    if (part.kind === 'tool') {
-      const last = out[out.length - 1];
-      if (last?.kind === 'tools') last.tools.push(part);
-      else out.push({ kind: 'tools', tools: [part] });
-    } else if (part.text.trim()) {
-      out.push(part);
-    }
-  }
-  return out;
-}
 
 function MessageViewImpl({ message, bar, latest = false }: { message: Message; bar?: BarPlan; latest?: boolean }) {
   const t = useTokens();
@@ -86,27 +70,19 @@ function MessageViewImpl({ message, bar, latest = false }: { message: Message; b
 
   const streaming = message.status === 'streaming';
   const content = blocks(message.parts);
-  const echoes = generatedImageEchoSources(message.parts);
+  const echoes = echoSources(message.parts);
   return (
     <EnterView enabled={streaming} animationKey={`assistant-message:${message.id}`} style={styles.assistant}>
       {content.map((block, index) => {
         const last = index === content.length - 1;
         const key = `${message.id}:${index}`;
         if (block.kind === 'reasoning') {
-          return (
-            <EnterView key={index} enabled={streaming} animationKey={`reasoning:${key}`}>
-              <Reasoning text={block.text} live={streaming && last} />
-            </EnterView>
-          );
+          return <ReasoningBlock key={index} text={block.text} live={streaming && last} enabled={streaming} animationKey={`reasoning:${key}`} />;
         }
         if (block.kind === 'tools') {
-          return (
-            <EnterView key={index} enabled={streaming} animationKey={`tool-run:${key}`}>
-              <ToolBlock tools={block.tools} live={streaming && last} />
-            </EnterView>
-          );
+          return <ToolBlock key={index} tools={block.tools} live={streaming && last} enabled={streaming} animationKey={`tool-run:${key}`} />;
         }
-        return <Markdown key={index} text={stripGeneratedImageEchoes(block.text, echoes)} streaming={streaming && last} />;
+        return <TextBlock key={index} text={block.text} echoes={echoes} streaming={streaming && last} />;
       })}
       {latest && !streaming ? <ChangedFilesCard parts={message.parts} /> : null}
       {latest ? <TurnActivity placement="message" /> : null}
@@ -124,6 +100,64 @@ function MessageViewImpl({ message, bar, latest = false }: { message: Message; b
 }
 
 export const MessageView = memo(MessageViewImpl);
+
+type ScaffoldStyles = {
+  row: StyleProp<ViewStyle>;
+  label: TextStyle;
+  labelMeta: TextStyle;
+  labelDestructive: TextStyle;
+  labelAmber: TextStyle;
+  subtitle: StyleProp<TextStyle>;
+  meta: TextStyle;
+  metaLegendary: StyleProp<TextStyle>;
+  reasoningText: StyleProp<TextStyle>;
+  terminal: StyleProp<ViewStyle>;
+  terminalText: StyleProp<TextStyle>;
+  detail: StyleProp<TextStyle>;
+  detailFailed: StyleProp<TextStyle>;
+};
+
+function scaffoldLabel(t: Tokens, color: string): TextStyle {
+  return { color, fontSize: t.type.tool, lineHeight: t.type.lineHeight, flexShrink: 1 };
+}
+
+const scaffoldCache = new WeakMap<Tokens, ScaffoldStyles>();
+
+/**
+ * Every style a scaffold row paints, built once per resolved theme. Tokens only change with the
+ * theme, so rows hand their children the same style objects on every render, which is what lets
+ * the memoised children (FadeText, ToolGlyph, ...) skip theirs.
+ */
+function scaffoldStyles(t: Tokens): ScaffoldStyles {
+  let hit = scaffoldCache.get(t);
+  if (!hit) {
+    const meta: TextStyle = { color: t.conversationScaffoldMeta, fontSize: t.type.tool * 0.85, flexShrink: 0, fontVariant: ['tabular-nums'] };
+    const code = { fontSize: t.type.tool * 0.95, lineHeight: t.type.tool * 1.55 };
+    const labelMeta = scaffoldLabel(t, t.conversationScaffoldMeta);
+    hit = {
+      row: [styles.scaffoldRow, { minHeight: t.type.lineHeight }],
+      label: scaffoldLabel(t, t.conversationScaffoldText),
+      labelMeta,
+      labelDestructive: scaffoldLabel(t, t.dtDestructive),
+      labelAmber: scaffoldLabel(t, AMBER[t.renderedMode]),
+      subtitle: [labelMeta, styles.subtitle],
+      meta,
+      metaLegendary: [meta, { color: t.toolMemoryLegendaryMeta }],
+      reasoningText: [styles.reasoningText, { color: t.conversationScaffoldText, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight }],
+      terminal: [styles.terminal, { borderColor: t.uiStrokeTertiary, backgroundColor: t.uiBgTertiary }],
+      terminalText: [styles.code, { color: t.uiTextSecondary, fontSize: t.type.tool * 0.95 }],
+      detail: [styles.code, { color: t.uiTextSecondary, ...code }],
+      detailFailed: [styles.code, { color: t.dtDestructive, ...code }],
+    };
+    scaffoldCache.set(t, hit);
+  }
+  return hit;
+}
+
+/** the title's ink: a failure reads red, a warning amber, a running call quiet */
+function titleStyle(s: ScaffoldStyles, status: ToolStatus): TextStyle {
+  return status === 'error' ? s.labelDestructive : status === 'warning' ? s.labelAmber : status === 'running' ? s.labelMeta : s.label;
+}
 
 /**
  * One scaffold line (desktop components/chat/scaffold-row + disclosure-row): the
@@ -146,15 +180,16 @@ function ScaffoldRow({
   label: string;
 }) {
   const t = useTokens();
+  const accessibilityState = useMemo(() => ({ expanded: onToggle ? open : undefined, disabled: !onToggle }), [onToggle, open]);
   return (
-    <View style={[styles.scaffoldRow, { minHeight: t.type.lineHeight }]}>
+    <View style={scaffoldStyles(t).row}>
       <Pressable
         onPress={onToggle}
         disabled={!onToggle}
         hitSlop={6}
         accessibilityRole="button"
         accessibilityLabel={label}
-        accessibilityState={{ expanded: onToggle ? open : undefined, disabled: !onToggle }}
+        accessibilityState={accessibilityState}
         style={styles.scaffoldPress}
       >
         <View style={styles.scaffoldContent}>{children}</View>
@@ -168,34 +203,67 @@ function ScaffoldRow({
   );
 }
 
-function scaffoldLabel(t: Tokens, color = t.conversationScaffoldText): TextStyle {
-  return { color, fontSize: t.type.tool, lineHeight: t.type.lineHeight, flexShrink: 1 };
-}
+/*
+ * The blocks below compare their props by part reference, not by value, and skip `enabled` and
+ * `animationKey`: EnterView reads those once at mount. A stream delta replaces only the part it
+ * extended, so it re-renders the live block and nothing before it.
+ */
 
-function scaffoldMeta(t: Tokens): TextStyle {
-  return { color: t.conversationScaffoldMeta, fontSize: t.type.tool * 0.85, flexShrink: 0, fontVariant: ['tabular-nums'] };
-}
+type EnterProps = { enabled: boolean; animationKey: string };
+
+const ReasoningBlock = memo(
+  function ReasoningBlock({ text, live, enabled, animationKey }: { text: string; live: boolean } & EnterProps) {
+    return (
+      <EnterView enabled={enabled} animationKey={animationKey}>
+        <Reasoning text={text} live={live} />
+      </EnterView>
+    );
+  },
+  (a, b) => a.text === b.text && a.live === b.live,
+);
+
+const TextBlock = memo(
+  function TextBlock({ text, echoes, streaming }: { text: string; echoes: readonly string[]; streaming: boolean }) {
+    const shown = useMemo(() => stripGeneratedImageEchoes(text, echoes), [text, echoes]);
+    return <Markdown text={shown} streaming={streaming} />;
+  },
+  (a, b) => a.text === b.text && a.streaming === b.streaming && sameList(a.echoes, b.echoes),
+);
+
+/** the label's row: independent of the reasoning text, so a delta never reaches it */
+const ReasoningHeader = memo(function ReasoningHeader({ live, open, onToggle }: { live: boolean; open: boolean; onToggle: () => void }) {
+  const t = useTokens();
+  const label = live ? 'Thinking' : 'Thought';
+  const style = scaffoldStyles(t).label;
+  return (
+    <ScaffoldRow open={open} onToggle={onToggle} caretRest={0.4} label={label}>
+      {live ? (
+        <ShimmerText style={style} fontSize={t.type.tool}>
+          {label}
+        </ShimmerText>
+      ) : (
+        <Text style={style}>{label}</Text>
+      )}
+    </ScaffoldRow>
+  );
+});
+
+const ReasoningText = memo(function ReasoningText({ text }: { text: string }) {
+  const t = useTokens();
+  return (
+    <Text selectable style={scaffoldStyles(t).reasoningText}>
+      {text.trim()}
+    </Text>
+  );
+});
 
 function Reasoning({ text, live }: { text: string; live: boolean }) {
-  const t = useTokens();
   const [open, setOpen] = useState(false);
-  const label = live ? 'Thinking' : 'Thought';
+  const toggle = useCallback(() => setOpen((v) => !v), []);
   return (
     <View style={styles.scaffold}>
-      <ScaffoldRow open={open} onToggle={() => setOpen((v) => !v)} caretRest={0.4} label={label}>
-        {live ? (
-          <ShimmerText style={scaffoldLabel(t)} fontSize={t.type.tool}>
-            {label}
-          </ShimmerText>
-        ) : (
-          <Text style={scaffoldLabel(t)}>{label}</Text>
-        )}
-      </ScaffoldRow>
-      {open ? (
-        <Text selectable style={[styles.reasoningText, { color: t.conversationScaffoldText, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight }]}>
-          {text.trim()}
-        </Text>
-      ) : null}
+      <ReasoningHeader live={live} open={open} onToggle={toggle} />
+      {open ? <ReasoningText text={text} /> : null}
     </View>
   );
 }
@@ -205,52 +273,64 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
  * other cards stay on screen as their own rows, and the reads and commands
  * between them fold into a run.
  */
-function ToolBlock({ tools, live }: { tools: ToolPart[]; live: boolean }) {
-  const items = splitRunItems(tools.map((tool) => tool.name));
-  return (
-    <View style={styles.toolBlock}>
-      {items.map((item, index) => {
-        if (item.kind === 'card') {
-          const tool = tools[item.index];
-          if (tool.name === 'clarify') return <ClarifyCard key={tool.id} tool={tool} fallback={<ToolRow tool={tool} />} />;
-          return <ToolCard key={tool.id} tool={tool} fallback={<ToolRow tool={tool} />} />;
-        }
-        const run = tools.slice(item.start, item.end + 1);
-        if (run.length === 1) return <ToolRow key={run[0].id} tool={run[0]} />;
-        return <ToolRun key={run[0].id} tools={run} live={live && index === items.length - 1} />;
-      })}
-    </View>
-  );
-}
+const ToolBlock = memo(
+  function ToolBlock({ tools, live, enabled, animationKey }: { tools: ToolPart[]; live: boolean } & EnterProps) {
+    const items = useMemo(() => splitRunItems(tools.map((tool) => tool.name)), [tools]);
+    return (
+      <EnterView enabled={enabled} animationKey={animationKey}>
+        <View style={styles.toolBlock}>
+          {items.map((item, index) => {
+            if (item.kind === 'card') return <CardSlot key={tools[item.index].id} tool={tools[item.index]} />;
+            const run = tools.slice(item.start, item.end + 1);
+            if (run.length === 1) return <ToolRow key={run[0].id} tool={run[0]} />;
+            return <ToolRun key={run[0].id} tools={run} live={live && index === items.length - 1} />;
+          })}
+        </View>
+      </EnterView>
+    );
+  },
+  (a, b) => a.live === b.live && sameList(a.tools, b.tools),
+);
+
+const CardSlot = memo(function CardSlot({ tool }: { tool: ToolPart }) {
+  const fallback = <ToolRow tool={tool} />;
+  if (tool.name === 'clarify') return <ClarifyCard tool={tool} fallback={fallback} />;
+  return <ToolCard tool={tool} fallback={fallback} />;
+});
 
 /** a run of two or more calls: one summary line, opening to the rows; live, the newest row ticks under it */
-function ToolRun({ tools, live }: { tools: ToolPart[]; live: boolean }) {
-  const t = useTokens();
-  const [open, setOpen] = useState(false);
-  const summary = summarizeToolRun(tools, live);
-  return (
-    <View style={styles.toolBlock}>
-      <View style={styles.scaffold}>
-        <ScaffoldRow open={open} onToggle={() => setOpen((v) => !v)} caretRest={0} label={summary}>
-          {live ? (
-            <ShimmerText style={scaffoldLabel(t)} fontSize={t.type.tool}>
-              {summary}
-            </ShimmerText>
-          ) : (
-            <FadeText style={scaffoldLabel(t)} fadeColor={t.uiChatSurfaceBackground}>
-              {summary}
-            </FadeText>
-          )}
-        </ScaffoldRow>
+const ToolRun = memo(
+  function ToolRun({ tools, live }: { tools: ToolPart[]; live: boolean }) {
+    const t = useTokens();
+    const [open, setOpen] = useState(false);
+    const toggle = useCallback(() => setOpen((v) => !v), []);
+    const summary = useMemo(() => summarizeToolRun(tools, live), [tools, live]);
+    const style = scaffoldStyles(t).label;
+    return (
+      <View style={styles.toolBlock}>
+        <View style={styles.scaffold}>
+          <ScaffoldRow open={open} onToggle={toggle} caretRest={0} label={summary}>
+            {live ? (
+              <ShimmerText style={style} fontSize={t.type.tool}>
+                {summary}
+              </ShimmerText>
+            ) : (
+              <FadeText style={style} fadeColor={t.uiChatSurfaceBackground}>
+                {summary}
+              </FadeText>
+            )}
+          </ScaffoldRow>
+        </View>
+        {open ? tools.map((tool) => <ToolRow key={tool.id} tool={tool} />) : live ? <ToolRow tool={tools[tools.length - 1]} /> : null}
       </View>
-      {open ? tools.map((tool) => <ToolRow key={tool.id} tool={tool} />) : live ? <ToolRow tool={tools[tools.length - 1]} /> : null}
-    </View>
-  );
-}
+    );
+  },
+  (a, b) => a.live === b.live && sameList(a.tools, b.tools),
+);
 
 const AMBER = { light: '#b45309', dark: '#fcd34d' } as const;
 
-function ToolGlyph({ view, color, legendary = false }: { view: ToolView; color: string; legendary?: boolean }) {
+const ToolGlyph = memo(function ToolGlyph({ view, color, legendary = false }: { view: ToolView; color: string; legendary?: boolean }) {
   const t = useTokens();
   let glyph: ReactNode = null;
   if (legendary) {
@@ -263,77 +343,80 @@ function ToolGlyph({ view, color, legendary = false }: { view: ToolView; color: 
     glyph = <ToolIcon name={view.icon} size={GLYPH} color={t.uiTextTertiary} />;
   }
   return glyph ? <View style={styles.glyph}>{glyph}</View> : null;
-}
+});
 
-function ToolRow({ tool }: { tool: ToolPart }) {
+const ToolRow = memo(function ToolRow({ tool }: { tool: ToolPart }) {
   const t = useTokens();
-  const view = useMemo(() => buildToolView(tool), [tool]);
+  const s = scaffoldStyles(t);
+  const view = buildToolView(tool);
   // a row that carries a diff opens on it until the reader says otherwise
   const [picked, setPicked] = useState<boolean | null>(null);
-  const open = picked ?? Boolean(view.inlineDiff);
-  const expandable = view.status !== 'running' && Boolean(view.detail || view.command || view.inlineDiff || view.imageUrl);
+  const diffOpen = Boolean(view.inlineDiff);
+  const open = picked ?? diffOpen;
+  const toggle = useCallback(() => setPicked((current) => !(current ?? diffOpen)), [diffOpen]);
+  const expandable = view.status !== 'running' && Boolean(view.hasDetail || view.command || view.inlineDiff || view.imageUrl);
   // an edit that landed with no diff to review is a bare, dead row (a `write_file` create after a reload)
   if (isFileEditTool(tool.name) && tool.status === 'done' && view.status !== 'error' && !view.inlineDiff) return null;
-  const failed = view.status === 'error';
   // a landed memory write wears the desktop's gold → purple chrome instead of the scaffold grey
   const legendary = tool.name === 'memory' && view.status === 'success';
-  const meta = legendary ? [scaffoldMeta(t), { color: t.toolMemoryLegendaryMeta }] : scaffoldMeta(t);
-  const titleColor =
-    failed ? t.dtDestructive : view.status === 'warning' ? AMBER[t.renderedMode] : view.status === 'running' ? t.conversationScaffoldMeta : t.conversationScaffoldText;
 
   return (
     <View
       style={[styles.scaffold, open && [styles.toolShell, { borderColor: t.uiStrokeTertiary }], open && isFileEditTool(tool.name) && styles.fileEdit]}
     >
       <View style={open ? [styles.toolShellHeader, { borderBottomColor: t.uiStrokeTertiary }] : undefined}>
-        <ScaffoldRow open={open} onToggle={expandable ? () => setPicked(!open) : undefined} caretRest={0} label={view.title}>
+        <ScaffoldRow open={open} onToggle={expandable ? toggle : undefined} caretRest={0} label={view.title}>
           <ToolGlyph view={view} color={view.status === 'warning' ? AMBER[t.renderedMode] : t.dtDestructive} legendary={legendary} />
           {view.status === 'running' ? (
-            <ShimmerText style={scaffoldLabel(t, titleColor)} fontSize={t.type.tool}>
+            <ShimmerText style={titleStyle(s, view.status)} fontSize={t.type.tool}>
               {view.title}
             </ShimmerText>
           ) : legendary ? (
-            <MemoryTitle style={scaffoldLabel(t)}>{view.title}</MemoryTitle>
+            <MemoryTitle style={s.label}>{view.title}</MemoryTitle>
           ) : (
-            <FadeText style={scaffoldLabel(t, titleColor)} fadeColor={t.uiChatSurfaceBackground}>
+            <FadeText style={titleStyle(s, view.status)} fadeColor={t.uiChatSurfaceBackground}>
               {view.title}
             </FadeText>
           )}
           {view.subtitle ? (
-            <Text numberOfLines={1} style={[scaffoldLabel(t, t.conversationScaffoldMeta), styles.subtitle]}>
+            <Text numberOfLines={1} style={s.subtitle}>
               {view.subtitle}
             </Text>
           ) : null}
-          {view.status !== 'running' && view.countLabel ? <Text style={meta}>{view.countLabel}</Text> : null}
+          {view.status !== 'running' && view.countLabel ? <Text style={legendary ? s.metaLegendary : s.meta}>{view.countLabel}</Text> : null}
           <ToolDiffStats view={view} />
-          {view.durationLabel ? <Text style={meta}>{view.durationLabel}</Text> : null}
+          {view.durationLabel ? <Text style={legendary ? s.metaLegendary : s.meta}>{view.durationLabel}</Text> : null}
         </ScaffoldRow>
       </View>
-      {open ? (
-        <View style={styles.toolBody}>
-          <ToolExtras view={view} />
-          {view.command ? (
-            <View style={[styles.terminal, { borderColor: t.uiStrokeTertiary, backgroundColor: t.uiBgTertiary }]}>
-              <Text selectable style={[styles.code, { color: t.uiTextSecondary, fontSize: t.type.tool * 0.95 }]}>
-                <Text style={{ color: t.uiAccent }}>{'$ '}</Text>
-                {view.command}
-              </Text>
-            </View>
-          ) : null}
-          {view.detail ? (
-            <Text
-              selectable
-              numberOfLines={24}
-              style={[styles.code, { color: failed ? t.dtDestructive : t.uiTextSecondary, fontSize: t.type.tool * 0.95, lineHeight: t.type.tool * 1.55 }]}
-            >
-              {view.detail}
-            </Text>
-          ) : null}
+      {open ? <ToolBody view={view} /> : null}
+    </View>
+  );
+});
+
+/** an opened row's body; mounted only while open, so its detail text is built only when read */
+const ToolBody = memo(function ToolBody({ view }: { view: ToolView }) {
+  const t = useTokens();
+  const s = scaffoldStyles(t);
+  const detail = view.detailPreview;
+  return (
+    <View style={styles.toolBody}>
+      <ToolExtras view={view} />
+      {view.command ? (
+        <View style={s.terminal}>
+          <Text selectable style={s.terminalText}>
+            <Text style={{ color: t.uiAccent }}>{'$ '}</Text>
+            {view.command}
+          </Text>
         </View>
+      ) : null}
+      {detail ? (
+        <Text selectable numberOfLines={24} style={view.status === 'error' ? s.detailFailed : s.detail}>
+          {detail}
+        </Text>
       ) : null}
     </View>
   );
-}
+});
 
 const GLYPH = 14;
 

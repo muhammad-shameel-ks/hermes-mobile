@@ -4,122 +4,80 @@
  * assistant-ui's FlatList owns stick-to-bottom (issue "Transcript and composer
  * parity on touch") and a floating pill jumps back to it; our transcript stays
  * the source of truth - the external store runtime only mirrors it, and each
- * row renders our own message by id.
+ * row renders our own message by id (TranscriptPane).
+ *
+ * This screen never reads the open transcript: it subscribes to the chat's
+ * coarse state (`chatMeta`) and the chrome's slices, so it stays still while a
+ * turn streams and only the TranscriptPane re-renders per token.
  */
 
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Svg, { Path } from 'react-native-svg';
-import {
-  AssistantRuntimeProvider,
-  ThreadPrimitive,
-  useExternalStoreRuntime,
-  type AppendMessage,
-  type ThreadMessageLike,
-} from '@assistant-ui/react-native';
-
 import { BotAvatar } from '../bots/BotAvatar.tsx';
 import { faceMood } from '../bots/face.ts';
-import { BOT_CHAT_EMPTY, type Bot } from '../bots/roster.ts';
+import type { Bot } from '../bots/roster.ts';
 import type { LinkState } from '../gateway/link.ts';
 import type { DraftStore } from '../store/drafts.ts';
 import { Codicon } from '../ui/Codicon.tsx';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
-import { ThreadLoader } from '../ui/loaders/presets.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
-import { Wordmark } from '../ui/Wordmark.tsx';
 import { AttachMenu, AttachmentChips } from './AttachmentChips.tsx';
 import { BackendPopover, useBackendMenu } from './BackendPopover.tsx';
 import { ChatStatusRow } from './ChatStatusRow.tsx';
 import { ATTACH_WHILE_RUNNING, type ComposerAttachment } from './attachments.ts';
-import { PendingApprovals } from './ApprovalCard.tsx';
-import { DRAFT_KEY, type ChatController, type ChatEntry, type ModelCatalog } from './controller.ts';
+import { chatEnv, chatMeta, sameModel } from './chatSlices.ts';
+import { DRAFT_KEY, type ChatController } from './controller.ts';
 import { ComposerSheets } from './ComposerSheets.tsx';
 import { useDictation } from './dictation.ts';
 import { DictationActivity, MicButton } from './DictationControls.tsx';
-import { FOLLOW_UP_PLACEHOLDERS, introBody, NEW_SESSION_PLACEHOLDERS } from './intro.ts';
+import { FOLLOW_UP_PLACEHOLDERS, NEW_SESSION_PLACEHOLDERS } from './intro.ts';
 import { EditBanner, MessageActionsProvider, useEditingText, useMessageChrome, type MessageEdit } from './messageChrome.tsx';
-import { MessageView } from './MessageView.tsx';
 import { ModelPicker, type ModelPickerView } from './ModelPicker.tsx';
 import { effortPillLabel, modelPillLabel, type ModelSelection } from './models.ts';
 import { RestoredDraftNotice } from './RestoredDraftNotice.tsx';
-import { RequestsProvider } from './RequestsProvider.tsx';
-import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
-import { ShowEarlier } from './ShowEarlier.tsx';
+import { shallowEqual } from './selector.ts';
 import { uiSlash, type SlashUi } from './slash.ts';
 import { StackIcon } from './StatusRows.tsx';
 import { StatusStack } from './StatusStack.tsx';
-import type { Message } from './transcript.ts';
-import { TurnActivity, TurnActivityContext } from './TurnActivity.tsx';
+import { TranscriptPane } from './TranscriptPane.tsx';
 import { useAttachments } from './useAttachments.ts';
 import { useComposerDraft } from './useComposerDraft.ts';
 import { useComposerTriggers, type ComposerSheet } from './useComposerTriggers.ts';
 import { useImeBack } from './useImeBack.ts';
+import { useChatSelector } from './useChatSelector.ts';
 import { useGatewayHealth } from './useGatewayHealth.ts';
-import { useJumpToBottom } from './useJumpToBottom.tsx';
 
-const SIDE_INSET = 24;
 /** the composer dock's top padding: the picker sits on the surface, not the dock */
 const COMPOSER_DOCK_TOP = 6;
 
-function convertMessage(message: Message): ThreadMessageLike {
-  const text = message.parts.map((part) => (part.kind === 'text' ? part.text : '')).join('\n');
-  const base = { id: message.id, role: message.role, content: [{ type: 'text' as const, text }] };
-  if (message.role !== 'assistant') return base;
-  const status: ThreadMessageLike['status'] =
-    message.status === 'streaming'
-      ? { type: 'running' }
-      : message.status === 'error'
-        ? { type: 'incomplete', reason: 'error' }
-        : message.status === 'interrupted'
-          ? { type: 'incomplete', reason: 'cancelled' }
-          : { type: 'complete', reason: 'stop' };
-  return { ...base, status };
-}
-
 type Props = {
   controller: ChatController;
-  entry: ChatEntry;
-  link: LinkState;
   bot: Bot | null;
   profileLabel: string;
-  opening: boolean;
-  models: ModelCatalog;
-  currentModel: ModelSelection | null;
-  personality: string;
   onOpenDrawer: () => void;
   onProfile: () => void;
 };
 
-const WORDMARK = 'HERMES AGENT';
-const BOT_FACE = 96;
-const BOT_FACE_GAP = 16;
+const selectCurrentModel = (controller: ChatController) => () => controller.currentModel();
 
-export default function ChatScreen({
-  controller,
-  entry,
-  link,
-  bot,
-  profileLabel,
-  opening,
-  models,
-  currentModel,
-  personality,
-  onOpenDrawer,
-  onProfile,
-}: Props) {
+function ChatScreen({ controller, bot, profileLabel, onOpenDrawer, onProfile }: Props) {
   const t = useTokens();
+  const meta = useChatSelector(controller, chatMeta, shallowEqual);
+  const { link, models, personality, defaultEffort, reactionsEnabled, openingBot } = useChatSelector(controller, chatEnv, shallowEqual);
+  const currentModelOf = useMemo(() => selectCurrentModel(controller), [controller]);
+  const currentModel = useChatSelector(controller, currentModelOf, sameModel);
+  const { running } = meta;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [dock, setDock] = useState({ top: 0, height: 0 });
   const closePicker = useCallback(() => setPickerOpen(false), []);
   const [sheet, setSheet] = useState<ComposerSheet | null>(null);
-  const gateway = useGatewayHealth(controller, link, entry.profile, !entry.isBotChat);
-  const backendMenu = useBackendMenu(entry.isBotChat);
+  const gateway = useGatewayHealth(controller, link, meta.profile, !meta.isBotChat);
+  const backendMenu = useBackendMenu(meta.isBotChat);
   useImeBack({ sheetOpen: sheet !== null, closeSheet: sheet?.dismiss, reorderKey: pickerOpen ? 'picker' : backendMenu.open ? 'backend' : null });
-  const sheetScope = useMemo(() => ({ request: controller.request, sessionId: entry.runtimeId, profile: entry.profile }), [controller, entry.runtimeId, entry.profile]);
+  const sheetScope = useMemo(() => ({ request: controller.request, sessionId: meta.runtimeId, profile: meta.profile }), [controller, meta.runtimeId, meta.profile]);
   const [pickerView, setPickerView] = useState<ModelPickerView>('models');
-  const defaultEffort = useSyncExternalStore(controller.subscribe, () => controller.getSnapshot().defaultEffort);
   const openPicker = useCallback(
     (view: ModelPickerView = 'models') => {
       setPickerView(view);
@@ -138,121 +96,81 @@ export default function ChatScreen({
     [openPicker, onOpenDrawer, onProfile],
   );
   const notify = useCallback((text: string) => controller.notify(text), [controller]);
-  const { messages, running } = entry.transcript;
-
-  const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
-  const onNew = useCallback(
-    async (append: AppendMessage) => {
-      const text = append.content.map((part) => (part.type === 'text' ? part.text : '')).join('\n');
-      await controller.send(text);
+  const chrome = useMessageChrome(controller, meta.key, reactionsEnabled);
+  const newChat = useCallback(() => controller.newChat(), [controller]);
+  const retryLink = useCallback(() => controller.retryLink(), [controller]);
+  const onDockLayout = useCallback((e: LayoutChangeEvent) => {
+    const { y, height } = e.nativeEvent.layout;
+    setDock((previous) => (previous.top === y && previous.height === height ? previous : { top: y, height }));
+  }, []);
+  const onQueue = useCallback((text: string) => controller.queueMessage(text), [controller]);
+  const onSend = useCallback(
+    (text: string, attachments: ComposerAttachment[]) => {
+      const ui = attachments.length === 0 ? uiSlash(text) : null;
+      if (ui) openUi(ui);
+      else void controller.send(text, attachments);
     },
+    [controller, openUi],
+  );
+  const onStop = useCallback(() => void controller.stop(), [controller]);
+  const onModelPicker = useCallback(() => openPicker('models'), [openPicker]);
+  const onEffortPicker = useCallback(() => openPicker('effort'), [openPicker]);
+  const onRefreshModels = useCallback(() => void controller.refreshModels(true), [controller]);
+  const onSelectModel = useCallback(
+    (selection: ModelSelection, options?: { confirm?: boolean }) => controller.selectModel(selection, options),
     [controller],
   );
-  const runtime = useExternalStoreRuntime({ messages, isRunning: running, convertMessage, onNew });
-  const jump = useJumpToBottom(entry.key, messages);
-  const reactionsEnabled = useSyncExternalStore(controller.subscribe, () => controller.getSnapshot().reactionsEnabled);
-  const chrome = useMessageChrome(controller, entry, reactionsEnabled);
-  const wait = entry.transcript.wait;
-  const tail = useMemo(() => ({ messages, running, wait }), [messages, running, wait]);
+  const onEffort = useCallback((effort: string) => void controller.setEffort(effort), [controller]);
 
-  const title = entry.isBotChat && bot ? bot.label : entry.title || (entry.key === 'draft' ? 'New session' : 'Untitled session');
+  const title = meta.isBotChat && bot ? bot.label : meta.title || (meta.key === 'draft' ? 'New session' : 'Untitled session');
   // the registry's "Bot Chat" title is plumbing, not chrome: a bot's app bar is its face and name
-  const subtitle = entry.isBotChat ? null : profileLabel;
-  const avatar =
-    entry.isBotChat && bot ? (
-      <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={28} loadImage={controller.avatarDataFn} mood={faceMood(running, bot.working)} />
-    ) : null;
+  const subtitle = meta.isBotChat ? null : profileLabel;
+  const avatar = useMemo(
+    () =>
+      meta.isBotChat && bot ? (
+        <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={28} loadImage={controller.avatarDataFn} mood={faceMood(running, bot.working)} />
+      ) : null,
+    [meta.isBotChat, bot, controller, running],
+  );
 
   return (
     <KeyboardAvoidingView behavior="padding" style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground }]}>
       <View style={styles.root}>
-        <AppBar t={t} title={title} subtitle={subtitle} avatar={avatar} onOpenDrawer={onOpenDrawer} onNewChat={() => controller.newChat()} />
-        <LinkBanner link={link} onRetry={() => controller.retryLink()} />
+        <AppBar t={t} title={title} subtitle={subtitle} avatar={avatar} onOpenDrawer={onOpenDrawer} onNewChat={newChat} />
+        <LinkBanner link={link} onRetry={retryLink} />
 
-        <AssistantRuntimeProvider runtime={runtime}>
-          <RequestsProvider controller={controller} entry={entry}>
-          <TurnActivityContext.Provider value={tail}>
-          <View style={styles.body}>
-            {messages.length === 0 ? (
-              <EmptyState t={t} entry={entry} bot={bot} opening={opening} personality={personality} loadImage={controller.avatarDataFn} />
-            ) : (
-              <View style={styles.list}>
-                <ThreadPrimitive.MessagesFlatList
-                  ref={jump.listRef}
-                  style={styles.list}
-                  contentContainerStyle={styles.listContent}
-                  keyboardDismissMode="interactive"
-                  keyboardShouldPersistTaps="handled"
-                  CellRendererComponent={jump.Cell}
-                  onScroll={jump.onScroll}
-                  onScrollBeginDrag={jump.onDrag}
-                  onContentSizeChange={jump.onContentSize}
-                  ListHeaderComponent={
-                    entry.history.more ? <ShowEarlier loading={entry.history.loadingEarlier} onPress={() => void controller.showEarlier(entry.key)} /> : null
-                  }
-                  ListFooterComponent={
-                    <>
-                      <TurnActivity key={entry.key} placement="footer" inset={SIDE_INSET} />
-                      <PendingApprovals />
-                    </>
-                  }
-                >
-                  {({ message }) => {
-                    const ours = byId.get(message.id);
-                    return ours ? (
-                      <View style={styles.row}>
-                        <MessageActionsProvider value={chrome.actions}>
-                          <MessageView message={ours} bar={chrome.bars.get(ours.id)} latest={ours.id === messages[messages.length - 1]?.id} />
-                        </MessageActionsProvider>
-                      </View>
-                    ) : null;
-                  }}
-                </ThreadPrimitive.MessagesFlatList>
-                <ScrollToBottomButton visible={jump.visible} count={jump.count} onPress={jump.toBottom} />
-              </View>
-            )}
-          </View>
-          </TurnActivityContext.Provider>
-          </RequestsProvider>
-        </AssistantRuntimeProvider>
+        <MessageActionsProvider value={chrome.actions}>
+          <TranscriptPane controller={controller} meta={meta} bot={bot} opening={openingBot !== null} personality={personality} />
+        </MessageActionsProvider>
 
-        <StatusStack controller={controller} entry={entry} busy={running} />
+        <StatusStack controller={controller} busy={running} />
 
-        <View
-          onLayout={(e) => {
-            const { y, height } = e.nativeEvent.layout;
-            setDock({ top: y, height });
-          }}
-        >
+        <View onLayout={onDockLayout}>
           <Composer
             t={t}
             drafts={controller.drafts}
-            profile={entry.profile}
-            session={entry.key}
+            profile={meta.profile}
+            session={meta.key}
             running={running}
-            disabled={link.kind !== 'open' || entry.loading}
-            botLabel={entry.isBotChat && bot ? bot.label : null}
-            followUp={messages.length > 0}
+            disabled={link.kind !== 'open' || meta.loading}
+            botLabel={meta.isBotChat && bot ? bot.label : null}
+            followUp={meta.hasMessages}
             edit={chrome.edit}
             modelLabel={modelPillLabel(currentModel?.model)}
             effortLabel={effortPillLabel(models.providers, currentModel)}
             onSheet={setSheet}
-            onQueue={(text) => controller.queueMessage(text)}
-            onSend={(text, attachments) => {
-              const ui = attachments.length === 0 ? uiSlash(text) : null;
-              if (ui) openUi(ui);
-              else void controller.send(text, attachments);
-            }}
-            onStop={() => void controller.stop()}
+            onQueue={onQueue}
+            onSend={onSend}
+            onStop={onStop}
             onNotice={notify}
-            onModelPicker={() => openPicker('models')}
-            onEffortPicker={() => openPicker('effort')}
+            onModelPicker={onModelPicker}
+            onEffortPicker={onEffortPicker}
           />
           <ChatStatusRow
             t={t}
             health={gateway.health}
             profileLabel={profileLabel}
-            botChat={entry.isBotChat}
+            botChat={meta.isBotChat}
             backendOpen={backendMenu.open}
             onProfile={onProfile}
             onBackend={backendMenu.show}
@@ -271,9 +189,9 @@ export default function ChatScreen({
           catalog={models}
           current={currentModel}
           onClose={closePicker}
-          onRefresh={() => void controller.refreshModels(true)}
-          onSelect={(selection, options) => controller.selectModel(selection, options)}
-          onEffort={(effort) => void controller.setEffort(effort)}
+          onRefresh={onRefreshModels}
+          onSelect={onSelectModel}
+          onEffort={onEffort}
         />
 
         <BackendPopover
@@ -281,7 +199,7 @@ export default function ChatScreen({
           anchor={backendMenu.anchor}
           controller={controller}
           link={link}
-          profile={entry.profile}
+          profile={meta.profile}
           model={gateway}
           onClose={backendMenu.close}
         />
@@ -289,6 +207,8 @@ export default function ChatScreen({
     </KeyboardAvoidingView>
   );
 }
+
+export default memo(ChatScreen);
 
 function IconButton({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
   return (
@@ -304,7 +224,7 @@ function IconButton({ label, onPress, children }: { label: string; onPress: () =
   );
 }
 
-function AppBar({
+const AppBar = memo(function AppBar({
   t,
   title,
   subtitle,
@@ -354,9 +274,9 @@ function AppBar({
       </IconButton>
     </View>
   );
-}
+});
 
-function LinkBanner({ link, onRetry }: { link: LinkState; onRetry: () => void }) {
+const LinkBanner = memo(function LinkBanner({ link, onRetry }: { link: LinkState; onRetry: () => void }) {
   const t = useTokens();
   if (link.kind === 'open' || link.kind === 'paused' || link.kind === 'signed-out') return null;
   const text =
@@ -378,63 +298,9 @@ function LinkBanner({ link, onRetry }: { link: LinkState; onRetry: () => void })
       ) : null}
     </View>
   );
-}
+});
 
-function EmptyState({
-  t,
-  entry,
-  bot,
-  opening,
-  personality,
-  loadImage,
-}: {
-  t: Tokens;
-  entry: ChatEntry;
-  bot: Bot | null;
-  opening: boolean;
-  personality: string;
-  loadImage: (name: string) => Promise<string | null>;
-}) {
-  const [seed] = useState(() => Math.floor(Math.random() * 100000));
-  if (opening || entry.loading) {
-    return (
-      <View style={styles.empty}>
-        <ThreadLoader />
-      </View>
-    );
-  }
-  if (entry.error) {
-    return (
-      <View style={styles.empty}>
-        <Text style={{ color: t.dtDestructive, fontSize: 16, fontWeight: '500', textAlign: 'center' }}>Could not load this session.</Text>
-        <Text style={{ color: t.uiTextTertiary, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 6 }}>{entry.error}</Text>
-      </View>
-    );
-  }
-  if (entry.isBotChat && bot) {
-    // desktop chat-empty.tsx: the face, then the Wordmark carrying the bot's name over the prompt, lifted so the name sits on the centre line
-    return (
-      <View style={styles.empty}>
-        <View style={styles.botIntro}>
-          <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={BOT_FACE} loadImage={loadImage} />
-          <View style={styles.botWordmark}>
-            <Wordmark text={bot.label} />
-          </View>
-          <Text style={[styles.introBody, { color: t.uiTextTertiary }]}>{BOT_CHAT_EMPTY}</Text>
-        </View>
-      </View>
-    );
-  }
-  // desktop components/chat/intro.tsx: the Wordmark over one rotating body line
-  return (
-    <View style={[styles.empty, styles.intro]}>
-      <Wordmark text={WORDMARK} style={styles.wordmark} />
-      <Text style={[styles.introBody, { color: t.uiTextTertiary }]}>{introBody(personality, seed)}</Text>
-    </View>
-  );
-}
-
-function Composer({
+const Composer = memo(function Composer({
   t,
   drafts,
   profile,
@@ -625,7 +491,7 @@ function Composer({
       <AttachMenu visible={attachOpen} onClose={() => setAttachOpen(false)} attachments={attachments} />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -647,17 +513,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  body: { flex: 1 },
-  list: { flex: 1 },
-  listContent: { paddingTop: 16, paddingBottom: 8 },
-  row: { paddingHorizontal: SIDE_INSET, paddingVertical: 6 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 48 },
-  intro: { paddingHorizontal: SIDE_INSET, paddingBottom: 24 },
-  wordmark: { marginHorizontal: 8, marginBottom: 4 },
-  botIntro: { alignSelf: 'stretch', alignItems: 'center', transform: [{ translateY: -(BOT_FACE + BOT_FACE_GAP) / 2 }] },
-  botWordmark: { width: '80%', paddingHorizontal: 8, marginTop: BOT_FACE_GAP, marginBottom: 4 },
-  // desktop `[data-slot='aui_intro'] p:last-child`: leading 1.45, tracking-tight, at phone reading size
-  introBody: { maxWidth: 544, fontSize: 17, lineHeight: 17 * 1.45, letterSpacing: -0.3, textAlign: 'center', marginTop: 6 },
   // phone composer: a full-width input over a toolbar (add and model on the left, mic and send on the right); controls 36, input 40–180
   composerDock: { paddingHorizontal: 12, paddingTop: COMPOSER_DOCK_TOP, paddingBottom: 8 },
   composer: { borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 8, paddingTop: 6, paddingBottom: 8 },

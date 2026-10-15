@@ -5,11 +5,10 @@
  * Refresh is a single attempt; the gate never rotates bearers by itself.
  */
 
-import * as WebBrowser from 'expo-web-browser';
 import { AppState } from 'react-native';
 
 import { errorText, HttpTimeoutError, postJson, truncate, type HttpResult } from '../gateway/http.ts';
-import { CallbackPortBusyError, listenForCallback, type CallbackCode, type CallbackListener } from './callback-server.ts';
+import { CallbackPortBusyError, type CallbackCode, type CallbackListener } from './callback-port.ts';
 import { ForegroundAbortedError, waitForForeground } from './foreground.ts';
 import { authorizeUrl, computeCodeChallenge, createCodeVerifier, createState } from './pkce.ts';
 import { parseTokenPayload, type Credentials } from './tokens.ts';
@@ -95,6 +94,9 @@ async function exchangeCode(url: string, payload: unknown, signal?: AbortSignal)
 export async function signIn(baseUrl: string, signal?: AbortSignal): Promise<SignInResult> {
   let listener: CallbackListener | null = null;
   try {
+    // only a sign-in needs the browser and the native loopback server; a silent refresh at launch must not load them
+    const WebBrowser = require('expo-web-browser') as typeof import('expo-web-browser');
+    const { listenForCallback } = require('./callback-server.ts') as typeof import('./callback-server.ts');
     const verifier = createCodeVerifier();
     const challenge = await computeCodeChallenge(verifier);
     const state = createState();

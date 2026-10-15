@@ -10,20 +10,43 @@ import { contrastRatio, parseColor, readableOn, relativeLuminance, toHex } from 
 
 type Rgba = readonly [number, number, number, number];
 
+const MEMO_LIMIT = 2048;
+
+/**
+ * A bounded memo for the pure string-to-string colour maths. Components derive colours from
+ * tokens in render, so the same (colour, ratio, colour) triple is asked for on every render;
+ * a hit costs one key concatenation instead of regex parsing and an hex round trip.
+ */
+function memo<R>(cache: Map<string, R>, key: string, compute: () => R): R {
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  const value = compute();
+  if (cache.size >= MEMO_LIMIT) cache.clear();
+  cache.set(key, value);
+  return value;
+}
+
 const clampChannel = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
 
 /** The desktop's ink pair: its near-black text colour, not pure black. */
 const DESKTOP_INKS = ['#161616', '#ffffff'] as const;
 
 /** A readable foreground (`#161616` or `#ffffff`) for a background hex. */
-export const readableInk = (bg: string): string => readableOn(bg, DESKTOP_INKS);
+const inkMemo = new Map<string, string>();
+export const readableInk = (bg: string): string => memo(inkMemo, bg, () => readableOn(bg, DESKTOP_INKS));
 
 /**
  * Coerce a CSS hex colour (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `#` optional)
  * into a flat `#rrggbb`, compositing alpha over `backdrop`. Null for anything else.
  */
+const normalizeMemo = new Map<string, string | null>();
+
 export function normalizeHex(input: string | undefined | null, backdrop = '#000000'): string | null {
   if (typeof input !== 'string') return null;
+  return memo(normalizeMemo, `${input}|${backdrop}`, () => normalizeHexUncached(input, backdrop));
+}
+
+function normalizeHexUncached(input: string, backdrop: string): string | null {
   let clean = input.trim().replace(/^#/, '');
   if (clean.length === 3 || clean.length === 4) {
     clean = clean
@@ -41,9 +64,12 @@ export function normalizeHex(input: string | undefined | null, backdrop = '#0000
 }
 
 /** The same colour at zero alpha, so a gradient into it fades without passing through grey. */
+const transparentMemo = new Map<string, string>();
 export function transparentOf(color: string): string {
-  const rgb = parseColor(color.slice(0, 7));
-  return rgb ? `${toHex(rgb)}00` : '#00000000';
+  return memo(transparentMemo, color, () => {
+    const rgb = parseColor(color.slice(0, 7));
+    return rgb ? `${toHex(rgb)}00` : '#00000000';
+  });
 }
 
 /** Perceptual-ish luminance in 0..1 (naive, for light/dark bucketing). */
@@ -72,7 +98,12 @@ function parseRgba(input: string): Rgba | null {
  * keeps the colour and only moves alpha. Returns `#rrggbb` when opaque,
  * `#rrggbbaa` otherwise.
  */
+const mixMemo = new Map<string, string>();
 export function mixPct(a: string, p: number, b: string): string {
+  return memo(mixMemo, `${a}|${p}|${b}`, () => mixPctUncached(a, p, b));
+}
+
+function mixPctUncached(a: string, p: number, b: string): string {
   const ca = parseRgba(a);
   const cb = parseRgba(b);
   if (!ca || !cb) return a;
@@ -108,11 +139,16 @@ function rgbToOklab([r255, g255, b255]: readonly number[]): [number, number, num
   ];
 }
 
+const oklchMemo = new Map<string, Oklch | null>();
+
+/** The result is shared between callers: copy before changing it. */
 export function hexToOklch(hex: string): Oklch | null {
-  const rgb = parseColor(hex);
-  if (!rgb) return null;
-  const [okL, okA, okB] = rgbToOklab(rgb);
-  return { l: okL, c: Math.hypot(okA, okB), h: ((Math.atan2(okB, okA) * 180) / Math.PI + 360) % 360 };
+  return memo(oklchMemo, hex, () => {
+    const rgb = parseColor(hex);
+    if (!rgb) return null;
+    const [okL, okA, okB] = rgbToOklab(rgb);
+    return { l: okL, c: Math.hypot(okA, okB), h: ((Math.atan2(okB, okA) * 180) / Math.PI + 360) % 360 };
+  });
 }
 
 function oklabToHex([okL, okA, okB]: readonly number[]): string {
@@ -163,7 +199,12 @@ export function maxChroma(l: number, h: number): number {
 export const hueDelta = (from: number, to: number): number => ((to - from + 540) % 360) - 180;
 
 /** Bend a semantic colour toward the accent along the shortest hue arc. */
+const harmonizeMemo = new Map<string, string>();
 export function harmonize(hex: string, accent: string, strength: number): string {
+  return memo(harmonizeMemo, `${hex}|${accent}|${strength}`, () => harmonizeUncached(hex, accent, strength));
+}
+
+function harmonizeUncached(hex: string, accent: string, strength: number): string {
   const base = hexToOklch(hex);
   const target = hexToOklch(accent);
   if (!base || !target) return hex;
@@ -179,7 +220,12 @@ export function oklchToSrgb255(color: Oklch): [number, number, number] | null {
 }
 
 /** Blend two colours in OKLab, the hue-stable counterpart to sRGB mixing; use it for anything derived from the brand seed. */
+const mixOklabMemo = new Map<string, string>();
 export function mixOklab(a: string, b: string, amount: number): string {
+  return memo(mixOklabMemo, `${a}|${b}|${amount}`, () => mixOklabUncached(a, b, amount));
+}
+
+function mixOklabUncached(a: string, b: string, amount: number): string {
   const ra = parseColor(a);
   const rb = parseColor(b);
   if (!ra || !rb) return a;
@@ -190,16 +236,24 @@ export function mixOklab(a: string, b: string, amount: number): string {
 }
 
 /** Re-hue a colour, holding its perceived lightness and colourfulness. */
+const hueMemo = new Map<string, string>();
 export function withHue(hex: string, hue: number): string {
-  const lch = hexToOklch(hex);
-  return lch ? oklchToHex({ ...lch, h: ((hue % 360) + 360) % 360 }) : hex;
+  return memo(hueMemo, `${hex}|${hue}`, () => {
+    const lch = hexToOklch(hex);
+    return lch ? oklchToHex({ ...lch, h: ((hue % 360) + 360) % 360 }) : hex;
+  });
 }
 
 /**
  * Make `hex` clear `min` contrast against `bg` by moving its OKLCH lightness only,
  * keeping hue and chroma. Returns the original when it already passes.
  */
+const contrastMemo = new Map<string, string>();
 export function ensureContrastOklch(hex: string, bg: string, min: number): string {
+  return memo(contrastMemo, `${hex}|${bg}|${min}`, () => ensureContrastOklchUncached(hex, bg, min));
+}
+
+function ensureContrastOklchUncached(hex: string, bg: string, min: number): string {
   const ratio = contrastRatio(hex, bg);
   if (ratio === null || ratio >= min) return hex;
   const lch = hexToOklch(hex);

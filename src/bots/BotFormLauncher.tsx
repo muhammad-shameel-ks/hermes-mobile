@@ -8,8 +8,10 @@ import { useEffect, useMemo, type MutableRefObject } from 'react';
 import { useOverlay } from '../app/overlay.tsx';
 import type { ChatController } from '../chat/controller.ts';
 import { createAvatarApi } from './avatarApi.ts';
-import BotForm from './BotForm.tsx';
+import { lazyScreen } from '../ui/lazy.tsx';
 import type { Bot } from './roster.ts';
+
+const BotForm = lazyScreen(() => require('./BotForm.tsx') as typeof import('./BotForm.tsx'));
 
 export type BotFormLaunch = (bot: Bot | null) => void;
 

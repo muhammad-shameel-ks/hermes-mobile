@@ -7,8 +7,6 @@
  */
 
 import { File } from 'expo-file-system';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
-import * as ImagePicker from 'expo-image-picker';
 
 import { imageToCacheFile } from '../chat/cards/shareImage.ts';
 import { AVATAR_EDGE, avatarCrop, avatarImageError } from './look.ts';
@@ -17,6 +15,7 @@ export type Picked = { image: string } | { error: string } | null;
 
 /** the image at `uri` as a 256 px square PNG data URL */
 export async function normalizeAvatarImage(uri: string): Promise<string> {
+  const { ImageManipulator, SaveFormat } = await import('expo-image-manipulator');
   const source = await ImageManipulator.manipulate(uri).renderAsync();
   const result = await ImageManipulator.manipulate(source)
     .crop(avatarCrop(source.width, source.height))
@@ -29,6 +28,7 @@ export async function normalizeAvatarImage(uri: string): Promise<string> {
 
 /** the library's square crop; null when the user backs out */
 export async function pickImageFromDevice(): Promise<Picked> {
+  const ImagePicker = await import('expo-image-picker');
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
     allowsEditing: true,

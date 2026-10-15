@@ -1,107 +1,83 @@
 /**
- * A section of the sessions list and the rows inside it (apps/desktop/src/app/chat/sidebar/
- * sessions-section.tsx): the header that folds it, the date dividers that group a recency list, the
- * branch-nested rows, its footer. The rows' live status comes from the chats the controller holds.
+ * One cell of the sessions list (apps/desktop/src/app/chat/sidebar/sessions-section.tsx): the header
+ * that folds a section, a session row, a date divider, the placeholder a section shows instead of
+ * rows, the footer that loads more. The list windows these cells; sessionListItems.ts lays them out.
  */
 
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import type { ChatSnapshot, SessionInfo } from '../chat/controller.ts';
-import { DateDivider, SectionHeader } from './chrome.tsx';
+import type { SessionInfo } from '../chat/controller.ts';
+import { DateDivider, LoadMoreRow, SectionHeader } from './chrome.tsx';
+import { PlatformChip } from './PlatformChip.tsx';
 import { ROW_STACK_GAP } from './rowGeometry.ts';
-import { groupEntriesByRecency, hideCollapsedGroupRows, toSessionRows, type ListRow } from './sessionDates.ts';
-import { sessionRowKey } from './sessionIndex.ts';
-import { chatActivity, resolveDotState, type DotState } from './sessionStatus.ts';
-import { flattenSessionsWithBranches } from './sessionTree.ts';
+import { EmptyMessage, LoadErrorState, PinnedEmptyState, SessionSkeletons } from './sectionStates.tsx';
+import type { DotState } from './sessionStatus.ts';
+import type { FoldTarget, ListItem, MoreTarget } from './sessionListItems.ts';
 import { SessionRow } from './SessionRow.tsx';
-import { toggleIn, updateFolds, useDrawerFolds } from './drawerState.ts';
 
-/** the status a row paints: the live chat's activity, else the backend's read watermark */
-export function sessionDotState(snapshot: Pick<ChatSnapshot, 'entries' | 'openKey' | 'finishedAway'>, session: SessionInfo): DotState {
-  const open = snapshot.openKey === session.id;
-  return resolveDotState({
-    activity: chatActivity(snapshot.entries[session.id]),
-    // a session on screen is read; anything else is unread by the backend's watermark or a turn that ended while away
-    unread: !open && (session.unread === true || snapshot.finishedAway[session.id] === true),
-  });
-}
-
-export type RowHandlers = {
-  snapshot: Pick<ChatSnapshot, 'entries' | 'openKey' | 'finishedAway'>;
-  now: number;
+/** what the cells do; every member is stable for the list's life, so cells never re-render for it */
+export type CellActions = {
+  toggleFold: (fold: FoldTarget) => void;
+  toggleGroup: (groupKey: string) => void;
+  loadMore: (target: MoreTarget) => void;
+  retry: () => void;
   onOpen: (session: SessionInfo) => void;
   onActions: (session: SessionInfo) => void;
 };
 
-/** a section: its folding header over its rows, then whatever hangs off the end of them */
-export function SessionsSection({
-  label,
-  open = true,
-  onToggle,
-  icon,
-  meta,
-  children,
-  footer,
-}: {
-  label: string;
-  open?: boolean;
-  onToggle?: () => void;
-  icon?: ReactNode;
-  meta?: ReactNode;
-  children?: ReactNode;
-  footer?: ReactNode;
-}) {
-  return (
-    <View style={styles.section}>
-      <SectionHeader label={label} open={open} onToggle={onToggle} icon={icon} meta={meta} />
-      {open ? (
-        <View style={styles.body}>
-          {children}
-          {footer}
-        </View>
-      ) : null}
-    </View>
-  );
+type Props = {
+  item: ListItem;
+  /** rows only: the dot the row paints and whether it is the open chat */
+  state: DotState;
+  active: boolean;
+  /** epoch seconds, rounded to the minute so an unchanged row stays put between ticks */
+  now: number;
+  actions: CellActions;
+};
+
+function SessionListCellImpl({ item, state, active, now, actions }: Props) {
+  const gap = (item.kind === 'row' || item.kind === 'divider') && item.gap;
+  const style = gap ? (item.end ? styles.gapEnd : styles.gap) : item.end ? styles.end : undefined;
+  return <View style={style}>{content(item, state, active, now, actions)}</View>;
 }
 
-/**
- * Sessions as rows. `grouping: 'date'` folds the date dividers in (the flat recents list); `none` keeps
- * the caller's order (pinned, search results, platform groups, where a divider would be misleading).
- */
-export function SessionRows({ sessions, grouping, preserveOrder, handlers }: { sessions: readonly SessionInfo[]; grouping: 'date' | 'none'; preserveOrder: boolean; handlers: RowHandlers }) {
-  const { closedGroups } = useDrawerFolds();
-  const entries = useMemo(() => flattenSessionsWithBranches(sessions, { preserveOrder }), [sessions, preserveOrder]);
-  const rows: ListRow[] = useMemo(() => {
-    const all = grouping === 'date' ? groupEntriesByRecency(entries) : toSessionRows(entries);
-    return hideCollapsedGroupRows(all, (key) => !closedGroups.includes(key));
-  }, [entries, grouping, closedGroups]);
-  const toggle = useCallback((key: string) => updateFolds({ closedGroups: toggleIn(closedGroups, key) }), [closedGroups]);
-
-  return (
-    <View style={styles.rows}>
-      {rows.map((row) =>
-        row.kind === 'divider' ? (
-          <DateDivider key={`divider:${row.key}`} label={row.label} open={!closedGroups.includes(row.key)} onToggle={() => toggle(row.key)} />
-        ) : (
-          <SessionRow
-            key={sessionRowKey(row.entry.session)}
-            session={row.entry.session}
-            branchStem={row.entry.branchStem}
-            active={handlers.snapshot.openKey === row.entry.session.id}
-            state={sessionDotState(handlers.snapshot, row.entry.session)}
-            now={handlers.now}
-            onOpen={handlers.onOpen}
-            onActions={handlers.onActions}
-          />
-        ),
-      )}
-    </View>
-  );
+function content(item: ListItem, state: DotState, active: boolean, now: number, actions: CellActions) {
+  switch (item.kind) {
+    case 'header': {
+      const fold = item.fold;
+      return (
+        <SectionHeader
+          label={item.label}
+          open={item.open}
+          onToggle={fold ? () => actions.toggleFold(fold) : undefined}
+          icon={item.platform ? <PlatformChip sourceId={item.platform} label={item.label} /> : undefined}
+        />
+      );
+    }
+    case 'divider':
+      return <DateDivider label={item.label} open={item.open} onToggle={() => actions.toggleGroup(item.groupKey)} />;
+    case 'row':
+      return <SessionRow session={item.session} branchStem={item.branchStem} active={active} state={state} now={now} onOpen={actions.onOpen} onActions={actions.onActions} />;
+    case 'state':
+      return item.state === 'skeletons' ? (
+        <SessionSkeletons />
+      ) : item.state === 'load-error' ? (
+        <LoadErrorState onRetry={actions.retry} />
+      ) : item.state === 'pinned-hint' ? (
+        <PinnedEmptyState />
+      ) : (
+        <EmptyMessage tall={item.state === 'empty-tall'}>{item.text ?? ''}</EmptyMessage>
+      );
+    case 'more':
+      return <LoadMoreRow loading={item.loading} step={item.step} onPress={() => actions.loadMore(item.target)} />;
+  }
 }
+
+export const SessionListCell = memo(SessionListCellImpl);
 
 const styles = StyleSheet.create({
-  section: { paddingBottom: 4 },
-  body: { paddingTop: 0 },
-  rows: { gap: ROW_STACK_GAP },
+  gap: { paddingTop: ROW_STACK_GAP },
+  end: { paddingBottom: 4 },
+  gapEnd: { paddingTop: ROW_STACK_GAP, paddingBottom: 4 },
 });

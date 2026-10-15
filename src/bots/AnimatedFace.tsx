@@ -2,7 +2,8 @@
  * The math face with its face clock: head sway, gaze, blinks, and the working
  * dots, painted from pure poses (face.ts). Each face runs one frame callback on
  * the UI thread, throttled to the desktop's 15 fps budget; the callback stops
- * with the component, so a face the drawer or screen has unmounted costs nothing.
+ * with the component, so a face the drawer or screen has unmounted costs nothing,
+ * and while the app is in the background.
  */
 
 import { useEffect } from 'react';
@@ -10,6 +11,7 @@ import { StyleSheet } from 'react-native';
 import Animated, { useAnimatedProps, useAnimatedStyle, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import Svg, { Circle, Ellipse, G, Path } from 'react-native-svg';
 
+import { useAppForeground } from '../ui/clock.ts';
 import { faceFrame, facePose, faceGeometry, settlePose, type FaceMood, type PoseTransition } from './face.ts';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -36,7 +38,7 @@ export function AnimatedFace({ shape, color, mood, size }: { shape: string; colo
     moodValue.value = mood;
   }, [mood, moodValue]);
 
-  useFrameCallback((info) => {
+  const clock = useFrameCallback((info) => {
     const t = info.timestamp / 1000;
     if (t - lastPaint.value < FRAME_S - 0.004) return;
     lastPaint.value = t;
@@ -45,6 +47,15 @@ export function AnimatedFace({ shape, color, mood, size }: { shape: string; colo
     transition.value = next;
     frame.value = faceFrame(shape, next.pose);
   });
+
+  const foreground = useAppForeground();
+  useEffect(() => {
+    if (foreground) return;
+    clock.setActive(false);
+    return () => {
+      if (clock.callbackId !== -1) clock.setActive(true);
+    };
+  }, [clock, foreground]);
 
   const body = useAnimatedProps(() => ({ d: frame.value.body }));
   const eyeL = useAnimatedProps(() => ({ cx: frame.value.eyeL, cy: frame.value.eyeY }));

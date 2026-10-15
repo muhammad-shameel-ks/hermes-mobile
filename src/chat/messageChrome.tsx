@@ -1,20 +1,23 @@
 /**
  * Everything the per-message chrome needs from the open chat, behind one hook: the
- * bar each message carries, the stable action callbacks the bars call, the edit
- * state the composer reads, and the sheets (reaction picker, rewind confirm).
- * ChatScreen calls `useMessageChrome` once; rows stay memoised because the action
- * object is stable and each bar plan keeps its identity until it changes.
+ * stable action callbacks the bars call, the edit state the composer reads, and the
+ * sheets (reaction picker, rewind confirm). ChatScreen calls `useMessageChrome` once.
+ * It never reads the transcript during render - actions read the live messages when
+ * they run - so a streamed token does not re-render it; the bars each row carries
+ * are planned by TranscriptRows.
  */
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Codicon } from '../ui/Codicon.tsx';
 import { copyText } from '../ui/clipboard.ts';
 import { ActionSheet } from '../ui/Sheet.tsx';
 import { useTokens } from '../ui/tokens.ts';
-import { fullResponseText, planBars, stablePlans, userReaction, type BarPlan } from './actionBar.ts';
-import type { ChatController, ChatEntry } from './controller.ts';
+import { fullResponseText, userReaction } from './actionBar.ts';
+import { openEntry } from './chatSlices.ts';
+import type { ChatController } from './controller.ts';
+import type { Message } from './transcript.ts';
 import { ReactionSheet } from './ReactionSheet.tsx';
 import { planRewind, promptText, RESTORE_COPY } from './rewind.ts';
 
@@ -60,23 +63,13 @@ export type MessageEdit = {
 
 export type MessageChrome = {
   actions: MessageActions;
-  bars: Map<string, BarPlan>;
   edit: MessageEdit;
   /** the sheets the chrome opens; render once, anywhere in the chat */
   sheets: ReactNode;
 };
 
-export function useMessageChrome(controller: ChatController, entry: ChatEntry, reactionsEnabled: boolean): MessageChrome {
-  const { transcript } = entry;
-  const latest = useRef(transcript);
-  latest.current = transcript;
-
-  const previous = useRef(new Map<string, BarPlan>());
-  const bars = useMemo(() => {
-    const next = stablePlans(previous.current, planBars(transcript.messages, transcript.running));
-    previous.current = next;
-    return next;
-  }, [transcript.messages, transcript.running]);
+export function useMessageChrome(controller: ChatController, sessionKey: string, reactionsEnabled: boolean): MessageChrome {
+  const messagesNow = useCallback((): readonly Message[] => openEntry(controller.getSnapshot()).transcript.messages, [controller]);
 
   const [picking, setPicking] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -87,7 +80,7 @@ export function useMessageChrome(controller: ChatController, entry: ChatEntry, r
   useEffect(() => {
     setPicking(null);
     setTarget(null);
-  }, [entry.key]);
+  }, [sessionKey]);
 
   const settle = (ok: boolean) => {
     const resolve = answer.current;
@@ -106,7 +99,7 @@ export function useMessageChrome(controller: ChatController, entry: ChatEntry, r
 
     /** desktop planConfirmedReload / planConfirmedEdit: a cut that archives later user turns asks first; restore always does */
     const rewind = async (messageId: string, options: { text?: string; always?: boolean } = {}): Promise<boolean> => {
-      const plan = planRewind(latest.current.messages, messageId, options.text);
+      const plan = planRewind(messagesNow(), messageId, options.text);
       if (!plan) {
         controller.notify('Could not find the message to restore.');
         return false;
@@ -124,7 +117,7 @@ export function useMessageChrome(controller: ChatController, entry: ChatEntry, r
       return outcome === 'ok';
     };
     return { confirm, rewind };
-  }, [controller]);
+  }, [controller, messagesNow]);
 
   const actions = useMemo<MessageActions>(
     () => ({
@@ -139,18 +132,18 @@ export function useMessageChrome(controller: ChatController, entry: ChatEntry, r
           return false;
         }
       },
-      fullResponseText: (messageId) => fullResponseText(latest.current.messages, messageId),
+      fullResponseText: (messageId) => fullResponseText(messagesNow(), messageId),
       notify: (text) => controller.notify(text),
       retry: (messageId) => void parts.rewind(messageId),
       restore: (messageId) => void parts.rewind(messageId, { always: true }),
       edit: (messageId) => {
-        const message = latest.current.messages.find((m) => m.id === messageId && m.role === 'user');
+        const message = messagesNow().find((m) => m.id === messageId && m.role === 'user');
         if (message) setTarget({ messageId, text: promptText(message), nonce: (nonce.current += 1) });
       },
       react: (messageId) => setPicking(messageId),
       stop: () => void controller.stop(),
     }),
-    [controller, parts, reactionsEnabled],
+    [controller, parts, reactionsEnabled, messagesNow],
   );
 
   const edit = useMemo<MessageEdit>(
@@ -160,7 +153,7 @@ export function useMessageChrome(controller: ChatController, entry: ChatEntry, r
       submit: async (text) => {
         if (!target) return false;
         const next = text.trim();
-        const original = latest.current.messages.find((m) => m.id === target.messageId);
+        const original = messagesNow().find((m) => m.id === target.messageId);
         if (!next) return false;
         if (original && promptText(original) === next) {
           setTarget(null);
@@ -171,10 +164,10 @@ export function useMessageChrome(controller: ChatController, entry: ChatEntry, r
         return sent;
       },
     }),
-    [parts, target],
+    [parts, target, messagesNow],
   );
 
-  const picked = picking ? latest.current.messages.find((m) => m.id === picking) : undefined;
+  const picked = picking ? messagesNow().find((m) => m.id === picking) : undefined;
   const sheets = (
     <>
       <ReactionSheet
@@ -199,7 +192,7 @@ export function useMessageChrome(controller: ChatController, entry: ChatEntry, r
     </>
   );
 
-  return { actions, bars, edit, sheets };
+  return { actions, edit, sheets };
 }
 
 /**

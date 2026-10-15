@@ -6,7 +6,7 @@
  * a second Send to reach a picker is a desktop keyboard habit.
  */
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CommandsCatalogResult, CompleteSlashResult } from '../../vendor/hermes-shared/src/gateway-contract.generated.ts';
 import { Empty, GroupHeader, Panel, Row } from './CompletionPanel.tsx';
@@ -15,9 +15,13 @@ import { argumentRows, gatewayArgumentRows, resolveCommand, slashArgStage, slash
 
 const CATALOG_TTL_MS = 60_000;
 const catalogs = new Map<string, { at: number; value: CommandsCatalogResult }>();
+const NO_ROWS: SlashRow[] = [];
 
 /** the catalog for a scope, shared across sheet openings so a bare `/` is instant after the first */
 function useCatalog({ request, sessionId, profile }: SheetScope): CommandsCatalogResult | null {
+  // a caller that rebuilds `request` each render must not refetch on every one
+  const requestRef = useRef(request);
+  requestRef.current = request;
   const key = `${profile}|${sessionId ?? ''}`;
   const [catalog, setCatalog] = useState<CommandsCatalogResult | null>(() => catalogs.get(key)?.value ?? null);
   useEffect(() => {
@@ -27,7 +31,7 @@ function useCatalog({ request, sessionId, profile }: SheetScope): CommandsCatalo
       return;
     }
     let live = true;
-    request<CommandsCatalogResult>('commands.catalog', sessionId ? { session_id: sessionId } : { profile })
+    requestRef.current<CommandsCatalogResult>('commands.catalog', sessionId ? { session_id: sessionId } : { profile })
       .then((value) => {
         catalogs.set(key, { at: Date.now(), value });
         if (live) setCatalog(value);
@@ -36,19 +40,21 @@ function useCatalog({ request, sessionId, profile }: SheetScope): CommandsCatalo
     return () => {
       live = false;
     };
-  }, [key, request, sessionId, profile]);
+  }, [key, sessionId, profile]);
   return catalog;
 }
 
 /** the gateway's completions for a command's argument, when the phone has no list of its own */
 function useGatewayArguments(query: string, { request, sessionId, profile }: SheetScope, enabled: boolean): { rows: SlashRow[]; loading: boolean } {
   const [state, setState] = useState<{ query: string; rows: SlashRow[] } | null>(null);
+  const requestRef = useRef(request);
+  requestRef.current = request;
   useEffect(() => {
     if (!enabled) return;
     let live = true;
     const text = `/${query}`;
     const timer = setTimeout(() => {
-      request<CompleteSlashResult>('complete.slash', { text, ...(sessionId ? { session_id: sessionId } : { profile }) })
+      requestRef.current<CompleteSlashResult>('complete.slash', { text, ...(sessionId ? { session_id: sessionId } : { profile }) })
         .then((result) => {
           if (live) setState({ query, rows: gatewayArgumentRows(text, result.items ?? [], result.replace_from) });
         })
@@ -60,8 +66,8 @@ function useGatewayArguments(query: string, { request, sessionId, profile }: She
       live = false;
       clearTimeout(timer);
     };
-  }, [query, request, sessionId, profile, enabled]);
-  return { rows: enabled && state?.query === query ? state.rows : [], loading: enabled && state?.query !== query };
+  }, [query, sessionId, profile, enabled]);
+  return { rows: enabled && state?.query === query ? state.rows : NO_ROWS, loading: enabled && state?.query !== query };
 }
 
 type Props = {
@@ -85,34 +91,38 @@ export function SlashSheet({ sheet, scope, bottom, maxHeight, onUi }: Props) {
     [argStage, command, staticArgs, remote.rows, trigger.query, trigger.inline, catalog],
   );
 
-  const pick = (row: SlashRow) => {
-    const surface = row.command?.surface;
-    if (!trigger.inline && surface?.kind === 'ui') {
-      sheet.insert('', { close: true });
-      onUi(surface.ui);
-      return;
-    }
-    // an argument row commits; a command row expands to its argument stage or commits as typed
-    sheet.insert(`${row.text} `, { close: row.group === 'Options' });
-  };
+  // the rows are memoised elements: the composer re-renders this sheet on every keystroke and streamed delta,
+  // and an unchanged list must not be rebuilt for it, so the handler reads the latest props through a ref
+  const latest = useRef({ sheet, onUi, inline: trigger.inline });
+  latest.current = { sheet, onUi, inline: trigger.inline };
+  const list = useMemo(() => {
+    const pick = (row: SlashRow) => {
+      const { sheet: current, onUi: openUi, inline } = latest.current;
+      const surface = row.command?.surface;
+      if (!inline && surface?.kind === 'ui') {
+        current.insert('', { close: true });
+        openUi(surface.ui);
+        return;
+      }
+      // an argument row commits; a command row expands to its argument stage or commits as typed
+      current.insert(`${row.text} `, { close: row.group === 'Options' });
+    };
+    let lastGroup: string | null = null;
+    return rows.map((row) => {
+      const header = row.group !== lastGroup ? <GroupHeader label={row.group} /> : null;
+      lastGroup = row.group;
+      return (
+        <Fragment key={row.text}>
+          {header}
+          <Row kind={row.group === 'Skills' ? 'skill' : 'command'} title={row.display} meta={row.meta} onPress={() => pick(row)} />
+        </Fragment>
+      );
+    });
+  }, [rows]);
 
-  let lastGroup: string | null = null;
   return (
     <Panel bottom={bottom} maxHeight={maxHeight} onDismiss={sheet.dismiss}>
-      {rows.length === 0 ? (
-        <Empty loading={remote.loading} title={argStage ? 'No matching options.' : 'No commands match.'} />
-      ) : (
-        rows.map((row) => {
-          const header = row.group !== lastGroup ? <GroupHeader label={row.group} /> : null;
-          lastGroup = row.group;
-          return (
-            <Fragment key={row.text}>
-              {header}
-              <Row kind={row.group === 'Skills' ? 'skill' : 'command'} title={row.display} meta={row.meta} onPress={() => pick(row)} />
-            </Fragment>
-          );
-        })
-      )}
+      {rows.length === 0 ? <Empty loading={remote.loading} title={argStage ? 'No matching options.' : 'No commands match.'} /> : list}
     </Panel>
   );
 }

@@ -17,7 +17,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { press, tick } from '../ui/haptics.ts';
 import { useTokens } from '../ui/tokens.ts';
-import { COPIED_RESET_MS, formatElapsed, formatStamp, messageText, type BarPlan } from './actionBar.ts';
+import { COPIED_RESET_MS, formatElapsed, formatStamp, messageText, sameBar, type BarPlan } from './actionBar.ts';
 import { useMessageActions } from './messageChrome.tsx';
 import { readAloud, stopReadAloud, useReadAloud } from './readAloud.ts';
 import type { Message } from './transcript.ts';
@@ -189,7 +189,7 @@ function ActionBarImpl({ message, plan }: { message: Message; plan: BarPlan }) {
   );
 }
 
-export const ActionBar = memo(ActionBarImpl);
+export const ActionBar = memo(ActionBarImpl, sameBar);
 
 const styles = StyleSheet.create({
   // desktop: `flex min-h-6 items-center justify-end gap-1.5 py-1.5`; the phone's glyphs and gap are larger for touch

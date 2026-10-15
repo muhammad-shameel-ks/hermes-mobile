@@ -5,7 +5,7 @@
  * its first appearance, so it cannot flash on mount.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import Animated, {
   Easing,
@@ -31,7 +31,7 @@ const REDUCED = { duration: 120, easing: Easing.linear, reduceMotion: ReduceMoti
 /** desktop components/ui/diff-count: the snappy spring */
 const SPRING = { stiffness: 320, damping: 30, mass: 0.5 };
 
-export function ScrollToBottomButton({ visible, count, onPress }: { visible: boolean; count: number; onPress: () => void }) {
+export const ScrollToBottomButton = memo(function ScrollToBottomButton({ visible, count, onPress }: { visible: boolean; count: number; onPress: () => void }) {
   const t = useTokens();
   const reduced = useReducedMotion();
   const shown = useRef(false);
@@ -103,7 +103,7 @@ export function ScrollToBottomButton({ visible, count, onPress }: { visible: boo
       </Pressable>
     </Animated.View>
   );
-}
+});
 
 /** An integer that starts at its value and springs to each later one. */
 function SpringInt({ value }: { value: number }) {

@@ -101,6 +101,8 @@ export class DraftStore {
   }
 
   private enforceCap() {
+    // blank entries do not count, so a map at or under the cap cannot be over it: the common keystroke
+    if (this.drafts.size <= DRAFT_ENTRIES) return;
     let kept = 0;
     for (const [, text] of this.drafts) if (!blank(text)) kept += 1;
     for (const [id, text] of this.drafts) {

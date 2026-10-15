@@ -10,6 +10,20 @@ import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Circle, Ellipse, Path, SvgXml } from 'react-native-svg';
 import { blobatar } from 'blobatar/blob';
 
+// a row remounting (drawer open, list scroll) would otherwise regenerate the same SVG
+const blobCache = new Map<string, string>();
+const BLOB_CACHE_MAX = 256;
+
+function blobXmlFor(seed: string, trait: number | undefined, size: number): string {
+  const key = `${seed}|${trait ?? ''}|${size}`;
+  const hit = blobCache.get(key);
+  if (hit !== undefined) return hit;
+  const xml = blobatar(seed, { size, ...(trait !== undefined ? { traits: { shape: trait } } : {}) });
+  if (blobCache.size >= BLOB_CACHE_MAX) blobCache.delete(blobCache.keys().next().value!);
+  blobCache.set(key, xml);
+  return xml;
+}
+
 import { AnimatedFace } from './AnimatedFace.tsx';
 import { faceGeometry, resolveLook, type FaceMood } from './face.ts';
 import { isBackfilledFacePng } from './look.ts';
@@ -82,13 +96,7 @@ function BotAvatarImpl({ name, meta, hasAvatar, size, loadImage, mood = 'idle', 
   const look = resolveLook(name, meta, false);
   const blobSeed = look.kind === 'blob' ? look.seed : null;
   const blobTrait = look.kind === 'blob' ? look.shapeTrait : undefined;
-  const blobXml = useMemo(
-    () =>
-      blobSeed === null
-        ? null
-        : blobatar(blobSeed, { size, ...(blobTrait !== undefined ? { traits: { shape: blobTrait } } : {}) }),
-    [blobSeed, blobTrait, size],
-  );
+  const blobXml = useMemo(() => (blobSeed === null ? null : blobXmlFor(blobSeed, blobTrait, size)), [blobSeed, blobTrait, size]);
 
   if (photo) return <Image source={{ uri: photo }} style={{ width: size, height: size, borderRadius: size * 0.22 }} />;
   if (blobXml) return <SvgXml xml={blobXml} width={size} height={size} />;

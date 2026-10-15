@@ -8,7 +8,7 @@
  * itself is attached with the check on its row.
  */
 
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { CompletePathParams, CompletionItemsResult } from '../../vendor/hermes-shared/src/gateway-contract.generated.ts';
@@ -21,6 +21,7 @@ import type { ComposerSheet, SheetScope } from './useComposerTriggers.ts';
 const CACHE_LIMIT = 80;
 const DEBOUNCE_MS = 60;
 const cache = new Map<string, MentionRow[]>();
+const NO_ROWS: MentionRow[] = [];
 
 const remember = (key: string, rows: MentionRow[]) => {
   cache.set(key, rows);
@@ -35,13 +36,16 @@ const remember = (key: string, rows: MentionRow[]) => {
 function useMentions(query: string, { request, sessionId, profile }: SheetScope): { rows: MentionRow[]; loading: boolean } {
   const key = `${profile}|${sessionId ?? ''}|${query}`;
   const [state, setState] = useState<{ key: string; rows: MentionRow[] } | null>(null);
+  // a caller that rebuilds `request` each render must not restart the debounce on every one
+  const requestRef = useRef(request);
+  requestRef.current = request;
   useEffect(() => {
     if (cache.has(key)) return;
     let live = true;
     const word = (DIRECTIVE_SCOPES as readonly string[]).includes(query) ? `@${query}:` : `@${query}`;
     const params: CompletePathParams = { word, ...(sessionId ? { session_id: sessionId } : {}), profile };
     const timer = setTimeout(() => {
-      request<CompletionItemsResult>('complete.path', params as Record<string, unknown>)
+      requestRef.current<CompletionItemsResult>('complete.path', params as Record<string, unknown>)
         .then((result) => {
           const rows = mentionRows(result.items ?? [], query);
           remember(key, rows);
@@ -55,9 +59,9 @@ function useMentions(query: string, { request, sessionId, profile }: SheetScope)
       live = false;
       clearTimeout(timer);
     };
-  }, [key, query, request, sessionId, profile]);
+  }, [key, query, sessionId, profile]);
   const rows = cache.get(key) ?? (state?.key === key ? state.rows : null);
-  return { rows: rows ?? [], loading: rows === null };
+  return { rows: rows ?? NO_ROWS, loading: rows === null };
 }
 
 type Props = {
@@ -73,11 +77,41 @@ export function MentionSheet({ sheet, scope, bottom, maxHeight }: Props) {
   const { rows, loading } = useMentions(trigger.query, scope);
   const browsing = Boolean(trigger.scope) || trigger.value.includes('/');
 
-  const pick = (row: MentionRow) => {
-    if (row.starter) return sheet.insert(row.raw);
-    if (row.folder) return sheet.insert(descendInsertText(row, trigger.scope));
-    sheet.insert(`${mentionInsertText(row)} `, { close: true });
-  };
+  // memoised elements, with the handlers reading the latest props through a ref: the composer re-renders this sheet
+  // on every keystroke and streamed delta, and an unchanged listing must not be rebuilt for it
+  const latest = useRef({ sheet, scope: trigger.scope });
+  latest.current = { sheet, scope: trigger.scope };
+  const list = useMemo(() => {
+    const pick = (row: MentionRow) => {
+      const { sheet: current, scope: scoped } = latest.current;
+      if (row.starter) return current.insert(row.raw);
+      if (row.folder) return current.insert(descendInsertText(row, scoped));
+      current.insert(`${mentionInsertText(row)} `, { close: true });
+    };
+    return rows.map((row) => (
+      <Fragment key={row.raw}>
+        <Row
+          kind={row.kind}
+          title={row.display}
+          meta={row.meta}
+          onPress={() => pick(row)}
+          trailing={
+            row.folder ? (
+              <Pressable
+                onPress={() => latest.current.sheet.insert(`${mentionInsertText(row)} `, { close: true })}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={`Attach ${row.display}`}
+                style={styles.attach}
+              >
+                <Codicon name="check" size={14} color={t.uiTextSecondary} />
+              </Pressable>
+            ) : null
+          }
+        />
+      </Fragment>
+    ));
+  }, [rows, t]);
 
   return (
     <Panel
@@ -113,29 +147,7 @@ export function MentionSheet({ sheet, scope, bottom, maxHeight }: Props) {
       ) : (
         <>
           {trigger.scope ? <GroupHeader label={trigger.scope} /> : null}
-          {rows.map((row) => (
-            <Fragment key={row.raw}>
-              <Row
-                kind={row.kind}
-                title={row.display}
-                meta={row.meta}
-                onPress={() => pick(row)}
-                trailing={
-                  row.folder ? (
-                    <Pressable
-                      onPress={() => sheet.insert(`${mentionInsertText(row)} `, { close: true })}
-                      hitSlop={6}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Attach ${row.display}`}
-                      style={styles.attach}
-                    >
-                      <Codicon name="check" size={14} color={t.uiTextSecondary} />
-                    </Pressable>
-                  ) : null
-                }
-              />
-            </Fragment>
-          ))}
+          {list}
         </>
       )}
     </Panel>

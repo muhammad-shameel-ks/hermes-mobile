@@ -155,3 +155,11 @@ test('only the queue and the folded choice are persisted, and restoring never ov
   const newer = { ...emptyStack(), queue: queueFrom([{ id: 'n', text: 'newer', queuedAt: 2 }]) };
   assert.deepEqual(restoreStack(newer, persistedStack(stack)).queue.entries.map((e) => e.text), ['newer']);
 });
+
+test('a forgotten session leaves no retire timer behind', () => {
+  const { sync, store, advance } = setup();
+  sync.observe('s', { type: 'todo.updated', payload: { todos: [{ id: 'a', content: 'Done', status: 'completed' }], revision: 1 } });
+  sync.forget('s');
+  advance(60_000);
+  assert.equal(store.status.todos?.length, 1, 'nothing ticked the list away');
+});

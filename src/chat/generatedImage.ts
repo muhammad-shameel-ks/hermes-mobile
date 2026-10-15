@@ -25,6 +25,7 @@ function stringFields(record: Record<string, unknown>, keys: readonly string[]):
   return keys.map((key) => record[key]).filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 }
 
+const HASH_MEDIA = /#media:/i;
 const unique = (values: string[]) => [...new Set(values.filter(Boolean))];
 const regexEscape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -56,6 +57,30 @@ export function generatedImageEchoSources(parts: readonly Part[]): string[] {
   return unique(sources);
 }
 
+type EchoPatterns = { tag: RegExp; image: RegExp; link: RegExp; bare: RegExp };
+const patternCache = new Map<string, EchoPatterns>();
+const PATTERN_CACHE_SIZE = 64;
+
+/** compiled once per source: the reply is stripped again on every streamed delta */
+function echoPatterns(source: string): EchoPatterns {
+  let patterns = patternCache.get(source);
+  if (!patterns) {
+    const escaped = regexEscape(source);
+    patterns = {
+      // the desktop strips the `#media:` link a tag was already rewritten to; here the tag itself is still in the text
+      tag: new RegExp(String.raw`[\`"']?MEDIA:\s*[\`"']?${escaped}[\`"']?(?=$|[\s)\]}]|[.,!?](?:\s|$))`, 'g'),
+      // the lookahead stops a prefix over-match: a link to `/tmp/a.png.bak` survives source `/tmp/a.png`
+      image: new RegExp(String.raw`!\[[^\]\n]*\]\(\s*<?${escaped}>?(?=$|[\s)\\])[^)\n]*\)`, 'g'),
+      link: new RegExp(String.raw`\[[^\]\n]*\]\(\s*#media:${regexEscape(encodeURIComponent(source))}\s*\)`, 'gi'),
+      // `(` and `)` are excluded from the boundary classes so a link destination is not corrupted into `[label]()`
+      bare: new RegExp(String.raw`(^|[\s[{])<?${escaped}>?(?=$|[\s\]}.,!?])`, 'g'),
+    };
+    if (patternCache.size >= PATTERN_CACHE_SIZE) patternCache.clear();
+    patternCache.set(source, patterns);
+  }
+  return patterns;
+}
+
 /**
  * Strip a generated image out of prose: embedded images and media links whose
  * source matches, and bare occurrences of the path. Other files, such as a
@@ -65,14 +90,14 @@ export function stripGeneratedImageEchoes(text: string, sources: readonly string
   if (!text || sources.length === 0) return text;
   let next = text;
   for (const source of unique([...sources])) {
-    const escaped = regexEscape(source);
-    // the desktop strips the `#media:` link a tag was already rewritten to; here the tag itself is still in the text
-    next = next.replace(new RegExp(String.raw`[\`"']?MEDIA:\s*[\`"']?${escaped}[\`"']?(?=$|[\s)\]}]|[.,!?](?:\s|$))`, 'g'), '');
-    // the lookahead stops a prefix over-match: a link to `/tmp/a.png.bak` survives source `/tmp/a.png`
-    next = next.replace(new RegExp(String.raw`!\[[^\]\n]*\]\(\s*<?${escaped}>?(?=$|[\s)\\])[^)\n]*\)`, 'g'), '');
-    next = next.replace(new RegExp(String.raw`\[[^\]\n]*\]\(\s*#media:${regexEscape(encodeURIComponent(source))}\s*\)`, 'gi'), '');
-    // `(` and `)` are excluded from the boundary classes so a link destination is not corrupted into `[label]()`
-    next = next.replace(new RegExp(String.raw`(^|[\s[{])<?${escaped}>?(?=$|[\s\]}.,!?])`, 'g'), '$1');
+    const patterns = echoPatterns(source);
+    // three of the four patterns hold the source verbatim and the fourth a `#media:` link, so most replies skip the scans
+    if (next.includes(source)) {
+      next = next.replace(patterns.tag, '');
+      next = next.replace(patterns.image, '');
+    }
+    if (HASH_MEDIA.test(next)) next = next.replace(patterns.link, '');
+    if (next.includes(source)) next = next.replace(patterns.bare, '$1');
   }
   return next;
 }

@@ -19,7 +19,8 @@ function useResolved<T>(path: string, resolve: (path: string) => Promise<T>, imm
       return;
     }
     let cancelled = false;
-    setState({ path, result: { status: 'loading' } });
+    // the first render already says loading for this path: a fresh object here would only cost a second render
+    setState((prev) => (prev.path === path && prev.result.status === 'loading' ? prev : { path, result: { status: 'loading' } }));
     resolve(path).then(
       (resolved) => {
         if (!cancelled) setState({ path, result: { status: 'ready', value: resolved } });

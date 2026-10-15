@@ -9,10 +9,12 @@
  */
 
 import type { OverlayApi } from '../app/overlay.tsx';
-import FilesScreen from './FilesScreen.tsx';
-import PreviewScreen from './PreviewScreen.tsx';
+import { lazyScreen } from '../ui/lazy.tsx';
 import { isWebUrl, type PreviewTarget } from './preview.ts';
 import { openInBrowser } from './transfer.ts';
+
+const FilesScreen = lazyScreen(() => require('./FilesScreen.tsx') as typeof import('./FilesScreen.tsx'));
+const PreviewScreen = lazyScreen(() => require('./PreviewScreen.tsx') as typeof import('./PreviewScreen.tsx'));
 
 function pushDirectory(overlay: OverlayApi, root: string, path: string) {
   overlay.push(`files:${path}`, (close) => (

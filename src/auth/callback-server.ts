@@ -7,19 +7,9 @@
 
 import { HttpServer } from 'react-native-nitro-http-server';
 
-export const CALLBACK_PORT = 9527;
+import { CALLBACK_PORT, CallbackPortBusyError, type CallbackCode, type CallbackListener } from './callback-port.ts';
 
-export type CallbackCode = { code: string; state: string };
-
-export type CallbackListener = { port: number; stop: () => Promise<void> };
-
-export class CallbackPortBusyError extends Error {
-  constructor(port: number, cause: unknown) {
-    super(`127.0.0.1:${port} is already in use`);
-    this.name = 'CallbackPortBusyError';
-    this.cause = cause;
-  }
-}
+export { CALLBACK_PORT, CallbackPortBusyError, type CallbackCode, type CallbackListener };
 
 const HEADERS = { 'Content-Type': 'text/html; charset=utf-8' };
 

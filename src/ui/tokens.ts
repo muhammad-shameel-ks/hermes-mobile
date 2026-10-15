@@ -60,7 +60,10 @@ export type ThemeSpec = {
   fontScale?: number;
 };
 
-function resolve({ skin = DEFAULT_SKIN, mode, accent = null, chatTextScale = CHAT_TEXT_SCALE, fontScale = 1 }: ThemeSpec) {
+const RADIUS = { xs: 0.4, sm: 1.6, md: 2, lg: 2.4, xl: 3.2, '2xl': 4.8, '3xl': 6.4, '4xl': 8, full: 9999 };
+
+/** everything that depends on the skin, mode and accent; the type scale is applied by `resolveTheme` */
+function resolveColors({ skin = DEFAULT_SKIN, mode, accent = null }: Pick<ThemeSpec, 'skin' | 'mode' | 'accent'>) {
   const palette = paletteWithAccent(skin, mode, accent);
   const renderedMode = renderedModeFor(palette, mode);
   const neutral = NEUTRALS[renderedMode];
@@ -81,14 +84,12 @@ function resolve({ skin = DEFAULT_SKIN, mode, accent = null, chatTextScale = CHA
   const uiChatBubbleBackground = mixPct(bubbleSeed, neutral.mixBubble, neutral.card);
   const uiTextPrimary = mixPct(base, 0.94, 'transparent');
   const uiTextTertiary = mixPct(base, 0.54, 'transparent');
-  const effective = chatTextScale * fontScale;
   const thumb = hexToOklch(midground);
 
   return {
     skin,
     mode,
     renderedMode,
-    chatTextScale,
 
     uiBgChrome,
     uiBgSidebar,
@@ -197,8 +198,36 @@ function resolve({ skin = DEFAULT_SKIN, mode, accent = null, chatTextScale = CHA
     scrim: 'rgba(0, 0, 0, 0.22)',
 
     // --radius-scalar 0.2 × the styles.css ladder, 1:1 in dp (issue "Shell and loader prototype on device").
-    radius: { xs: 0.4, sm: 1.6, md: 2, lg: 2.4, xl: 3.2, '2xl': 4.8, '3xl': 6.4, '4xl': 8, full: 9999 },
+    radius: RADIUS,
+  };
+}
 
+type Colors = ReturnType<typeof resolveColors>;
+
+export type Tokens = Colors & {
+  chatTextScale: number;
+  type: { base: number; text: number; tool: number; caption: number; lineHeight: number; captionLineHeight: number };
+};
+
+const colorCache = new Map<string, Colors>();
+
+function colorsFor(spec: ThemeSpec): Colors {
+  const key = `${spec.skin ?? DEFAULT_SKIN}|${spec.mode}|${spec.accent ?? ''}`;
+  let colors = colorCache.get(key);
+  if (!colors) {
+    colors = resolveColors(spec);
+    if (colorCache.size >= CACHE_LIMIT) colorCache.delete(colorCache.keys().next().value!);
+    colorCache.set(key, colors);
+  }
+  return colors;
+}
+
+function resolve(spec: ThemeSpec): Tokens {
+  const { chatTextScale = CHAT_TEXT_SCALE, fontScale = 1 } = spec;
+  const effective = chatTextScale * fontScale;
+  return {
+    ...colorsFor(spec),
+    chatTextScale,
     // Phone reading sizes, not the desktop's 13px: body 15, so the 110% default sets prose at ~16.5pt as
     // native chat apps do. The five conversation tokens scale with Chat Text Size and the platform font scale.
     type: {
@@ -211,8 +240,6 @@ function resolve({ skin = DEFAULT_SKIN, mode, accent = null, chatTextScale = CHA
     },
   };
 }
-
-export type Tokens = ReturnType<typeof resolve>;
 
 const cache = new Map<string, Tokens>();
 const CACHE_LIMIT = 48;

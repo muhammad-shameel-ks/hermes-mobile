@@ -18,15 +18,30 @@ export function persistable(messages: readonly Message[]): Message[] {
   return messages.filter((m) => m.status !== 'streaming' && !(m.role === 'system' && m.id.startsWith('live-')));
 }
 
-/** the serialized tail for `messages`, or null when there is nothing worth keeping or it is too heavy */
+/**
+ * The serialized tail for `messages`, or null when there is nothing worth keeping or it is too heavy:
+ * the newest WARM_TAIL_MESSAGES if they fit the byte cap, else the newest WARM_TAIL_FALLBACK_MESSAGES.
+ * Messages are serialized newest first and one at a time, so a transcript of huge tool results stops
+ * at the cap instead of stringifying the whole tail twice on the JS thread.
+ */
 export function serializeTail(messages: readonly Message[]): string | null {
   const settled = persistable(messages);
   if (settled.length === 0) return null;
-  for (const count of [WARM_TAIL_MESSAGES, WARM_TAIL_FALLBACK_MESSAGES]) {
-    const payload = JSON.stringify(settled.slice(-count));
-    if (payload.length <= WARM_TAIL_MAX_BYTES) return payload;
+  const newest = settled.slice(-WARM_TAIL_MESSAGES);
+  const parts: string[] = [];
+  let size = 1; // the brackets, less the one comma a joined list saves
+  let fallback: { parts: string[]; size: number } | null = null;
+  for (let i = newest.length - 1; i >= 0; i -= 1) {
+    const part = JSON.stringify(newest[i]);
+    parts.push(part);
+    size += part.length + 1;
+    if (parts.length === WARM_TAIL_FALLBACK_MESSAGES) fallback = { parts: parts.slice(), size };
+    if (size <= WARM_TAIL_MAX_BYTES) continue;
+    // too heavy: more messages only add to it, so the shorter tail is the last thing that could fit
+    if (fallback === null || parts.length <= WARM_TAIL_FALLBACK_MESSAGES) return null;
+    return fallback.size <= WARM_TAIL_MAX_BYTES ? `[${fallback.parts.reverse().join(',')}]` : null;
   }
-  return null;
+  return `[${parts.reverse().join(',')}]`;
 }
 
 function isMessage(value: unknown): value is Message {
