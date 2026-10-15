@@ -6,7 +6,7 @@
  * turnActivity.ts.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { mixPct } from '../ui/color.ts';
@@ -22,6 +22,7 @@ import type { Message } from './transcript.ts';
 import {
   activitySignature,
   DRAFTING_REVEAL_MS,
+  idleWait,
   parseModelLoadWait,
   tailParts,
   tailSlot,
@@ -35,15 +36,27 @@ const PULSE = 12;
 /** the timer's 0.56rem against the 0.6875rem tool size */
 const TIMER_SCALE = 0.56 / 0.6875;
 
-type Props = {
-  messages: readonly Message[];
-  running: boolean;
-  wait: TurnWait;
-  /** horizontal inset, matching the transcript rows */
-  inset: number;
-};
+type Tail = { messages: readonly Message[]; running: boolean; wait: TurnWait };
 
-export function TurnActivity({ messages, running, wait, inset }: Props) {
+/**
+ * The open chat's turn state. A context rather than props, so the row inside the
+ * tail message follows the turn even when the list does not re-render that row.
+ */
+export const TurnActivityContext = createContext<Tail>({ messages: [], running: false, wait: idleWait() });
+
+/**
+ * Where the row mounts. As on the desktop it belongs to the tail reply, just under
+ * its content (`message`); until a reply bubble exists it follows the prompt
+ * from the list's footer (`footer`, with the rows' inset).
+ */
+export function TurnActivity({ placement, inset = 0 }: { placement: 'message' | 'footer'; inset?: number }) {
+  const tail = useContext(TurnActivityContext);
+  const tailIsReply = tail.messages[tail.messages.length - 1]?.role === 'assistant';
+  if (!tail.running || tailIsReply !== (placement === 'message')) return null;
+  return <TailActivity {...tail} inset={inset} />;
+}
+
+function TailActivity({ messages, running, wait, inset }: Tail & { inset: number }) {
   // a clarify, approval or prompt is open: the turn is paused on the user, not working
   const awaitingInput = isAwaitingInput(useRequests().requests);
   const turnStartedAt = useTurnStart(running, messages);
@@ -82,6 +95,8 @@ export function TurnActivity({ messages, running, wait, inset }: Props) {
 
 function ActivityRow({ hint, elapsed, inset }: { hint: string; elapsed: number; inset: number }) {
   const t = useTokens();
+  // in the footer the row pads itself like a transcript row; inside the reply the message's gap spaces it
+  const footer = inset > 0;
   const load = hint ? parseModelLoadWait(hint) : null;
   const label = hint ? (load?.label ?? hint) : 'Hermes is working';
   const labelStyle = { color: t.conversationScaffoldText, fontSize: t.type.tool, lineHeight: t.type.lineHeight };
@@ -92,7 +107,7 @@ function ActivityRow({ hint, elapsed, inset }: { hint: string; elapsed: number; 
 
   return (
     <View
-      style={[styles.row, { paddingHorizontal: inset, minHeight: t.type.lineHeight }]}
+      style={[styles.row, { paddingHorizontal: inset, paddingVertical: footer ? 6 : 0, minHeight: t.type.lineHeight }]}
       accessible
       accessibilityRole="text"
       accessibilityLabel={label}
@@ -164,7 +179,7 @@ function useElapsedSeconds(active: boolean, since: number | undefined): number {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', maxWidth: '100%', gap: 6, paddingVertical: 6, opacity: SCAFFOLD_OPACITY },
+  row: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', maxWidth: '100%', gap: 6, opacity: SCAFFOLD_OPACITY },
   pulse: { width: PULSE, height: PULSE, overflow: 'hidden' },
   hint: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, minWidth: 0, gap: 8 },
   track: { width: 96, height: 4, borderRadius: 9999, overflow: 'hidden', flexShrink: 0 },

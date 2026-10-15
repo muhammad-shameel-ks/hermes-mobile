@@ -51,7 +51,7 @@ import { uiSlash, type SlashUi } from './slash.ts';
 import { StackIcon } from './StatusRows.tsx';
 import { StatusStack } from './StatusStack.tsx';
 import type { Message } from './transcript.ts';
-import { TurnActivity } from './TurnActivity.tsx';
+import { TurnActivity, TurnActivityContext } from './TurnActivity.tsx';
 import { useAttachments } from './useAttachments.ts';
 import { useComposerDraft } from './useComposerDraft.ts';
 import { useComposerTriggers, type ComposerSheet } from './useComposerTriggers.ts';
@@ -146,6 +146,8 @@ export default function ChatScreen({
   const jump = useJumpToBottom(entry.key, messages);
   const reactionsEnabled = useSyncExternalStore(controller.subscribe, () => controller.getSnapshot().reactionsEnabled);
   const chrome = useMessageChrome(controller, entry, reactionsEnabled);
+  const wait = entry.transcript.wait;
+  const tail = useMemo(() => ({ messages, running, wait }), [messages, running, wait]);
 
   const title = entry.isBotChat && bot ? bot.label : entry.title || (entry.key === 'draft' ? 'New session' : 'Untitled session');
   // the registry's "Bot Chat" title is plumbing, not chrome: a bot's app bar is its face and name
@@ -163,6 +165,7 @@ export default function ChatScreen({
 
         <AssistantRuntimeProvider runtime={runtime}>
           <RequestsProvider controller={controller} entry={entry}>
+          <TurnActivityContext.Provider value={tail}>
           <View style={styles.body}>
             {messages.length === 0 ? (
               <EmptyState t={t} entry={entry} bot={bot} opening={opening} personality={personality} loadImage={controller.avatarDataFn} />
@@ -183,7 +186,7 @@ export default function ChatScreen({
                   }
                   ListFooterComponent={
                     <>
-                      <TurnActivity key={entry.key} messages={messages} running={running} wait={entry.transcript.wait} inset={SIDE_INSET} />
+                      <TurnActivity key={entry.key} placement="footer" inset={SIDE_INSET} />
                       <PendingApprovals />
                     </>
                   }
@@ -203,6 +206,7 @@ export default function ChatScreen({
               </View>
             )}
           </View>
+          </TurnActivityContext.Provider>
           </RequestsProvider>
         </AssistantRuntimeProvider>
 

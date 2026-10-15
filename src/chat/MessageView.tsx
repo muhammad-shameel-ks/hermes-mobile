@@ -28,6 +28,7 @@ import { ApprovalTimedOutAction } from './ApprovalTimedOutAction.tsx';
 import { buildToolView, isFileEditTool, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
 import { APPROVAL_COPY } from './requests.ts';
 import type { Message, Part, ToolPart } from './transcript.ts';
+import { TurnActivity } from './TurnActivity.tsx';
 
 type Block = { kind: 'text'; text: string } | { kind: 'reasoning'; text: string } | { kind: 'tools'; tools: ToolPart[] };
 
@@ -103,6 +104,7 @@ function MessageViewImpl({ message, bar, latest = false }: { message: Message; b
         return <Markdown key={index} text={stripGeneratedImageEchoes(block.text, echoes)} streaming={streaming && last} />;
       })}
       {latest && !streaming ? <ChangedFilesCard parts={message.parts} /> : null}
+      {latest ? <TurnActivity placement="message" /> : null}
       {message.status === 'error' ? (
         <Text style={[styles.footnote, { color: t.dtDestructive, fontSize: t.type.caption }]}>
           {message.error ? `The turn failed: ${message.error}` : 'The turn failed.'}
