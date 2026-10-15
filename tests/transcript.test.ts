@@ -139,3 +139,46 @@ test('session.info running:false is the authoritative busy-clear', () => {
   assert.equal(state.running, false);
   assert.equal(state.messages[0].status, 'complete');
 });
+
+test('history carries each prompt\'s row id and reactions; a turn answers to its last reply row', () => {
+  const messages = fromHistory([
+    { role: 'user', content: 'go', id: 1, display_metadata: { reactions: [{ emoji: '👍', author: 'agent' }] } },
+    { role: 'assistant', content: '', tool_calls: [{ id: 'c', function: { name: 'read', arguments: {} } }], id: 2 },
+    { role: 'tool', tool_call_id: 'c', tool_name: 'read', content: 'x', id: 3 },
+    { role: 'assistant', content: 'done', id: 4, display_metadata: JSON.stringify({ reactions: [{ emoji: '❤️', author: 'user' }] }) },
+  ]);
+  assert.equal(messages[0].rowId, 1);
+  assert.deepEqual(messages[0].reactions, [{ emoji: '👍', author: 'agent' }]);
+  assert.equal(messages[1].rowId, 4);
+  assert.deepEqual(messages[1].reactions, [{ emoji: '❤️', author: 'user' }]);
+  assert.equal(messages[1].id, 'row-2', 'the message id still keys on its first row');
+});
+
+test('an announced reaction lands on the row it names and keeps the reader\'s own', () => {
+  const [user, reply] = fromHistory([
+    { role: 'user', content: 'go', id: 1, display_metadata: { reactions: [{ emoji: '👍', author: 'user' }] } },
+    { role: 'assistant', content: 'hi', id: 2 },
+  ]);
+  const state: Transcript = { ...emptyTranscript(), messages: [user, reply] };
+  const next = applyEvent(state, {
+    type: 'message.reaction',
+    payload: { row_id: 1, role: 'user', reactions: [{ emoji: '👍', author: 'user' }, { emoji: '😂', author: 'agent' }] },
+  });
+  assert.deepEqual(next.messages[0].reactions?.map((r) => r.emoji), ['👍', '😂']);
+  assert.equal(next.messages[1], reply);
+  assert.equal(applyEvent(state, { type: 'message.reaction', payload: { row_id: 99, reactions: [] } }), state);
+});
+
+test('a finished live turn is stamped with how long it ran', () => {
+  const sent = addUserMessage(emptyTranscript(), 'go');
+  sent.messages[0].timestamp = Math.floor(Date.now() / 1000) - 12;
+  const done = play(
+    [
+      { type: 'message.delta', payload: { text: 'hi' } },
+      { type: 'message.complete', payload: { status: 'complete' } },
+    ],
+    sent,
+  );
+  const duration = done.messages[1].durationS;
+  assert.ok(duration !== undefined && duration >= 12 && duration <= 14);
+});
