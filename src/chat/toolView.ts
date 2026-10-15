@@ -31,6 +31,8 @@ export type ToolIconName =
 
 export type ToolView = {
   title: string;
+  /** what an untitled tool's call touched (its context or query), shown quietly beside the title */
+  subtitle?: string;
   icon?: ToolIconName;
   status: ToolStatus;
   /** e.g. "3 results", "1179 stdout_bytes" */
@@ -85,6 +87,7 @@ const TOOL_META: Record<string, Meta> = {
   patch: { done: 'Patched file', pending: 'Patching file', icon: 'edit' },
   read_file: { done: 'Read file', pending: 'Reading file', icon: 'file' },
   search_files: { done: 'Searched files', pending: 'Searching files', icon: 'search' },
+  session_search: { done: 'Searched past sessions', pending: 'Searching past sessions', icon: 'search' },
   session_search_recall: { done: 'Searched session history', pending: 'Searching session history', icon: 'search' },
   terminal: { done: 'Ran command', pending: 'Running command', icon: 'terminal' },
   todo: { done: 'Updated todos', pending: 'Updating todos', icon: 'tools' },
@@ -193,6 +196,11 @@ function dynamicTitle(tool: ToolPart, args: Json, result: Json, failed: boolean)
     case 'web_search': {
       const query = firstStringField(args, ['search_term', 'query', 'context']);
       return query ? `${verb('Searching', 'Searched')} “${compactPreview(query, 48)}”` : '';
+    }
+    case 'session_search': {
+      const query = firstStringField(args, ['query']) || tool.context;
+      const base = pending ? 'Searching past sessions' : 'Searched past sessions';
+      return query ? `${base} · “${compactPreview(query, 48)}”` : '';
     }
     case 'read_file': {
       const target = readFileTarget(args);
@@ -470,7 +478,7 @@ const COUNT_ARRAY_NOUNS: [string, string][] = [
 ];
 const COUNT_EXCLUDED_KEYS = new Set(['duration_s', 'exit_code', 'status_code']);
 const DEFAULT_NOUN: Record<string, string> = {
-  browser_snapshot: 'item', list_files: 'file', search_files: 'result', session_search_recall: 'result', todo: 'todo', todo_list: 'todo', web_search: 'result',
+  browser_snapshot: 'item', list_files: 'file', search_files: 'result', session_search: 'result', session_search_recall: 'result', todo: 'todo', todo_list: 'todo', web_search: 'result',
 };
 
 type Metric = { count: number; noun: string };
@@ -584,7 +592,9 @@ export function buildToolView(tool: ToolPart): ToolView {
   const meta = toolMeta(tool.name);
   const { status, error } = toolStatus(tool, result);
   const pending = status === 'running';
-  const title = dynamicTitle(tool, args, result, status === 'error') || (pending ? meta.pending : meta.done);
+  const dynamic = dynamicTitle(tool, args, result, status === 'error');
+  const title = dynamic || (pending ? meta.pending : meta.done);
+  const touched = dynamic || tool.name in TOOL_META ? '' : compactPreview(firstStringField(args, ['context', 'preview']) || tool.context);
   const count = status === 'error' ? null : resultCount(tool, result);
   const seconds = typeof result.duration_s === 'number' ? result.duration_s : tool.durationS;
   const body = pending ? '' : prettyResult(tool, result);
@@ -594,6 +604,7 @@ export function buildToolView(tool: ToolPart): ToolView {
 
   return {
     title,
+    subtitle: touched && touched !== title ? touched : undefined,
     icon: meta.icon,
     status,
     countLabel: count ? `${count.count} ${pluralize(count.noun, count.count)}` : undefined,

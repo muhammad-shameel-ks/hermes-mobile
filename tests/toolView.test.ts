@@ -87,3 +87,24 @@ test('a row shows the image its call touched, but only an image', () => {
   assert.equal(buildToolView(tool({ name: 'vision_analyze', args: { image_url: 'https://x.test/a.png' }, result: 'a cat' })).imageUrl, 'https://x.test/a.png');
   assert.equal(buildToolView(tool({ name: 'read_file', args: { path: '/repo/README.md' }, result: 'text' })).imageUrl, undefined);
 });
+
+test('a session search names its query, live and reloaded, and a run of them folds to "Used 2 tools"', () => {
+  const first = tool({ id: 'a', name: 'session_search', args: { query: 'Jarvis Stark favourite character' }, result: JSON.stringify({ success: true, results: [1, 2] }) });
+  const second = tool({ id: 'b', name: 'session_search', status: 'running', args: { query: 'marvel movies' } });
+  const done = buildToolView(first);
+  assert.equal(done.title, 'Searched past sessions · “Jarvis Stark favourite character”');
+  assert.equal(done.icon, 'search');
+  assert.equal(done.countLabel, '2 results');
+  assert.equal(buildToolView(second).title, 'Searching past sessions · “marvel movies”');
+  assert.equal(buildToolView(tool({ name: 'session_search', context: 'marvel movies' })).title, 'Searched past sessions · “marvel movies”');
+  assert.equal(buildToolView(tool({ name: 'session_search' })).title, 'Searched past sessions');
+  assert.equal(summarizeToolRun([first, { ...second, status: 'done' }], false), 'Used 2 tools');
+});
+
+test('an untitled tool carries what it touched as a subtitle; titled tools do not', () => {
+  assert.equal(buildToolView(tool({ name: 'skill_view', context: 'plan-feature' })).subtitle, 'plan-feature');
+  assert.equal(buildToolView(tool({ name: 'skill_view', args: { context: 'recall: "x"' }, context: 'x' })).subtitle, 'recall: "x"');
+  assert.equal(buildToolView(tool({ name: 'skill_view' })).subtitle, undefined);
+  assert.equal(buildToolView(tool({ name: 'read_file', context: 'a.ts', args: { path: '/a.ts' } })).subtitle, undefined);
+  assert.equal(buildToolView(tool({ name: 'memory', context: 'note' })).subtitle, undefined);
+});

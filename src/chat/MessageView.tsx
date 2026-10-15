@@ -299,6 +299,11 @@ function ToolRow({ tool }: { tool: ToolPart }) {
               {view.title}
             </FadeText>
           )}
+          {view.subtitle ? (
+            <Text numberOfLines={1} style={[scaffoldLabel(t, t.conversationScaffoldMeta), styles.subtitle]}>
+              {view.subtitle}
+            </Text>
+          ) : null}
           {view.status !== 'running' && view.countLabel ? <Text style={meta}>{view.countLabel}</Text> : null}
           <ToolDiffStats view={view} />
           {view.durationLabel ? <Text style={meta}>{view.durationLabel}</Text> : null}
@@ -343,6 +348,7 @@ const styles = StyleSheet.create({
   scaffoldPress: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 6 },
   scaffoldContent: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 6 },
   caret: { width: 12, alignItems: 'center', justifyContent: 'center' },
+  subtitle: { flexShrink: 2 },
   glyph: { width: GLYPH, height: GLYPH, alignItems: 'center', justifyContent: 'center' },
   reasoningText: { marginTop: 2, paddingBottom: 4 },
   toolBlock: { gap: 6 },
