@@ -51,6 +51,7 @@ export async function rig(get: (path: string, query: Record<string, unknown>) =>
   const api: GatewayApi = {
     get: async <T>(path: string, query: Record<string, unknown> = {}) => (path.startsWith('/api/sessions/') ? ((await get(path, query)) as T) : ({ sessions: [] } as T)),
     post: async <T>() => ({}) as T,
+    put: async <T>() => ({}) as T,
     patch: async <T>() => ({}) as T,
     del: async <T>() => ({}) as T,
   };

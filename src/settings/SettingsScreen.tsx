@@ -8,24 +8,36 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { OverlayScreen, useOverlay } from '../app/overlay.tsx';
+import { OverlayScreen, useOverlay, type OverlayApi } from '../app/overlay.tsx';
 import { Codicon } from '../ui/Codicon.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { SETTINGS_SECTIONS, type SettingsSectionEntry } from './sections.ts';
 
 export const SETTINGS_OVERLAY_KEY = 'settings';
 
+const sectionRoute = (section: SettingsSectionEntry) =>
+  [
+    `${SETTINGS_OVERLAY_KEY}:${section.key}`,
+    (close: () => void) => (
+      <OverlayScreen title={section.title} onBack={close}>
+        {section.render()}
+      </OverlayScreen>
+    ),
+  ] as const;
+
+/** open Settings with one section on top, so back lands on the section list */
+export function openSettingsSection(overlay: Pick<OverlayApi, 'push'>, key: string) {
+  const section = SETTINGS_SECTIONS.find((entry) => entry.key === key);
+  overlay.push(SETTINGS_OVERLAY_KEY, (close) => <SettingsScreen onBack={close} />);
+  if (section) overlay.push(...sectionRoute(section));
+}
+
 export default function SettingsScreen({ onBack }: { onBack: () => void }) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
   const overlay = useOverlay();
 
-  const open = (section: SettingsSectionEntry) =>
-    overlay.push(`${SETTINGS_OVERLAY_KEY}:${section.key}`, (close) => (
-      <OverlayScreen title={section.title} onBack={close}>
-        {section.render()}
-      </OverlayScreen>
-    ));
+  const open = (section: SettingsSectionEntry) => overlay.push(...sectionRoute(section));
 
   return (
     <OverlayScreen title="Settings" onBack={onBack}>

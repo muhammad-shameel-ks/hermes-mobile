@@ -28,6 +28,7 @@ async function setup(cwd: string | undefined, head: string | null = 'a'.repeat(4
     },
     post: async <T>() => ({}) as T,
     patch: async <T>() => ({}) as T,
+    put: async <T>() => ({}) as T,
     del: async <T>() => ({}) as T,
   };
   const link = new GatewayLink({

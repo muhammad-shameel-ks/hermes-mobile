@@ -59,6 +59,7 @@ async function setup() {
   const api: GatewayApi = {
     get: async <T>(path: string) => (/\/messages/.test(path) ? ({ messages: HISTORY } as T) : ({ sessions: [], display: { message_reactions: true } } as T)),
     post: async <T>() => ({}) as T,
+    put: async <T>() => ({}) as T,
     patch: async <T>() => ({}) as T,
     del: async <T>() => ({}) as T,
   };

@@ -33,6 +33,7 @@ export type CallOptions = { query?: Query; body?: unknown; timeoutMs?: number };
 export type GatewayApi = {
   get: <T>(path: string, query?: Query) => Promise<T>;
   post: <T>(path: string, body?: unknown, query?: Query) => Promise<T>;
+  put: <T>(path: string, body?: unknown, query?: Query) => Promise<T>;
   patch: <T>(path: string, body?: unknown, query?: Query) => Promise<T>;
   del: <T>(path: string, query?: Query) => Promise<T>;
 };
@@ -87,6 +88,7 @@ export function createGatewayApi(auth: AuthSession, fetchImpl?: typeof fetch): G
   return {
     get: (path, query) => call('GET', path, { query }),
     post: (path, body, query) => call('POST', path, { body: body ?? {}, query }),
+    put: (path, body, query) => call('PUT', path, { body, query }),
     patch: (path, body, query) => call('PATCH', path, { body, query }),
     del: (path, query) => call('DELETE', path, { query }),
   };

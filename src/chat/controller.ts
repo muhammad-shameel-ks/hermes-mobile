@@ -77,6 +77,7 @@ import {
 import { noteTurnStart, startedTurnCwds } from '../review/turn-base.ts';
 import { busySendAction } from './queue.ts';
 import { QueueDriver } from './queueDrain.ts';
+import { reactionsParams } from '../settings/display-toggles.ts';
 import { emptyStack, persistedStack, restoreStack, StatusSync, type PersistedStack, type SessionStack, type StackStore } from './statusSync.ts';
 import { RequestRouter } from './requestRouter.ts';
 import { awaitingInput, emptyRequests, hasBlockingPrompt, type Requests } from './requests.ts';
@@ -1161,6 +1162,25 @@ export class ChatController {
   /** the open chat's working directory, when the gateway has told us; where the Review surface looks */
   openCwd(): string | null {
     return this.entry(this.snapshot.openKey)?.cwd ?? null;
+  }
+
+  /**
+   * Settings → Appearance → Message Reactions: show the change at once, write
+   * `display.message_reactions` as the desktop does, then re-read the profile's
+   * config so the flag is the server's word. A failed write puts the old value back.
+   */
+  async setReactionsEnabled(enabled: boolean) {
+    const profile = this.snapshot.profile;
+    const previous = this.snapshot.reactionsEnabled;
+    this.set({ reactionsEnabled: enabled });
+    try {
+      await this.rpc('config.set', reactionsParams(enabled, profile));
+    } catch (error) {
+      if (profile === this.snapshot.profile) this.set({ reactionsEnabled: previous });
+      this.notify(`Could not change message reactions. ${errorText(error)}`);
+      return;
+    }
+    await this.refreshPersonality();
   }
 
   /** the open chat's model: its live session's, else the draft's pick, else the profile default */

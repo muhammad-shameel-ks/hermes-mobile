@@ -12,6 +12,7 @@ import { AppearanceSection } from './AppearanceSection.tsx';
 import ConnectionSection from './ConnectionSection.tsx';
 import ModelsSection from './ModelsSection.tsx';
 import ProfilesSection from './ProfilesSection.tsx';
+import SafetySection from './SafetySection.tsx';
 
 export type SettingsSectionEntry = {
   key: string;
@@ -25,6 +26,7 @@ export type SettingsSectionEntry = {
 export const SETTINGS_SECTIONS: readonly SettingsSectionEntry[] = [
   { key: 'models', title: 'Model', detail: 'Default model for new sessions', icon: 'chip', render: () => createElement(ModelsSection) },
   { key: 'appearance', title: 'Appearance', detail: 'Skin, mode, accent and Chat Text Size', icon: 'symbol-color', render: () => createElement(AppearanceSection, { heading: false }) },
+  { key: 'safety', title: 'Safety', detail: 'Approvals, privacy and checkpoints', icon: 'lock', render: () => createElement(SafetySection) },
   { key: 'connection', title: 'Connection', detail: 'Gateway, sign-in and sign out', icon: 'server', render: () => createElement(ConnectionSection) },
   { key: 'profiles', title: 'Profiles', detail: 'The active profile', icon: 'account', render: () => createElement(ProfilesSection) },
   { key: 'about', title: 'About', detail: 'Version and build', icon: 'info', render: () => createElement(AboutSection) },

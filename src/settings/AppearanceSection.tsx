@@ -16,6 +16,8 @@ import { mixPct, normalizeHex, readableInk } from '../ui/color.ts';
 import { accentsFor, baseColors, SKINS, type SkinName } from '../ui/skins.ts';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
 import { useAppearance } from '../ui/ThemeProvider.tsx';
+import { useSettings } from './context.tsx';
+import { ToggleRow } from './primitives.tsx';
 
 const MODES = [
   { id: 'system', label: 'System' },
@@ -29,6 +31,7 @@ export function AppearanceSection({ heading = true }: { heading?: boolean }) {
   const t = useTokens();
   const appearance = useAppearance();
   const { mode, skin, accent, chatTextScale, resolvedMode, renderedMode } = appearance;
+  const { controller, snapshot } = useSettings();
 
   return (
     <View style={styles.section}>
@@ -103,6 +106,13 @@ export function AppearanceSection({ heading = true }: { heading?: boolean }) {
           </Text>
         </View>
       </Row>
+
+      <ToggleRow
+        label="Message Reactions"
+        description="iMessage-style emoji tapbacks — react to messages, and Hermes can react to yours."
+        checked={snapshot.reactionsEnabled}
+        onChange={(on) => void controller.setReactionsEnabled(on)}
+      />
     </View>
   );
 }

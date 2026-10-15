@@ -48,6 +48,7 @@ async function setup() {
   const api: GatewayApi = {
     get: async <T>() => ({ sessions: [] }) as T,
     post: async <T>() => ({}) as T,
+    put: async <T>() => ({}) as T,
     patch: async <T>() => ({}) as T,
     del: async <T>() => ({}) as T,
   };
