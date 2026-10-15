@@ -134,7 +134,7 @@ export default function Drawer(props: Props) {
 
 /**
  * The zone's tab strip (components/ui/pane-tab.tsx `PaneTabStrip`): tabs on the sidebar surface, the
- * active one in the foreground with a 2 px underline in the theme's primary, the label 0.6875rem medium
+ * active one in the foreground with a 2 px underline in the skin's primary, the label 0.6875rem medium
  * uppercase at the wide tracking. Parity deviation (touch): 40dp, not 28.
  */
 function TabStrip({ tab, onTab }: { tab: DrawerTab; onTab: (tab: DrawerTab) => void }) {

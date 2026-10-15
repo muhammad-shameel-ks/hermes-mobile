@@ -1,6 +1,6 @@
 /**
  * Debounced full-text search across every session of the active profile, not just the loaded window,
- * so an old session stays findable (apps/desktop/src/app/chat/sidebar/use-server-session-search.ts).
+ * so an old session stays findable (apps/desktop/src/app/chat/sidebar/use-server-session-search.ts `useServerSessionSearch`).
  */
 
 import { useEffect, useState } from 'react';
@@ -10,7 +10,7 @@ import type { SessionSearchResult } from './sessionIndex.ts';
 /** desktop `SEARCH_DEBOUNCE_MS` */
 export const SEARCH_DEBOUNCE_MS = 200;
 
-export function useServerSessionSearch(query: string, search: (query: string) => Promise<SessionSearchResult[]>) {
+export function useSessionSearch(query: string, search: (query: string) => Promise<SessionSearchResult[]>) {
   const [matches, setMatches] = useState<SessionSearchResult[]>([]);
   const [pending, setPending] = useState(false);
 

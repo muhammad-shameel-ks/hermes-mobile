@@ -50,7 +50,7 @@ const byRecency = (a: SessionInfo, b: SessionInfo) => sessionTime(b) - sessionTi
 
 /**
  * The Pinned section's rows and the recents they leave behind. A pinned session is filtered out of its
- * own section, so the server's `pinned` flag, not the page, decides: a pinned row is always reachable
+ * own section, so the gateway's `pinned` flag, not the page, decides: a pinned row is always reachable
  * here, whichever list it arrived in.
  */
 export function splitPinned(recents: readonly SessionInfo[], messaging: readonly SessionInfo[]) {
@@ -122,7 +122,7 @@ export type SessionSearchResult = {
 export const stripFtsMarkers = (snippet: string) => snippet.replaceAll('>>>', '').replaceAll('<<<', '');
 
 /** a hit outside the loaded page, as a row: resume works by id, the snippet stands in for the preview */
-export function searchResultToSession(result: SessionSearchResult, nowSeconds = Date.now() / 1000): SessionInfo {
+export function searchResultToSession(result: SessionSearchResult, profile: string, nowSeconds = Date.now() / 1000): SessionInfo {
   const started = result.session_started ?? nowSeconds;
   return {
     id: result.session_id,
@@ -134,6 +134,8 @@ export function searchResultToSession(result: SessionSearchResult, nowSeconds = 
     source: result.source ?? null,
     model: result.model ?? null,
     message_count: 0,
+    // the search ran on the active profile, so the row's actions must write there too
+    profile,
   };
 }
 
@@ -146,9 +148,10 @@ export function searchResultToSession(result: SessionSearchResult, nowSeconds = 
 export function mergeSearchResults(
   sorted: readonly SessionInfo[],
   query: string,
-  serverMatches: readonly SessionSearchResult[],
+  matches: readonly SessionSearchResult[],
   byAnyId: ReadonlyMap<string, SessionInfo>,
   pending: boolean,
+  profile: string,
 ): SessionInfo[] {
   if (!query) return [];
   const out = new Map<string, SessionInfo>();
@@ -156,9 +159,9 @@ export function mergeSearchResults(
     for (const session of sorted) if (sessionMatchesSearch(session, query)) out.set(session.id, session);
     return [...out.values()];
   }
-  for (const match of serverMatches) {
+  for (const match of matches) {
     if (out.has(match.session_id)) continue;
-    out.set(match.session_id, byAnyId.get(match.session_id) ?? searchResultToSession(match));
+    out.set(match.session_id, byAnyId.get(match.session_id) ?? searchResultToSession(match, profile));
   }
   for (const session of sorted) if (!out.has(session.id) && sessionMatchesSearch(session, query)) out.set(session.id, session);
   return [...out.values()];

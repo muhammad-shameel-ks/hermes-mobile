@@ -62,22 +62,23 @@ test('source ids classify and label', () => {
 test('FTS highlight markers are stripped from the snippet that stands in for the preview', () => {
   assert.equal(stripFtsMarkers('say >>>hello<<< world'), 'say hello world');
   const hit: SessionSearchResult = { session_id: 's', title: ' Named ', snippet: 'a >>>b<<<', lineage_root: 'r', last_active: 20, session_started: 10, source: 'cli' };
-  const session = searchResultToSession(hit);
+  const session = searchResultToSession(hit, 'work');
   assert.deepEqual([session.id, session.title, session.preview, session._lineage_root_id, session.last_active, session.started_at], ['s', 'Named', 'a b', 'r', 20, 10]);
-  assert.equal(searchResultToSession({ session_id: 'u', snippet: '' }, 77).last_active, 77);
+  assert.equal(searchResultToSession({ session_id: 'u', snippet: '' }, 'work', 77).last_active, 77);
 });
 
 test('while the request is in flight search is the loaded rows that match, in recency order', () => {
   const sorted = [row('new', 9, { title: 'alpha one' }), row('old', 1, { title: 'alpha two' }), row('other', 5, { title: 'beta' })];
-  const out = mergeSearchResults(sorted, 'alpha', [{ session_id: 'ghost', title: 'alpha ghost' }], new Map(), true);
+  const out = mergeSearchResults(sorted, 'alpha', [{ session_id: 'ghost', title: 'alpha ghost' }], new Map(), true, 'work');
   assert.deepEqual(out.map((s) => s.id), ['new', 'old']);
 });
 
 test('once the ranked reply lands it decides the order, then client-only matches follow', () => {
   const sorted = [row('new', 9, { title: 'quoting abc', cwd: '/alpha' }), row('exact', 1, { title: 'exact' })];
   const byAny = buildSessionByAnyId(sorted);
-  const out = mergeSearchResults(sorted, 'alpha', [{ session_id: 'exact' }, { session_id: 'far', title: 'Far away' }], byAny, false);
+  const out = mergeSearchResults(sorted, 'alpha', [{ session_id: 'exact' }, { session_id: 'far', title: 'Far away' }], byAny, false, 'work');
   assert.deepEqual(out.map((s) => s.id), ['exact', 'far', 'new']);
   assert.equal(out[1]!.title, 'Far away');
-  assert.deepEqual(mergeSearchResults(sorted, '', [], byAny, false), []);
+  assert.equal(out[1]!.profile, 'work', 'a hit outside the page still writes to the active profile');
+  assert.deepEqual(mergeSearchResults(sorted, '', [], byAny, false, 'work'), []);
 });

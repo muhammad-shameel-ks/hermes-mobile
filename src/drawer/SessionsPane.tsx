@@ -1,7 +1,7 @@
 /**
  * The SESSIONS tab (apps/desktop/src/app/chat/sidebar/index.tsx): the nav rows, the search field, then
  * Pinned, the date-grouped Sessions, and a section per messaging platform. A query replaces them with
- * Results, ranked by the server's full-text search. No projects, no cron section and no messaging row
+ * Results, ranked by the gateway's full-text search. No projects, no cron section and no messaging row
  * (issues #12, #15, #16).
  */
 
@@ -20,7 +20,7 @@ import { buildSessionByAnyId, MESSAGING_INITIAL_ROWS, MESSAGING_LOAD_STEP, merge
 import { EmptyMessage, LoadErrorState, PinnedEmptyState, SessionSkeletons, StorageCorruptNotice } from './sectionStates.tsx';
 import { SessionRows, SessionsSection, type RowHandlers } from './SessionsSection.tsx';
 import { useDrawerRoutes } from './useDrawerRoutes.tsx';
-import { useServerSessionSearch } from './useServerSessionSearch.ts';
+import { useSessionSearch } from './useSessionSearch.ts';
 
 /** what the list asks of the controller beyond showing rows */
 export type SessionsListApi = {
@@ -47,7 +47,7 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
   const folds = useDrawerFolds();
   const [query, setQuery] = useState('');
   const trimmed = query.trim();
-  const { matches, pending } = useServerSessionSearch(trimmed, list.search);
+  const { matches, pending } = useSessionSearch(trimmed, list.search);
 
   const { items, messaging, loading, loaded, loadingMore, error, hasMore, hasMoreMessaging, corrupt } = snapshot.sessions;
   const minute = Math.floor(Date.now() / 60_000) * 60;
@@ -55,7 +55,7 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
   const platforms = useMemo(() => messagingGroups(split.messaging, hasMoreMessaging), [split.messaging, hasMoreMessaging]);
   const sorted = useMemo(() => [...items, ...messaging].sort(byRecency), [items, messaging]);
   const byAnyId = useMemo(() => buildSessionByAnyId(items, messaging), [items, messaging]);
-  const results = useMemo(() => mergeSearchResults(sorted, trimmed, matches, byAnyId, pending), [sorted, trimmed, matches, byAnyId, pending]);
+  const results = useMemo(() => mergeSearchResults(sorted, trimmed, matches, byAnyId, pending, snapshot.profile), [sorted, trimmed, matches, byAnyId, pending, snapshot.profile]);
 
   const handlers: RowHandlers = { snapshot, now: minute, onOpen: onOpenSession, onActions: onSessionActions };
   const empty = items.length === 0 && messaging.length === 0;

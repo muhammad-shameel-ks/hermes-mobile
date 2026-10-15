@@ -1,7 +1,7 @@
 /**
  * Which glyph names a connection: the desktop draws one per kind (device, cloud, network, terminal) so a
  * gateway looks the same wherever it is named (apps/desktop/src/app/chat/sidebar/connection-glyph.tsx).
- * A phone's connection is a base URL, so its kind is read from the host: this device's own network or
+ * A phone's connection is a base URL, so its kind is read from its hostname: this device's own network or
  * a remote one.
  */
 

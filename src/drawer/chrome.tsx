@@ -78,7 +78,7 @@ export function Dither({ color }: { color: string }) {
 }
 
 /**
- * A section's header: the dithered label in the theme's primary, 0.64rem semibold uppercase at 0.16em, a
+ * A section's header: the dithered label in the skin's primary, 0.64rem semibold uppercase at 0.16em, a
  * caret that opens and closes it, the muted meta beside it. Parity deviation (touch): the caret is always
  * shown, where the desktop reveals it on hover.
  */
