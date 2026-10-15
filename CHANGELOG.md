@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.18] - 2026-10-15
+
+- Use hi@shameel.dev as the contact address in the security policy and code of conduct ([9eb72b5](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/9eb72b5))
+
 ## [0.1.17] - 2026-10-15
 
 - Add README, license, contributing guide and CI so the project is ready for contributors ([4280697](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/4280697))
