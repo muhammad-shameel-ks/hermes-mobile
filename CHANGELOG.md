@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.14] - 2026-10-15
+
+- No user-facing changes.
+
 ## [0.1.13] - 2026-10-15
 
 - Enlarge the message action bar icons for touch ([bc51679](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/bc51679))
