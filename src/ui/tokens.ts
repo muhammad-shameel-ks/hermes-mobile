@@ -88,6 +88,8 @@ function resolve(mode: Mode, chatTextScale: number) {
     uiAccent: accent,
     uiComposerRing: palette.composerRing ?? accent,
     uiSuccess: harmonize('#10b981', accent, 0.25),
+    /** desktop `--ui-purple`: subagent glyphs */
+    uiPurple: '#9e94d5',
     dtPrimarySolid: ensureContrast(palette.primary, '#fcfcfc', 4.5),
     dtPrimarySolidForeground: '#fcfcfc',
     dtDestructive: palette.destructive,
