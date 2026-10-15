@@ -36,23 +36,67 @@ const STOPS: ReadonlyArray<[number, number]> = [
   [0, 1],
 ];
 
+// the gradient between those stops, centre outward, closing to nothing at the band's edge
+const PROFILE: ReadonlyArray<[number, number]> = [...STOPS].reverse().concat([[0.5, 0]]);
+
+/** how much highlight the 17-stop gradient shows at `distance` from the centre, as a fraction of the spread */
+export function shimmerProfile(distance: number): number {
+  for (let i = 1; i < PROFILE.length; i += 1) {
+    const [at, weight] = PROFILE[i];
+    if (distance <= at) {
+      const [prevAt, prevWeight] = PROFILE[i - 1];
+      return prevWeight + ((weight - prevWeight) * (distance - prevAt)) / (at - prevAt);
+    }
+  }
+  return 0;
+}
+
+/** the distance at which the gradient falls to `weight` (the profile is monotonic) */
+function profileDistance(weight: number): number {
+  for (let i = 1; i < PROFILE.length; i += 1) {
+    const [at, w] = PROFILE[i];
+    const [prevAt, prevW] = PROFILE[i - 1];
+    if (weight >= w) return prevAt + ((prevW - weight) * (at - prevAt)) / (prevW - w);
+  }
+  return 0.5;
+}
+
+/**
+ * Windows in the stack. Seven evenly weighted steps follow the gradient as closely as
+ * the desktop's eight stop-centred ones did (worst error 0.071 against 0.085, same RMS 0.039,
+ * measured over the profile), with one window fewer to animate.
+ */
+export const RING_COUNT = 7;
+
 export type ShimmerRing = { halfWidth: number; opacity: number };
 
 /**
- * Nested windows, outermost first. Each reaches halfway to the next stop out
- * and shows the highlight copy at the opacity that brings the stacked coverage
- * up to that stop's weight, scaled by `peak` (how far the centre goes toward
- * the highlight colour).
+ * Nested windows, outermost first. Ring j carries `j / count` of the highlight and reaches
+ * out to where the gradient is half a step short of that, so each step sits centred on the
+ * gradient it replaces. Each shows the highlight copy at the opacity that brings the stacked
+ * coverage up to its weight, scaled by `peak` (how far the centre goes toward the highlight
+ * colour).
  */
-export function shimmerRings(spread: number, peak = 1): ShimmerRing[] {
+export function shimmerRings(spread: number, peak = 1, count = RING_COUNT): ShimmerRing[] {
   let covered = 0;
-  return STOPS.map(([at, weight], index) => {
-    const outer = index === 0 ? 0.5 : STOPS[index - 1][0];
-    const target = weight * peak;
+  return Array.from({ length: count }, (_, index) => {
+    const rank = index + 1;
+    const target = (rank / count) * peak;
     const opacity = covered >= 1 ? 0 : (target - covered) / (1 - covered);
     covered = target;
-    return { halfWidth: ((at + outer) / 2) * spread, opacity: Math.max(0, Math.min(1, opacity)) };
+    return { halfWidth: profileDistance((rank - 0.5) / count) * spread, opacity: Math.max(0, Math.min(1, opacity)) };
   });
+}
+
+/** where in the loop's 0..1 the sweep ends and the pause begins */
+export function shimmerSweepShare(timing: ShimmerTiming): number {
+  return timing.sweepMs / (timing.sweepMs + timing.delayMs);
+}
+
+/** the band's centre at `phase` of one loop: a linear sweep from `from` to `to`, then held at `to` for the pause */
+export function shimmerCentre(phase: number, sweepShare: number, from: number, to: number): number {
+  'worklet';
+  return phase >= sweepShare ? to : from + ((to - from) * phase) / sweepShare;
 }
 
 /**

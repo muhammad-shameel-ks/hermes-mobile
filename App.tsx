@@ -22,10 +22,13 @@ import { probeGateway } from './src/gateway/status.ts';
 import { restoreSession, type AppState } from './src/app/boot-state.ts';
 import SignedInApp from './src/app/SignedInApp.tsx';
 import { ConnectingScreen, SignInAgainScreen, UnreachableScreen } from './src/screens/BootScreens.tsx';
-import ConnectScreen from './src/screens/ConnectScreen.tsx';
 import { wipeConnection } from './src/store/index.ts';
 import UpdatePrompt from './src/updates/UpdatePrompt.tsx';
+import { lazyScreen, preloadLazyScreens } from './src/ui/lazy.tsx';
 import { ThemedSafeAreaView, ThemedStatusBar, ThemeProvider } from './src/ui/ThemeProvider.tsx';
+
+// the connect flow is off the launch path of a signed-in phone
+const ConnectScreen = lazyScreen(() => require('./src/screens/ConnectScreen.tsx') as typeof import('./src/screens/ConnectScreen.tsx'), { preload: false });
 
 const restore = () =>
   restoreSession({ loadConnection, loadCredentials, saveCredentials, refreshCredentials, probeGateway, isStale, nowSeconds });
@@ -51,6 +54,10 @@ function Root() {
       live = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (state.kind === 'signed-in') preloadLazyScreens();
+  }, [state.kind]);
 
   const leave = useCallback((connection: SavedConnection, reason: string | null) => {
     void (async () => {

@@ -5,13 +5,16 @@
  * live in SessionsPane and BotsPane; the desktop sidebar's geometry in rowGeometry.ts.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Bot } from '../bots/roster.ts';
-import type { ChatSnapshot, SessionInfo } from '../chat/controller.ts';
+import { createDrawerSlice } from '../chat/chatSlices.ts';
+import type { ChatController, SessionInfo } from '../chat/controller.ts';
+import { shallowEqual } from '../chat/selector.ts';
+import { useChatSelector } from '../chat/useChatSelector.ts';
 import { mixPct } from '../ui/color.ts';
 import { tick } from '../ui/haptics.ts';
 import { useTokens } from '../ui/tokens.ts';
@@ -25,7 +28,7 @@ export type { SessionsListApi };
 type Props = {
   open: boolean;
   onClose: () => void;
-  snapshot: ChatSnapshot;
+  controller: ChatController;
   connectionLabel: string;
   /** the connection's base URL, which picks its glyph */
   connectionUrl: string;
@@ -97,37 +100,52 @@ export default function Drawer(props: Props) {
         accessibilityViewIsModal
       >
         <TabStrip tab={props.tab} onTab={props.onTab} />
-        {props.tab === 'sessions' ? (
-          <SessionsPane
-            snapshot={props.snapshot}
-            list={props.list}
-            onClose={onClose}
-            onNewSession={props.onNewSession}
-            onOpenSession={props.onOpenSession}
-            onSessionActions={props.onSessionActions}
-          />
-        ) : (
-          <BotsPane
-            snapshot={props.snapshot}
-            onOpenBot={props.onOpenBot}
-            onBotActions={props.onBotActions}
-            onNewBot={props.onNewBot}
-            onRetryRoster={props.onRetryRoster}
-            loadImage={props.loadImage}
-          />
-        )}
-        <Footer
-          link={props.snapshot.link}
-          connectionLabel={props.connectionLabel}
-          connectionUrl={props.connectionUrl}
-          profileName={props.snapshot.profile}
-          profileLabel={props.profileLabel}
-          showProfile={props.tab === 'sessions'}
-          onProfileChip={props.onProfileChip}
-          onClose={onClose}
-        />
+        <DrawerContent {...props} />
       </Animated.View>
     </View>
+  );
+}
+
+/**
+ * The panes and footer, which read the chat snapshot. They mount with the drawer, so the subscription
+ * exists only while it is on screen; a closed drawer costs the store nothing per streamed token, and an
+ * open one re-renders when a session starts, ends or moves, not with the transcript.
+ */
+function DrawerContent(props: Props) {
+  const slice = useMemo(createDrawerSlice, []);
+  const snapshot = useChatSelector(props.controller, slice, shallowEqual);
+  return (
+    <>
+      {props.tab === 'sessions' ? (
+        <SessionsPane
+          snapshot={snapshot}
+          list={props.list}
+          onClose={props.onClose}
+          onNewSession={props.onNewSession}
+          onOpenSession={props.onOpenSession}
+          onSessionActions={props.onSessionActions}
+        />
+      ) : (
+        <BotsPane
+          snapshot={snapshot}
+          onOpenBot={props.onOpenBot}
+          onBotActions={props.onBotActions}
+          onNewBot={props.onNewBot}
+          onRetryRoster={props.onRetryRoster}
+          loadImage={props.loadImage}
+        />
+      )}
+      <Footer
+        link={snapshot.link}
+        connectionLabel={props.connectionLabel}
+        connectionUrl={props.connectionUrl}
+        profileName={snapshot.profile}
+        profileLabel={props.profileLabel}
+        showProfile={props.tab === 'sessions'}
+        onProfileChip={props.onProfileChip}
+        onClose={props.onClose}
+      />
+    </>
   );
 }
 

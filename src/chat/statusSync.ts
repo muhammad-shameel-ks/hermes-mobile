@@ -221,6 +221,12 @@ export class StatusSync {
     }
   }
 
+  /** the session left memory: its retire timer has nothing left to retire */
+  forget(key: string) {
+    this.timers.get(key)?.();
+    this.timers.delete(key);
+  }
+
   dispose() {
     for (const cancel of this.timers.values()) cancel();
     this.timers.clear();

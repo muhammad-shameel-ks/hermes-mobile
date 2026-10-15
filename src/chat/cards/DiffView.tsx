@@ -27,27 +27,34 @@ function DiffViewImpl({ diff }: { diff: string }) {
   const [width, setWidth] = useState(0);
 
   const foldable = lines.length > FOLDED_ROWS;
-  const shown = open ? lines.slice(0, MAX_ROWS) : foldable ? lines.slice(0, FOLDED_ROWS) : lines;
-  const hidden = lines.length - shown.length;
+  const count = open ? Math.min(lines.length, MAX_ROWS) : foldable ? FOLDED_ROWS : lines.length;
+  const hidden = lines.length - count;
 
-  const tint = (kind: DiffKind) =>
-    kind === 'add'
-      ? { borderLeftColor: t.uiDiffAddBorder, backgroundColor: t.uiDiffAddBackground }
-      : kind === 'remove'
-        ? { borderLeftColor: t.uiDiffRemoveBorder, backgroundColor: t.uiDiffRemoveBackground }
-        : { borderLeftColor: 'transparent' };
-  const ink = (kind: DiffKind) => (kind === 'add' ? t.uiDiffAddForeground : kind === 'remove' ? t.uiDiffRemoveForeground : t.uiTextSecondary);
+  // The row elements are built once per (diff, fold state, theme): the width measurement and every
+  // other re-render hands React the same element objects, which it skips instead of diffing up to
+  // MAX_ROWS rows.
+  const rows = useMemo(() => {
+    const tint = {
+      add: [styles.row, { borderLeftColor: t.uiDiffAddBorder, backgroundColor: t.uiDiffAddBackground }],
+      remove: [styles.row, { borderLeftColor: t.uiDiffRemoveBorder, backgroundColor: t.uiDiffRemoveBackground }],
+      context: [styles.row, { borderLeftColor: 'transparent' }],
+    } satisfies Record<DiffKind, unknown>;
+    const ink = {
+      add: [styles.text, { color: t.uiDiffAddForeground }],
+      remove: [styles.text, { color: t.uiDiffRemoveForeground }],
+      context: [styles.text, { color: t.uiTextSecondary }],
+    } satisfies Record<DiffKind, unknown>;
+    return lines.slice(0, count).map((line, index) => (
+      <View key={index} style={tint[line.kind]}>
+        <Text style={ink[line.kind]}>{line.text || ' '}</Text>
+      </View>
+    ));
+  }, [lines, count, t]);
 
   return (
     <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
       <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false}>
-        <View style={{ minWidth: width }}>
-          {shown.map((line, index) => (
-            <View key={index} style={[styles.row, tint(line.kind)]}>
-              <Text style={[styles.text, { color: ink(line.kind) }]}>{line.text || ' '}</Text>
-            </View>
-          ))}
-        </View>
+        <View style={{ minWidth: width }}>{rows}</View>
       </ScrollView>
       {foldable ? (
         <Pressable

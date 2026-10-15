@@ -9,9 +9,11 @@ import {
   fullResponseText,
   planBars,
   reactionsFromMetadata,
+  sameBar,
   stablePlans,
   userReaction,
   withAgentReactions,
+  type BarPlan,
   type StampFormats,
 } from '../src/chat/actionBar.ts';
 import type { Message } from '../src/chat/transcript.ts';
@@ -139,4 +141,18 @@ test('the first emoji of what was typed is taken whole', () => {
   assert.equal(firstEmoji('7'), null);
   assert.equal(firstEmoji('hello'), null);
   assert.equal(firstEmoji(''), null);
+});
+
+test('a bar whose reply is still streaming ignores the delta that swaps its message object', () => {
+  const live: BarPlan = { kind: 'assistant', live: true, fullAvailable: false };
+  const settled: BarPlan = { kind: 'assistant', live: false, fullAvailable: false };
+  const first = msg('a', 'assistant', 'he', { status: 'streaming' });
+  const delta = { ...first, parts: [{ kind: 'text' as const, text: 'hello' }] };
+  assert.ok(sameBar({ message: first, plan: live }, { message: delta, plan: { ...live } }));
+  assert.ok(!sameBar({ message: first, plan: live }, { message: delta, plan: settled }), 'it catches up when the reply settles');
+  assert.ok(!sameBar({ message: first, plan: live }, { message: msg('b', 'assistant', 'x'), plan: live }));
+  assert.ok(!sameBar({ message: first, plan: settled }, { message: delta, plan: settled }), 'a settled bar follows its message');
+  assert.ok(sameBar({ message: first, plan: settled }, { message: first, plan: { ...settled } }));
+  const user: BarPlan = { kind: 'user', latest: true, stop: true };
+  assert.ok(!sameBar({ message: first, plan: user }, { message: first, plan: { ...user, stop: false } }));
 });

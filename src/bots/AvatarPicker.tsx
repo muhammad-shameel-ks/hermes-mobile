@@ -5,7 +5,7 @@
  * image; this only edits them.
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
@@ -416,8 +416,8 @@ function PetTab({
     };
   }, [api]);
 
-  const ranked = rankPets(pets ?? [], query);
-  const visible = ranked.slice(0, limit);
+  const ranked = useMemo(() => rankPets(pets ?? [], query), [pets, query]);
+  const visible = useMemo(() => ranked.slice(0, limit), [ranked, limit]);
 
   const onScroll = useCallback(
     ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {

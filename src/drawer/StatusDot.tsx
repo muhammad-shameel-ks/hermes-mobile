@@ -5,6 +5,7 @@
  * motion a running row carries belongs to its arc.
  */
 
+import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
@@ -32,7 +33,7 @@ function dotStyle(state: DotState, t: Tokens) {
 }
 
 /** the dot in its fixed lead cell, so every label starts on one left edge whatever the state */
-export function StatusDot({ state, branchStem }: { state: DotState; branchStem?: string }) {
+function StatusDotImpl({ state, branchStem }: { state: DotState; branchStem?: string }) {
   const t = useTokens();
   const label = DOT_LABELS[state];
   return (
@@ -46,6 +47,8 @@ export function StatusDot({ state, branchStem }: { state: DotState; branchStem?:
     </View>
   );
 }
+
+export const StatusDot = memo(StatusDotImpl);
 
 const styles = StyleSheet.create({
   lead: { minWidth: ROW_LEAD, height: ROW_LEAD, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2 },

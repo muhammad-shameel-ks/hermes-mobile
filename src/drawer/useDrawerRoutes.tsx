@@ -6,20 +6,20 @@
 import { useMemo } from 'react';
 
 import { useOverlay } from '../app/overlay.tsx';
-import CapabilitiesScreen from '../settings/CapabilitiesScreen.tsx';
-import SettingsScreen, { SETTINGS_OVERLAY_KEY } from '../settings/SettingsScreen.tsx';
+import { pushCapabilities, pushSettings } from '../settings/open.tsx';
 
 export function useDrawerRoutes(onNavigate: () => void) {
-  const { push } = useOverlay();
+  const overlay = useOverlay();
+  const { push } = overlay;
   return useMemo(
     () => ({
       openSettings: () => {
         onNavigate();
-        push(SETTINGS_OVERLAY_KEY, (close) => <SettingsScreen onBack={close} />);
+        pushSettings({ push });
       },
       openCapabilities: () => {
         onNavigate();
-        push('capabilities', (close) => <CapabilitiesScreen onBack={close} />);
+        pushCapabilities({ push });
       },
     }),
     [push, onNavigate],

@@ -10,6 +10,10 @@ Issues and specs live as GitHub issues in this repo, managed with the `gh` CLI. 
 
 The five canonical triage roles map to their default label strings (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
 
+### Performance
+
+Read `docs/performance.md` before touching the streaming path, the transcript, subscriptions, animations, lists or startup. It holds the per-token budget and the rules that keep the app responsive while a reply streams. `npm run perf` benchmarks the hot pure-logic paths.
+
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` at the repo root plus system-wide ADRs in `docs/adr/`. See `docs/agents/domain.md`.

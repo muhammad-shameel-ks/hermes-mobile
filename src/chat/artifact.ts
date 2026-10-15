@@ -36,18 +36,31 @@ const CODE_SIGNAL_RE = [
   /^\s*(#include|SELECT|INSERT|UPDATE|DELETE|CREATE|DROP)\b/gim,
 ];
 
-function codeSignals(body: string) {
-  const trimmed = body.trim();
+/** how many code signals `body` holds, counting no further than `limit` */
+function countCodeSignals(body: string, limit: number): number {
+  let total = 0;
+  for (const pattern of CODE_SIGNAL_RE) {
+    pattern.lastIndex = 0;
+    while (pattern.exec(body) !== null) {
+      total += 1;
+      if (total >= limit) {
+        pattern.lastIndex = 0;
+        return total;
+      }
+    }
+  }
+  return total;
+}
+
+function proseSignals(trimmed: string) {
   const markdown = (trimmed.match(/\*\*[^*]+\*\*/g) || []).length + (trimmed.match(/`[^`\n]+`/g) || []).length;
   return {
     bulletLines: (trimmed.match(/^\s*[-*]\s+\S+/gm) || []).length,
-    codeSignals: CODE_SIGNAL_RE.reduce((total, pattern) => total + (trimmed.match(pattern)?.length ?? 0), 0),
     hasMarkdown: markdown > 0,
     proseLines: trimmed.split('\n').filter((line) => {
       const text = line.trim();
       return Boolean(text) && /^[A-Za-z0-9"'`*-]/.test(text);
     }).length,
-    trimmed,
   };
 }
 
@@ -74,12 +87,16 @@ export function isLikelyStructuredText(body: string): boolean {
 
 export function isLikelyProseCodeBlock(language: string | undefined, code: string | undefined): boolean {
   const clean = sanitizeLanguageTag(language || '');
-  const signals = codeSignals(code || '');
-  if (!signals.trimmed || signals.codeSignals >= 3) return false;
+  const trimmed = (code || '').trim();
+  if (!trimmed) return false;
+  // real code reaches three signals within its first lines, and runs per delta on a growing fence: stop counting there
+  const codeSignalCount = countCodeSignals(trimmed, 3);
+  if (codeSignalCount >= 3) return false;
+  const signals = proseSignals(trimmed);
   if (signals.bulletLines >= 1 && (signals.hasMarkdown || signals.proseLines >= 2)) return true;
   if (isLikelyStructuredText(code || '')) return false;
-  if (NON_CODE_FENCE_LANGUAGES.has(clean)) return signals.proseLines >= 3 && signals.codeSignals === 0;
-  return !COMMON_CODE_LANGUAGES.has(clean) && signals.proseLines >= 2 && signals.codeSignals <= 1;
+  if (NON_CODE_FENCE_LANGUAGES.has(clean)) return signals.proseLines >= 3 && codeSignalCount === 0;
+  return !COMMON_CODE_LANGUAGES.has(clean) && signals.proseLines >= 2 && codeSignalCount <= 1;
 }
 
 // ─── detection ───────────────────────────────────────────────────────────────

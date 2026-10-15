@@ -7,7 +7,7 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { useOverlay } from '../app/overlay.tsx';
-import { openSettingsSection } from '../settings/SettingsScreen.tsx';
+import { openSettingsSection } from '../settings/open.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { APPROVAL_COPY } from './requests.ts';
 

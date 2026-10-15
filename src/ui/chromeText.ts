@@ -16,28 +16,7 @@
  * first component renders - import it first in index.ts.
  */
 
-import { createElement, type ComponentType } from 'react';
-
-type Scalable = ComponentType<{ allowFontScaling?: boolean }> & { displayName?: string };
-
-function fontScalingOff(original: Scalable): Scalable {
-  const wrapped = (props: { allowFontScaling?: boolean }) =>
-    createElement(original, { ...props, allowFontScaling: props.allowFontScaling ?? false });
-  Object.assign(wrapped, original);
-  wrapped.displayName = original.displayName;
-  return wrapped;
-}
-
-/** Replace `exports[name]` with a wrapper; false when the export can't be redefined. */
-export function wrapExport(exports: object, name: string, wrap: (original: Scalable) => Scalable): boolean {
-  const descriptor = Object.getOwnPropertyDescriptor(exports, name);
-  if (!descriptor?.configurable) return false;
-  const original = (exports as Record<string, Scalable>)[name];
-  if (typeof original !== 'function' && typeof original !== 'object') return false;
-  const wrapped = wrap(original);
-  Object.defineProperty(exports, name, { configurable: true, enumerable: descriptor.enumerable, get: () => wrapped });
-  return true;
-}
+import { fontScalingOff, wrapExport } from './chromeTextWrap.ts';
 
 export function installChromeTextDefaults(): void {
   const exports = require('react-native') as object;

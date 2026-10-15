@@ -7,8 +7,20 @@
  * content sits on. Sources: components/ui/fade-text.tsx and fade-scroll.tsx.
  */
 
-import { useState, type ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text, View, type ScrollViewProps, type StyleProp, type TextProps, type TextStyle } from 'react-native';
+import { memo, useCallback, useRef, useState, type ReactNode } from 'react';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type NativeSyntheticEvent,
+  type ScrollViewProps,
+  type StyleProp,
+  type TextLayoutEventData,
+  type TextProps,
+  type TextStyle,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { transparentOf } from './color.ts';
@@ -54,18 +66,38 @@ export function FadeEdge({ edge, size, color, pad = 0 }: { edge: Edge; size: num
  * ellipsis. The fade only appears when the text actually overflows, so short
  * strings render as plain text.
  */
-export function FadeText({
+function FadeTextImpl({
   children,
   style,
   fadeColor,
   fadeWidth = 48,
   ...rest
 }: Omit<TextProps, 'numberOfLines' | 'ellipsizeMode' | 'style'> & { style?: StyleProp<TextStyle>; fadeColor: string; fadeWidth?: number; children?: ReactNode }) {
-  const [box, setBox] = useState(0);
-  const [natural, setNatural] = useState(0);
-  const overflowing = natural - box > 1;
+  // Only the fade's width is state: the two measurements land in refs, and a row whose text fits
+  // (nearly all of them) stays at 0 and never re-renders after mount, where measuring into two
+  // state values cost every row two extra renders as its layout events arrived.
+  const [fade, setFade] = useState(0);
+  const box = useRef(0);
+  const natural = useRef(0);
+  const settle = useCallback(() => {
+    setFade(natural.current - box.current > 1 ? Math.min(fadeWidth, box.current) : 0);
+  }, [fadeWidth]);
+  const onBoxLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      box.current = event.nativeEvent.layout.width;
+      settle();
+    },
+    [settle],
+  );
+  const onNaturalLayout = useCallback(
+    (event: NativeSyntheticEvent<TextLayoutEventData>) => {
+      natural.current = event.nativeEvent.lines[0]?.width ?? 0;
+      settle();
+    },
+    [settle],
+  );
   return (
-    <View style={styles.fadeText} onLayout={(event) => setBox(event.nativeEvent.layout.width)}>
+    <View style={styles.fadeText} onLayout={onBoxLayout}>
       <Text {...rest} style={style} numberOfLines={1} ellipsizeMode="clip">
         {children}
       </Text>
@@ -76,14 +108,16 @@ export function FadeText({
         importantForAccessibility="no-hide-descendants"
         numberOfLines={1}
         style={[style, styles.measure]}
-        onTextLayout={(event) => setNatural(event.nativeEvent.lines[0]?.width ?? 0)}
+        onTextLayout={onNaturalLayout}
       >
         {children}
       </Text>
-      {overflowing ? <FadeEdge edge="right" size={Math.min(fadeWidth, box)} color={fadeColor} /> : null}
+      {fade > 0 ? <FadeEdge edge="right" size={fade} color={fadeColor} /> : null}
     </View>
   );
 }
+
+export const FadeText = memo(FadeTextImpl);
 
 /**
  * A height-capped scroller whose clipped edges fade out. A side fades only while

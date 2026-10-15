@@ -77,6 +77,7 @@ import {
   type RewindPlan,
 } from './rewind.ts';
 import { noteTurnStart, startedTurnCwds } from '../review/turn-base.ts';
+import { NotifyThrottle, type ThrottleClock } from './notifyThrottle.ts';
 import { busySendAction } from './queue.ts';
 import { QueueDriver } from './queueDrain.ts';
 import { reactionsParams } from '../settings/display-toggles.ts';
@@ -88,6 +89,7 @@ import {
   addUserMessage,
   applyEvent,
   emptyTranscript,
+  findLast,
   fromHistory,
   type SessionMessage,
   type Transcript,
@@ -98,6 +100,22 @@ export const DRAFT_KEY = FRESH_DRAFT_KEY;
 /** the notice a replay gap leaves where the transcript was reloaded from saved history */
 export const REPLAY_GAP_NOTICE = 'Some updates were missed while the connection was down. The conversation was reloaded from its saved history.';
 const PROMPT_TIMEOUT_MS = 1_800_000;
+
+/**
+ * The events a reply streams by the dozen a second, none of which the reader needs to see within
+ * the frame: they reach the state at once but wake the subscribers on a paced beat.
+ * Everything else (a tool starting or finishing, an error, a send, a navigation) notifies on the spot.
+ */
+const PACED_EVENTS: ReadonlySet<string> = new Set([
+  'message.delta',
+  'reasoning.delta',
+  'reasoning.available',
+  'thinking.delta',
+  'tool.generating',
+  'subagent.progress',
+  'subagent.thinking',
+  'subagent.tool',
+]);
 
 export type SessionInfo = {
   id: string;
@@ -252,9 +270,16 @@ export class ChatController {
   stackStore: StackStore | null = null;
   /** the gateway's approval, clarify and prompt requests, parked into each chat's `requests` */
   readonly serverRequests: RequestRouter;
+  private readonly beat: NotifyThrottle;
+  /** set while a paced event is being applied, so the writes it causes may wait for the beat */
+  private pacing = false;
+  private modelMemo: { from: ModelSelection; defaultEffort: string | null; value: ModelSelection } | null = null;
 
-  constructor(link: GatewayLink, api: GatewayApi, initialProfile = 'default', persistence: Persistence | null = null) {
+  constructor(link: GatewayLink, api: GatewayApi, initialProfile = 'default', persistence: Persistence | null = null, clock?: ThrottleClock) {
     this.link = link;
+    this.beat = new NotifyThrottle(() => {
+      for (const listener of this.listeners) listener();
+    }, clock);
     this.api = api;
     this.persistence = persistence;
     this.drafts = persistence?.drafts ?? new DraftStore(null, '');
@@ -353,13 +378,21 @@ export class ChatController {
 
   getSnapshot = () => this.snapshot;
 
-  private set(patch: Partial<ChatSnapshot>) {
+  /**
+   * `paced`: the change is a stream's text or progress, which touches nothing a turn's edges, the
+   * queue or the unread marks look at. The snapshot is current at once; subscribers hear on the beat.
+   */
+  private set(patch: Partial<ChatSnapshot>, paced = false) {
     const before = this.snapshot.entries;
     this.snapshot = { ...this.snapshot, ...patch };
+    if (paced) {
+      this.beat.request();
+      return;
+    }
     const finishedAway = nextFinishedAway(this.snapshot.finishedAway, before, this.snapshot.entries, this.snapshot.openKey);
     if (finishedAway !== this.snapshot.finishedAway) this.snapshot = { ...this.snapshot, finishedAway };
     for (const cwd of startedTurnCwds(before, this.snapshot.entries)) void noteTurnStart(cwd, this.api);
-    for (const listener of this.listeners) listener();
+    this.beat.flush();
     // the queue drains whenever its session is idle, not only on the edge a turn ends
     for (const entry of Object.values(this.snapshot.entries)) if (entry.stack.queue.entries.length) this.queue.sweep(entry.key);
   }
@@ -369,7 +402,10 @@ export class ChatController {
   }
 
   private putEntry(entry: ChatEntry) {
-    this.set({ entries: { ...this.snapshot.entries, [entry.key]: entry } });
+    const previous = this.entry(entry.key);
+    // a streamed write that leaves the turn's edges alone has nothing for the queue or the unread marks to react to
+    const paced = this.pacing && previous !== undefined && previous.transcript.running === entry.transcript.running && previous.cwd === entry.cwd && previous.stack.queue === entry.stack.queue;
+    this.set({ entries: { ...this.snapshot.entries, [entry.key]: entry } }, paced);
     this.recency.touch(entry.key);
     this.saveTail(entry);
   }
@@ -409,6 +445,7 @@ export class ChatController {
       delete next[key];
       this.recency.forget(key);
       this.saved.delete(key);
+      this.status.forget(key);
       for (const [runtime, mapped] of this.runtimeToKey) if (mapped === key) this.runtimeToKey.delete(runtime);
     }
     this.set({ entries: next });
@@ -416,11 +453,17 @@ export class ChatController {
 
   private updateEntry(key: string, update: (entry: ChatEntry) => ChatEntry) {
     const current = this.entry(key);
-    if (current) this.putEntry(update(current));
+    if (!current) return;
+    const next = update(current);
+    if (next !== current) this.putEntry(next);
   }
 
+  /** an update that changes nothing writes nothing: no new snapshot, no wake-up */
   private updateTranscript(key: string, update: (t: Transcript) => Transcript) {
-    this.updateEntry(key, (entry) => ({ ...entry, transcript: update(entry.transcript) }));
+    this.updateEntry(key, (entry) => {
+      const transcript = update(entry.transcript);
+      return transcript === entry.transcript ? entry : { ...entry, transcript };
+    });
   }
 
   private bindRuntime(key: string, runtimeId: string) {
@@ -451,6 +494,7 @@ export class ChatController {
   dispose() {
     for (const off of this.unsubscribe) off();
     if (this.listTimer) clearTimeout(this.listTimer);
+    this.beat.cancel();
     this.queue.dispose();
     this.status.dispose();
     this.serverRequests.dispose();
@@ -491,9 +535,19 @@ export class ChatController {
     const key = event.session_id ? this.runtimeToKey.get(event.session_id) : undefined;
     this.serverRequests.onEvent(key, event);
     if (!key) return;
+    this.pacing = PACED_EVENTS.has(event.type);
+    try {
+      this.route(key, event);
+    } finally {
+      this.pacing = false;
+    }
+  }
+
+  private route(key: string, event: GatewayEvent) {
     this.status.observe(key, event);
-    if (this.buffered.has(key)) {
-      this.buffered.get(key)!.push(event);
+    const held = this.buffered.get(key);
+    if (held) {
+      held.push(event);
       return;
     }
     const wasRunning = this.entry(key)?.transcript.running;
@@ -759,6 +813,7 @@ export class ChatController {
     for (const [runtime, mapped] of this.runtimeToKey) if (mapped === key) this.runtimeToKey.delete(runtime);
     this.recency.forget(key);
     this.saved.delete(key);
+    this.status.forget(key);
     const wasOpen = this.snapshot.openKey === key;
     this.set({ entries });
     if (wasOpen) this.newChat();
@@ -1224,7 +1279,13 @@ export class ChatController {
   currentModel(): ModelSelection | null {
     const open = this.entry(this.snapshot.openKey);
     const current = open?.model ?? this.snapshot.models.current;
-    return current ? { ...current, effort: current.effort ?? this.snapshot.defaultEffort } : null;
+    if (!current) return null;
+    const { defaultEffort } = this.snapshot;
+    // the same inputs answer with the same object, so a memoised reader downstream sees no change
+    if (this.modelMemo?.from !== current || this.modelMemo.defaultEffort !== defaultEffort) {
+      this.modelMemo = { from: current, defaultEffort, value: { ...current, effort: current.effort ?? defaultEffort } };
+    }
+    return this.modelMemo.value;
   }
 
   /**
@@ -1438,7 +1499,7 @@ function isSessionGone(error: unknown): boolean {
 function withInflight(transcript: Transcript, resumed: SessionResumeResult): Transcript {
   const inflight = resumed.inflight;
   let next = { ...transcript, running: true };
-  const lastUser = [...next.messages].reverse().find((m) => m.role === 'user');
+  const lastUser = findLast(next.messages, (m) => m.role === 'user');
   const lastUserText = lastUser?.parts[0]?.kind === 'text' ? lastUser.parts[0].text : '';
   if (inflight?.user && inflight.user !== lastUserText) next = addUserMessage(next, inflight.user);
   next = applyEvent(next, { type: 'message.start', payload: {} });

@@ -6,7 +6,6 @@
  */
 
 import { Directory, File, Paths, UploadType } from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import { Linking } from 'react-native';
 
 import { gateway } from './gateway.ts';
@@ -69,6 +68,7 @@ export async function uploadFile(source: UploadSource, destination: string): Pro
 }
 
 export async function shareFile(uri: string, mimeType: string, title?: string): Promise<void> {
+  const Sharing = await import('expo-sharing');
   if (!(await Sharing.isAvailableAsync())) throw new Error('Sharing is not available on this device');
   await Sharing.shareAsync(uri, { mimeType, dialogTitle: title });
 }

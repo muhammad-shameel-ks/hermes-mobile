@@ -9,7 +9,7 @@
 
 import { diffStats, type DiffStats } from '../review/diff.ts';
 import { inlineDiffFromResult } from './inlineDiff.ts';
-import { isRecord, parseObject, type Json } from './json.ts';
+import { isRecord, type Json } from './json.ts';
 import { toolImageUrl } from './media.ts';
 import type { ToolPart } from './transcript.ts';
 
@@ -42,8 +42,12 @@ export type ToolView = {
   error: string;
   /** the shell command a terminal row ran */
   command?: string;
-  /** the body an expanded row shows */
-  detail: string;
+  /** whether `detail` is non-empty, known without building it */
+  hasDetail: boolean;
+  /** the body an expanded row shows; built on read, so a collapsed row never pays for it */
+  readonly detail: string;
+  /** `detail` cut to what the row's 24-line box can show (`clipDetail`), built once on first read */
+  readonly detailPreview: string;
   /** the unified diff the call's result carried; its row opens on it */
   inlineDiff?: string;
   diffStats?: DiffStats;
@@ -430,8 +434,27 @@ function findNestedError(value: unknown, depth: number, seen: Set<unknown>, fail
   return '';
 }
 
-function toolErrorText(tool: ToolPart, result: Json): string {
-  const extracted = findNestedError(tool.result, 0, new Set());
+type ParsedResult = { value: unknown; record: Json };
+
+// Tool parts are immutable and reference-stable across renders (an update replaces the part), so a
+// result is parsed once per part, not once per render and mount; megabyte results are common.
+const parsedResults = new WeakMap<ToolPart, ParsedResult>();
+
+function parsedResult(tool: ToolPart): ParsedResult {
+  let hit = parsedResults.get(tool);
+  if (!hit) {
+    const value = typeof tool.result === 'string' ? tryJson(tool.result) : tool.result;
+    hit = { value, record: isRecord(value) ? value : {} };
+    parsedResults.set(tool, hit);
+  }
+  return hit;
+}
+
+/** the tool's result as an object (`{}` when it is not one), parsed once per part */
+export const toolResultRecord = (tool: ToolPart): Json => parsedResult(tool).record;
+
+function toolErrorText(tool: ToolPart, { value, record: result }: ParsedResult): string {
+  const extracted = findNestedError(value, 0, new Set());
   if (tool.error) return extracted || tool.error;
   if (extracted) return extracted;
   if (result.success === false || result.ok === false) {
@@ -448,10 +471,24 @@ function toolErrorText(tool: ToolPart, result: Json): string {
   return '';
 }
 
-function toolStatus(tool: ToolPart, result: Json): { status: ToolStatus; error: string } {
+type StatusResult = { status: ToolStatus; error: string };
+const statuses = new WeakMap<ToolPart, StatusResult>();
+
+function toolStatus(tool: ToolPart): StatusResult {
+  let hit = statuses.get(tool);
+  if (!hit) {
+    hit = computeStatus(tool);
+    statuses.set(tool, hit);
+  }
+  return hit;
+}
+
+function computeStatus(tool: ToolPart): StatusResult {
   if (tool.status === 'running') return { status: 'running', error: '' };
+  const parsed = parsedResult(tool);
+  const result = parsed.record;
   if (result.success === true || result.ok === true) return { status: 'success', error: '' };
-  const error = toolErrorText(tool, result);
+  const error = toolErrorText(tool, parsed);
   if (!error) return { status: 'success', error: '' };
   if (tool.name === 'read_file' && /^File not found:/i.test(error)) return { status: 'notice', error };
   if (tool.name === 'terminal' && error === 'Command failed with exit code 1.') return { status: 'notice', error };
@@ -459,7 +496,7 @@ function toolStatus(tool: ToolPart, result: Json): { status: ToolStatus; error: 
 }
 
 export const toolFailed = (tool: ToolPart) => {
-  const { status } = toolStatus(tool, parseObject(tool.result));
+  const { status } = toolStatus(tool);
   return status === 'error' || status === 'warning';
 };
 
@@ -586,21 +623,87 @@ function prettyResult(tool: ToolPart, result: Json): string {
   return typeof parsed === 'object' && parsed !== null ? JSON.stringify(parsed, null, 2) : raw;
 }
 
+/** whether `prettyResult` is non-empty, without pretty-printing a megabyte of JSON to find out */
+function hasPrettyResult(tool: ToolPart, result: Json): boolean {
+  if (tool.resultText?.trim()) return true;
+  if (tool.name === 'terminal' || tool.name === 'execute_code') {
+    if (firstStringField(result, ['output', 'stdout']) || firstStringField(result, ['stderr'])) return true;
+  }
+  if (tool.name === 'read_file' && firstStringField(result, ['content'])) return true;
+  if (typeof tool.result === 'string' && tool.result.trim()) return true;
+  return Boolean(tool.summary);
+}
+
+/** the body a row opens to: the diff stands in for the raw result dump, as on the desktop */
+function detailOf(tool: ToolPart, result: Json, pending: boolean, error: string, inlineDiff: string): string {
+  if (pending || inlineDiff) return '';
+  const body = prettyResult(tool, result);
+  return error ? [error, body].filter((value, index, list) => value && list.indexOf(value) === index).join('\n\n') : body;
+}
+
+/** an expanded row's output box shows 24 lines; one more is kept so the box still ends in its ellipsis */
+const DETAIL_LINES = 25;
+/** several screens of text at any phone width, however few characters a line holds */
+const DETAIL_CHARS = 8_000;
+
+/**
+ * `text` cut to the head the row's `numberOfLines={24}` box can show, so the native text layer is
+ * never handed (and never shapes) a megabyte it will not draw. Scans only as far as the cut.
+ */
+export function clipDetail(text: string, maxLines = DETAIL_LINES, maxChars = DETAIL_CHARS): string {
+  let end = -1;
+  for (let line = 0; line < maxLines; line += 1) {
+    end = text.indexOf('\n', end + 1);
+    if (end < 0) break;
+  }
+  let cut = end < 0 ? text.length : end;
+  if (cut > maxChars) {
+    cut = maxChars;
+    const last = text.charCodeAt(cut - 1);
+    if (last >= 0xd800 && last <= 0xdbff) cut -= 1;
+  }
+  return cut < text.length ? text.slice(0, cut) : text;
+}
+
+type ToolDiff = { diff: string; stats: DiffStats | undefined };
+const diffs = new WeakMap<ToolPart, ToolDiff>();
+
+/** the diff a call's result carried and, for a file edit, its +/- counts; computed once per part */
+export function toolDiff(tool: ToolPart): ToolDiff {
+  let hit = diffs.get(tool);
+  if (!hit) {
+    const diff = inlineDiffFromResult(toolResultRecord(tool));
+    hit = { diff, stats: diff && isFileEditTool(tool.name) ? diffStats(diff) : undefined };
+    diffs.set(tool, hit);
+  }
+  return hit;
+}
+
+const views = new WeakMap<ToolPart, ToolView>();
+
+/** the row's view of a call, built once per part: a remounted row (a run opened again) costs nothing */
 export function buildToolView(tool: ToolPart): ToolView {
+  let hit = views.get(tool);
+  if (!hit) {
+    hit = computeToolView(tool);
+    views.set(tool, hit);
+  }
+  return hit;
+}
+
+function computeToolView(tool: ToolPart): ToolView {
   const args = tool.args;
-  const result = parseObject(tool.result);
+  const result = toolResultRecord(tool);
   const meta = toolMeta(tool.name);
-  const { status, error } = toolStatus(tool, result);
+  const { status, error } = toolStatus(tool);
   const pending = status === 'running';
   const dynamic = dynamicTitle(tool, args, result, status === 'error');
   const title = dynamic || (pending ? meta.pending : meta.done);
   const touched = dynamic || tool.name in TOOL_META ? '' : compactPreview(firstStringField(args, ['context', 'preview']) || tool.context);
   const count = status === 'error' ? null : resultCount(tool, result);
   const seconds = typeof result.duration_s === 'number' ? result.duration_s : tool.durationS;
-  const body = pending ? '' : prettyResult(tool, result);
-  const inlineDiff = pending ? '' : inlineDiffFromResult(result);
-  // a diff stands in for the raw result dump, as on the desktop
-  const detail = inlineDiff ? '' : error ? [error, body].filter((value, index, list) => value && list.indexOf(value) === index).join('\n\n') : body;
+  const { diff: inlineDiff, stats } = pending ? { diff: '', stats: undefined } : toolDiff(tool);
+  let preview: string | undefined;
 
   return {
     title,
@@ -611,9 +714,16 @@ export function buildToolView(tool: ToolPart): ToolView {
     durationLabel: !pending && seconds !== undefined && !isFileEditTool(tool.name) ? formatDurationSeconds(seconds) || undefined : undefined,
     error,
     command: tool.name === 'terminal' ? shellCommand(args) || undefined : undefined,
-    detail,
+    hasDetail: !pending && !inlineDiff && (Boolean(error) || hasPrettyResult(tool, result)),
+    get detail() {
+      return detailOf(tool, result, pending, error, inlineDiff);
+    },
+    get detailPreview() {
+      preview ??= clipDetail(detailOf(tool, result, pending, error, inlineDiff));
+      return preview;
+    },
     inlineDiff: inlineDiff || undefined,
-    diffStats: inlineDiff && isFileEditTool(tool.name) ? diffStats(inlineDiff) : undefined,
+    diffStats: stats,
     imageUrl: pending ? undefined : toolImageUrl(args, result) || undefined,
   };
 }
@@ -717,7 +827,9 @@ export function summarizeToolRun(tools: readonly ToolPart[], live: boolean): str
   const byCategory = new Map<Category, ToolPart[]>();
   for (const tool of tools) {
     const kind = category(tool.name);
-    byCategory.set(kind, [...(byCategory.get(kind) ?? []), tool]);
+    const group = byCategory.get(kind);
+    if (group) group.push(tool);
+    else byCategory.set(kind, [tool]);
   }
   const clauses = CATEGORY_ORDER.flatMap((kind) => {
     const group = byCategory.get(kind);

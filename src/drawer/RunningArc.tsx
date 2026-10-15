@@ -3,14 +3,16 @@
  * 2.23 s): a bright spike with a falling tail that crosses the row's border ring. The desktop masks a
  * moving linear gradient to the ring; the phone draws the ring as four hairline strips that clip the
  * same gradient and slide it, so nothing is masked and every frame is a transform on the UI thread.
+ * The slide reads the app's shared loop (ui/clock.ts), so every working row's arc is in step on one timeline.
  * Reduced motion paints nothing: the accent dot and the brighter title already say it.
  */
 
-import { useEffect, useState } from 'react';
+import { memo, useState } from 'react';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { cancelAnimation, Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useReducedMotion } from 'react-native-reanimated';
 
+import { useLoop } from '../ui/clock.ts';
 import { mixPct, transparentOf } from '../ui/color.ts';
 import { useTokens } from '../ui/tokens.ts';
 import { ARC_WIDTH } from './rowGeometry.ts';
@@ -20,18 +22,11 @@ const ARC_MS = 2230;
 /** the spike and its tail, as fractions of the sliding layer (the desktop's 25% / 31.25% stops over a 2x layer) */
 const STOPS = [0.34, 0.5, 0.57, 0.74] as const;
 
-export function RunningArc() {
+function RunningArcImpl() {
   const t = useTokens();
   const reduced = useReducedMotion();
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const progress = useSharedValue(0);
-
-  useEffect(() => {
-    if (reduced) return;
-    progress.value = 0;
-    progress.value = withRepeat(withTiming(1, { duration: ARC_MS, easing: Easing.linear }), -1, false);
-    return () => cancelAnimation(progress);
-  }, [progress, reduced]);
+  const progress = useLoop({ durationMs: ARC_MS }, !reduced);
 
   const { width, height } = size;
   // the sliding layer is twice the strip, spike at its centre: -W puts the spike on the left edge, 0 on the right
@@ -81,6 +76,8 @@ export function RunningArc() {
     </View>
   );
 }
+
+export const RunningArc = memo(RunningArcImpl);
 
 const styles = StyleSheet.create({
   strip: { position: 'absolute', overflow: 'hidden' },

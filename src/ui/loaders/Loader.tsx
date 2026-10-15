@@ -5,11 +5,12 @@
  * animated props read them, so nothing re-renders per frame.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import Animated, { useAnimatedProps, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 
+import { useAppForeground } from '../clock.ts';
 import { useTokens } from '../tokens.ts';
 import { CURVES, CURVE_OPACITY, PATH_STEPS, TRAIL_OPACITY } from './curves.ts';
 import { loaderFrame, type LoaderKind } from './frame.ts';
@@ -37,11 +38,20 @@ export function Loader({ kind = 'rose-curve', size = 40, color, strokeScale = 1,
   const curveD = useSharedValue('');
   const trailD = useSharedValue('');
 
-  useFrameCallback((frame) => {
+  const clock = useFrameCallback((frame) => {
     const next = loaderFrame(kind, config, frame.timeSinceFirstFrame, phase, strokeScale, pathSteps);
     curveD.value = next.curve;
     trailD.value = next.trail;
   });
+
+  const foreground = useAppForeground();
+  useEffect(() => {
+    if (foreground) return;
+    clock.setActive(false);
+    return () => {
+      if (clock.callbackId !== -1) clock.setActive(true);
+    };
+  }, [clock, foreground]);
 
   const curveProps = useAnimatedProps(() => ({ d: curveD.value }));
   const trailProps = useAnimatedProps(() => ({ d: trailD.value }));

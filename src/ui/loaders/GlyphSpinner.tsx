@@ -1,14 +1,16 @@
 /**
  * The desktop's glyph spinner (components/ui/glyph-spinner.tsx + .css): every
  * frame is mounted as a vertical strip inside a one-line clipping viewport and a
- * stepped Reanimated travel scrolls it a frame at a time, so there is no timer
- * and no per-frame text swap.
+ * stepped travel scrolls it a frame at a time, so there is no timer and no
+ * per-frame text swap. The steps come from the app's shared loop (clock.ts), one
+ * timeline for every spinner of a kind, and the strip's frames are built once.
  */
 
-import { useEffect } from 'react';
+import { memo, useMemo } from 'react';
 import { Platform, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useDerivedValue } from 'react-native-reanimated';
 
+import { useLoop } from '../clock.ts';
 import { useTokens } from '../tokens.ts';
 import { GLYPH_SPINNERS, glyphStrip, type GlyphSpinnerName } from './curves.ts';
 
@@ -26,47 +28,38 @@ export type GlyphSpinnerProps = {
   style?: StyleProp<ViewStyle>;
 };
 
-export function GlyphSpinner({ spinner = 'braille', size = 12, color, paused = false, label = 'Loading', style }: GlyphSpinnerProps) {
+function GlyphSpinnerImpl({ spinner = 'braille', size = 12, color, paused = false, label = 'Loading', style }: GlyphSpinnerProps) {
   const t = useTokens();
   const { frames, interval } = GLYPH_SPINNERS[spinner];
-  const offset = useSharedValue(0);
+  const count = frames.length;
+  const loop = useLoop({ durationMs: count * interval, steps: count }, !paused);
+  const ink = color ?? t.uiTextTertiary;
 
-  useEffect(() => {
-    cancelAnimation(offset);
-    offset.value = 0;
-    if (paused) return;
-    offset.value = withRepeat(
-      withTiming(-frames.length * size, { duration: frames.length * interval, easing: Easing.steps(frames.length, true) }),
-      -1,
-      false,
-    );
-    return () => cancelAnimation(offset);
-  }, [offset, frames.length, interval, size, paused]);
+  // the strip only moves when the step changes: a derived value stops equal results from reaching the style mapper and the native view
+  const step = useDerivedValue(() => (paused ? 0 : Math.round(loop.value * count)));
+  const stripStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -step.value * size }] }));
 
-  const stripStyle = useAnimatedStyle(() => ({ transform: [{ translateY: offset.value }] }));
+  const cells = useMemo(
+    () =>
+      glyphStrip(spinner).map((frame, index) => (
+        <Text
+          key={index}
+          allowFontScaling={false}
+          style={{ color: ink, fontFamily: GLYPH_FONT, fontSize: size, lineHeight: size, height: size, width: size, textAlign: 'center', includeFontPadding: false }}
+        >
+          {frame}
+        </Text>
+      )),
+    [spinner, size, ink],
+  );
 
   return (
     <View accessible accessibilityRole="progressbar" accessibilityLabel={label} style={[{ width: size, height: size, overflow: 'hidden' }, style]}>
       <Animated.View style={stripStyle} importantForAccessibility="no-hide-descendants">
-        {glyphStrip(spinner).map((frame, index) => (
-          <Text
-            key={index}
-            allowFontScaling={false}
-            style={{
-              color: color ?? t.uiTextTertiary,
-              fontFamily: GLYPH_FONT,
-              fontSize: size,
-              lineHeight: size,
-              height: size,
-              width: size,
-              textAlign: 'center',
-              includeFontPadding: false,
-            }}
-          >
-            {frame}
-          </Text>
-        ))}
+        {cells}
       </Animated.View>
     </View>
   );
 }
+
+export const GlyphSpinner = memo(GlyphSpinnerImpl);

@@ -4,7 +4,7 @@
  * socket follows the app into the background and back (foreground-scoped).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,8 +18,11 @@ import { botLabel, type Bot } from '../bots/roster.ts';
 import { setCardEnv } from '../chat/cards/env.ts';
 import { CardEnvBridge } from '../chat/cards/CardEnvBridge.tsx';
 import ChatScreen from '../chat/ChatScreen.tsx';
+import { shellSlice } from '../chat/chatSlices.ts';
 import { ChatController } from '../chat/controller.ts';
 import { createMediaResolver } from '../chat/mediaResolver.ts';
+import { shallowEqual } from '../chat/selector.ts';
+import { useChatSelector } from '../chat/useChatSelector.ts';
 import Drawer, { type DrawerTab, type SessionsListApi } from '../drawer/Drawer.tsx';
 import { useSessionActions } from '../drawer/useSessionActions.tsx';
 import { bindGateway } from '../files/gateway.ts';
@@ -65,11 +68,16 @@ function useController({ connection, credentials, onReauthRequired }: Props) {
   }, [connection.id]);
 }
 
+/**
+ * The shell subscribes to the roster, profile, link and notice only. The open chat's transcript, the
+ * composer's slices and the drawer's lists each subscribe where they render (`useChatSelector`), so a
+ * streamed token re-renders none of this.
+ */
 export default function SignedInApp(props: Props) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
   const controller = useController(props);
-  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const { roster, profile, link, notice, openBot: openBotName } = useChatSelector(controller, shellSlice, shallowEqual);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [tab, setTab] = useState<DrawerTab>('sessions');
   const [actionsFor, setActionsFor] = useState<Bot | null>(null);
@@ -93,11 +101,10 @@ export default function SignedInApp(props: Props) {
     };
   }, [controller]);
 
-  const allBots = useMemo(() => [...snapshot.roster.visible, ...snapshot.roster.hidden], [snapshot.roster]);
-  const entry = snapshot.entries[snapshot.openKey] ?? snapshot.entries.draft;
-  const openBot = entry.bot ? (allBots.find((b) => b.name === entry.bot) ?? null) : null;
-  const profileBot = allBots.find((b) => b.name === snapshot.profile);
-  const profileLabel = profileBot ? profileBot.label : botLabel({ name: snapshot.profile });
+  const allBots = useMemo(() => [...roster.visible, ...roster.hidden], [roster]);
+  const openBot = openBotName ? (allBots.find((b) => b.name === openBotName) ?? null) : null;
+  const profileBot = allBots.find((b) => b.name === profile);
+  const profileLabel = profileBot ? profileBot.label : botLabel({ name: profile });
 
   const sessionsList = useMemo<SessionsListApi>(
     () => ({
@@ -112,10 +119,14 @@ export default function SignedInApp(props: Props) {
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);
-    // refresh on drawer open instead of the desktop's 5 s roster poll (recorded parity deviation)
-    void controller.refreshSessions();
-    void controller.refreshRoster();
+    // refresh on drawer open instead of the desktop's 5 s roster poll (recorded parity deviation);
+    // after this tap's render, because refreshRoster notifies every subscriber synchronously
+    setTimeout(() => {
+      void controller.refreshSessions();
+      void controller.refreshRoster();
+    }, 0);
   }, [controller]);
+  const openProfileSheet = useCallback(() => setProfileSheet(true), []);
 
   const confirmDelete = (bot: Bot) => {
     Alert.alert(`Delete ${bot.label}?`, 'This removes the profile, its memory, skills and every session. It cannot be undone.', [
@@ -143,40 +154,31 @@ export default function SignedInApp(props: Props) {
 
   const profileActions: SheetAction[] = allBots.map((bot) => ({
     label: bot.label,
-    detail: bot.name === snapshot.profile ? 'Active' : bot.isDefault ? 'Default' : undefined,
+    detail: bot.name === profile ? 'Active' : bot.isDefault ? 'Default' : undefined,
     onPress: () => {
       closeDrawer();
       controller.useProfile(bot.name);
     },
   }));
 
+  const settingsHost = useMemo(
+    () => ({ controller, connection: props.connection, onSignOut: props.onSignOut }),
+    [controller, props.connection, props.onSignOut],
+  );
+
   return (
-    <SettingsProvider value={{ controller, snapshot, connection: props.connection, onSignOut: props.onSignOut }}>
+    <SettingsProvider value={settingsHost}>
     <OverlayProvider>
       <CardEnvBridge controller={controller} />
       <View style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground, paddingTop: insets.top }]}>
-        <ChatScreen
-          controller={controller}
-          entry={entry}
-          link={snapshot.link}
-          bot={openBot}
-          profileLabel={profileLabel}
-          opening={snapshot.openingBot !== null}
-          models={snapshot.models}
-          currentModel={controller.currentModel()}
-          personality={snapshot.personality}
-          onOpenDrawer={openDrawer}
-          onProfile={() => setProfileSheet(true)}
-        />
+        <ChatScreen controller={controller} bot={openBot} profileLabel={profileLabel} onOpenDrawer={openDrawer} onProfile={openProfileSheet} />
 
-        {snapshot.notice ? (
-          <Notice key={snapshot.notice.at} text={snapshot.notice.text} top={insets.top + 56} onDone={controller.clearNotice} />
-        ) : null}
+        {notice ? <Notice key={notice.at} text={notice.text} top={insets.top + 56} onDone={controller.clearNotice} /> : null}
 
         <Drawer
           open={drawerOpen}
           onClose={closeDrawer}
-          snapshot={snapshot}
+          controller={controller}
           connectionLabel={props.connection.label}
           connectionUrl={props.connection.baseUrl}
           list={sessionsList}
@@ -201,7 +203,7 @@ export default function SignedInApp(props: Props) {
           onBotActions={setActionsFor}
           onNewBot={() => openForm.current?.(null)}
           onRetryRoster={() => void controller.refreshRoster()}
-          onProfileChip={() => setProfileSheet(true)}
+          onProfileChip={openProfileSheet}
           loadImage={controller.avatarDataFn}
         />
 
@@ -221,7 +223,7 @@ export default function SignedInApp(props: Props) {
         />
         <BotFormLauncher controller={controller} launchRef={openForm} onCreated={closeDrawer} />
         {sessionActions.element}
-        <ColdBootOverlay link={snapshot.link} onRetry={() => controller.retryLink()} onSignOut={props.onSignOut} />
+        <ColdBootOverlay link={link} onRetry={() => controller.retryLink()} onSignOut={props.onSignOut} />
       </View>
     </OverlayProvider>
     </SettingsProvider>

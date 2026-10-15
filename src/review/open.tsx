@@ -8,9 +8,12 @@
 
 import type { OverlayApi } from '../app/overlay.tsx';
 import { openPreview } from '../files/open.tsx';
-import ReviewDiffScreen from './ReviewDiffScreen.tsx';
-import ReviewScreen, { type ReviewTarget } from './ReviewScreen.tsx';
+import { lazyScreen } from '../ui/lazy.tsx';
+import type { ReviewTarget } from './ReviewScreen.tsx';
 import type { ReviewFile, ReviewScope } from './tree.ts';
+
+const ReviewDiffScreen = lazyScreen(() => require('./ReviewDiffScreen.tsx') as typeof import('./ReviewDiffScreen.tsx'));
+const ReviewScreen = lazyScreen(() => require('./ReviewScreen.tsx') as typeof import('./ReviewScreen.tsx'));
 
 export type OpenReviewOptions = {
   /** the repository's working directory; the gateway's default when omitted */

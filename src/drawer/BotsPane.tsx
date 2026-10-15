@@ -5,7 +5,7 @@
  * management in v1 (issues #12, #17).
  */
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { filterBots, type Bot } from '../bots/roster.ts';
@@ -19,10 +19,14 @@ import { BotRow } from './BotRow.tsx';
 import { SearchField } from './chrome.tsx';
 import { updateFolds, useDrawerFolds } from './drawerState.ts';
 import { SIDEBAR_INSET } from './rowGeometry.ts';
-import { chatActivity, resolveDotState } from './sessionStatus.ts';
+import { NO_ACTIVITIES, stableActivities, type Activities } from './dotStates.ts';
+import { IDLE_ACTIVITY, resolveDotState } from './sessionStatus.ts';
+
+/** the slices the roster reads; a narrower object than the whole snapshot works as well */
+export type BotsPaneSnapshot = Pick<ChatSnapshot, 'roster' | 'entries' | 'openKey' | 'openingBot' | 'finishedAway' | 'link'>;
 
 type Props = {
-  snapshot: ChatSnapshot;
+  snapshot: BotsPaneSnapshot;
   onOpenBot: (bot: Bot) => void;
   onBotActions: (bot: Bot) => void;
   onNewBot: () => void;
@@ -31,11 +35,11 @@ type Props = {
 };
 
 /** the canonical Bot Chat's status, the very session the row opens, so the dot and the tap never describe different chats */
-function botState(snapshot: ChatSnapshot, bot: Bot) {
+function botState(activities: Activities, openKey: string, finishedAway: Readonly<Record<string, true>>, bot: Bot) {
   const key = bot.canonicalSessionId;
   return resolveDotState({
-    activity: chatActivity(key ? snapshot.entries[key] : undefined),
-    unread: key !== null && snapshot.openKey !== key && snapshot.finishedAway[key] === true,
+    activity: (key ? activities[key] : undefined) ?? IDLE_ACTIVITY,
+    unread: key !== null && openKey !== key && finishedAway[key] === true,
     draft: key === null,
   });
 }
@@ -59,30 +63,44 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
   const [query, setQuery] = useState('');
   const now = Math.floor(Date.now() / 60_000) * 60;
   const { visible, hidden, loaded, error } = snapshot.roster;
+  const { openKey, openingBot, finishedAway, entries } = snapshot;
+  const activitiesRef = useRef(NO_ACTIVITIES);
+  const activities = stableActivities(activitiesRef.current, entries);
+  activitiesRef.current = activities;
+  const latest = useRef({ onOpenBot, onBotActions });
+  latest.current = { onOpenBot, onBotActions };
+  const open = useCallback((bot: Bot) => latest.current.onOpenBot(bot), []);
+  const actions = useCallback((bot: Bot) => latest.current.onBotActions(bot), []);
   const trimmed = query.trim();
   const shown = useMemo(() => filterBots(visible, query), [visible, query]);
   const shownHidden = useMemo(() => filterBots(hidden, query), [hidden, query]);
-  const selected = snapshot.entries[snapshot.openKey]?.isBotChat ? snapshot.entries[snapshot.openKey]?.bot : null;
-  const thinking = selected && snapshot.entries[snapshot.openKey]?.transcript.running ? selected : null;
+  const selected = entries[openKey]?.isBotChat ? entries[openKey]?.bot : null;
+  const thinking = selected && entries[openKey]?.transcript.running ? selected : null;
   const gatewayUp = snapshot.link.kind === 'open';
   const empty = visible.length === 0 && hidden.length === 0;
   // every bot hidden and the disclosure closed: the list says so, with the way back (desktop `allBotsHidden`)
   const showAllHidden = visible.length === 0 && hidden.length > 0 && !hiddenBotsOpen && !trimmed;
 
-  const renderBot = (bot: Bot) => (
-    <BotRow
-      key={bot.name}
-      bot={bot}
-      now={now}
-      selected={bot.name === selected}
-      opening={bot.name === snapshot.openingBot}
-      thinking={bot.name === thinking}
-      state={botState(snapshot, bot)}
-      onOpen={onOpenBot}
-      onActions={onBotActions}
-      loadImage={loadImage}
-    />
+  // the rows are elements memoised on what they paint: a streamed delta elsewhere re-renders this pane but reuses them whole
+  const renderBot = useCallback(
+    (bot: Bot) => (
+      <BotRow
+        key={bot.name}
+        bot={bot}
+        now={now}
+        selected={bot.name === selected}
+        opening={bot.name === openingBot}
+        thinking={bot.name === thinking}
+        state={botState(activities, openKey, finishedAway, bot)}
+        onOpen={open}
+        onActions={actions}
+        loadImage={loadImage}
+      />
+    ),
+    [now, selected, openingBot, thinking, activities, openKey, finishedAway, open, actions, loadImage],
   );
+  const shownRows = useMemo(() => shown.map(renderBot), [shown, renderBot]);
+  const hiddenRows = useMemo(() => shownHidden.map(renderBot), [shownHidden, renderBot]);
 
   const noMatch = loaded && trimmed.length > 0 && shown.length === 0 && shownHidden.length === 0;
 
@@ -154,7 +172,7 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
           />
         ) : null}
 
-        <View style={styles.rows}>{shown.map(renderBot)}</View>
+        <View style={styles.rows}>{shownRows}</View>
 
         {shownHidden.length > 0 && !showAllHidden ? (
           <View style={[styles.hidden, { borderTopColor: t.uiStrokeTertiary }]}>
@@ -179,7 +197,7 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
                 <Text style={[styles.hiddenLabel, { color: t.uiTextQuaternary }]}>{shownHidden.length}</Text>
               </Pressable>
             )}
-            {hiddenBotsOpen || trimmed ? <View style={styles.rows}>{shownHidden.map(renderBot)}</View> : null}
+            {hiddenBotsOpen || trimmed ? <View style={styles.rows}>{hiddenRows}</View> : null}
           </View>
         ) : null}
       </ScrollView>

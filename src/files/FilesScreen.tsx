@@ -6,8 +6,6 @@
  * power on a phone"). Copy follows the dashboard's Files page.
  */
 
-import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -82,12 +80,14 @@ export default function FilesScreen({ root, path, onClose, onOpenDirectory, onOp
   };
 
   const pickFiles = async () => {
+    const DocumentPicker = await import('expo-document-picker');
     const result = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
     if (result.canceled) return;
     await upload(result.assets.map((asset) => ({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType })));
   };
 
   const pickPhotos = async () => {
+    const ImagePicker = await import('expo-image-picker');
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], allowsMultipleSelection: true });
     if (result.canceled) return;
     await upload(result.assets.map((asset) => ({ uri: asset.uri, name: asset.fileName || baseName(asset.uri), mimeType: asset.mimeType })));

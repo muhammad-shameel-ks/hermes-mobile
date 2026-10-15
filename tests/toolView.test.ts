@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildToolView, splitRunItems, summarizeShellCommand, summarizeToolRun } from '../src/chat/toolView.ts';
+import { buildToolView, clipDetail, splitRunItems, summarizeShellCommand, summarizeToolRun, toolDiff, toolFailed } from '../src/chat/toolView.ts';
 import type { ToolPart } from '../src/chat/transcript.ts';
 
 const tool = (over: Partial<ToolPart> & Pick<ToolPart, 'name'>): ToolPart => ({
@@ -107,4 +107,107 @@ test('an untitled tool carries what it touched as a subtitle; titled tools do no
   assert.equal(buildToolView(tool({ name: 'skill_view' })).subtitle, undefined);
   assert.equal(buildToolView(tool({ name: 'read_file', context: 'a.ts', args: { path: '/a.ts' } })).subtitle, undefined);
   assert.equal(buildToolView(tool({ name: 'memory', context: 'note' })).subtitle, undefined);
+});
+
+// ─── render cost: a part is parsed once, and a collapsed row never builds its body ──────────────
+
+const countCalls = <T>(target: object, key: string, run: () => T): { value: T; calls: number } => {
+  const record = target as Record<string, (...args: unknown[]) => unknown>;
+  const original = record[key];
+  let calls = 0;
+  record[key] = (...args: unknown[]) => {
+    calls += 1;
+    return original.apply(target, args);
+  };
+  try {
+    return { value: run(), calls };
+  } finally {
+    record[key] = original;
+  }
+};
+
+const bigResult = () => JSON.stringify({ success: true, results: Array.from({ length: 2000 }, (_, i) => ({ id: i, title: `row ${i}` })) });
+
+test('a part is built into its view once, however many rows mount or summaries re-render', () => {
+  const part = tool({ name: 'web_search', args: { query: 'x' }, result: bigResult() });
+  const first = buildToolView(part);
+  const { calls } = countCalls(JSON, 'parse', () => {
+    for (let i = 0; i < 50; i += 1) {
+      assert.equal(buildToolView(part), first);
+      summarizeToolRun([part, part], false);
+      toolFailed(part);
+      toolDiff(part);
+    }
+  });
+  assert.equal(calls, 0);
+  assert.equal(buildToolView({ ...part }) === first, false);
+});
+
+test('a result is parsed at most once for the whole view', () => {
+  const part = tool({ name: 'web_search', args: { query: 'x' }, result: bigResult() });
+  const { calls } = countCalls(JSON, 'parse', () => buildToolView(part));
+  assert.equal(calls, 1);
+});
+
+test('a collapsed row never pretty-prints its result; the detail is built on read', () => {
+  const part = tool({ name: 'web_search', args: { query: 'x' }, result: bigResult() });
+  const { value: view, calls } = countCalls(JSON, 'stringify', () => {
+    const built = buildToolView(part);
+    assert.equal(built.hasDetail, true);
+    return built;
+  });
+  assert.equal(calls, 0);
+  assert.match(view.detail, /^\{\n {2}"success": true/);
+  assert.equal(view.detailPreview, clipDetail(view.detail));
+  assert.equal(view.detailPreview, view.detailPreview);
+});
+
+test('hasDetail agrees with the detail it stands in for', () => {
+  const diff = '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-a\n+b';
+  const cases: Partial<ToolPart>[] = [
+    { name: 'terminal', status: 'running' },
+    { name: 'terminal', result: '' },
+    { name: 'terminal', result: '   ' },
+    { name: 'terminal', result: JSON.stringify({ exit_code: 0 }) },
+    { name: 'terminal', result: JSON.stringify({ exit_code: 0, output: 'hi' }) },
+    { name: 'terminal', result: JSON.stringify({ stderr: 'warn' }) },
+    { name: 'terminal', result: JSON.stringify({ exit_code: 3 }) },
+    { name: 'read_file', result: JSON.stringify({ content: 'body' }) },
+    { name: 'read_file', result: 'File not found: /x' },
+    { name: 'web_search', resultText: ' shown ' },
+    { name: 'web_search', summary: 'did 3 things' },
+    { name: 'web_search', summary: '' },
+    { name: 'web_search', result: '[1,2]' },
+    { name: 'web_search', result: '{bad' },
+    { name: 'patch', result: JSON.stringify({ success: true, diff }) },
+    { name: 'patch', result: JSON.stringify({ success: true }) },
+    { name: 'execute_code', result: 'Traceback', error: 'NameError' },
+  ];
+  for (const over of cases) {
+    const view = buildToolView(tool(over as Partial<ToolPart> & Pick<ToolPart, 'name'>));
+    assert.equal(view.hasDetail, view.detail !== '', JSON.stringify(over));
+  }
+});
+
+test('clipDetail keeps what a 24-line box shows and stops scanning there', () => {
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n');
+  assert.equal(clipDetail(lines(24)), lines(24));
+  assert.equal(clipDetail(lines(25)), lines(25));
+  // a 26th line exists, so the box still ends in its ellipsis; the lines past it are never handed over
+  assert.equal(clipDetail(lines(500)), lines(25));
+  assert.equal(clipDetail(''), '');
+  assert.equal(clipDetail('x'.repeat(100_000)).length, 8_000);
+  assert.equal(clipDetail('a\n'.repeat(10) + 'y'.repeat(100_000)).length, 8_000);
+  // a cut never lands inside a surrogate pair
+  const emoji = '😀'.repeat(6_000);
+  const clipped = clipDetail(emoji);
+  assert.equal(clipped.length % 2, 0);
+  assert.equal(clipped, emoji.slice(0, clipped.length));
+});
+
+test('clipDetail is bounded by the cut, not by the size of the output', () => {
+  const huge = 'a line of output\n'.repeat(1_000_000);
+  const start = performance.now();
+  for (let i = 0; i < 100; i += 1) clipDetail(huge);
+  assert.ok(performance.now() - start < 50, 'clipping 17MB a hundred times scans only the head');
 });

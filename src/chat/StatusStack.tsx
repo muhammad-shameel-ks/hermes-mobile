@@ -19,9 +19,12 @@ import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { mixPct } from '../ui/color.ts';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { formatElapsed } from './actionBar.ts';
-import type { ChatController, ChatEntry } from './controller.ts';
+import { openEntry } from './chatSlices.ts';
+import type { ChatController, ChatSnapshot } from './controller.ts';
 import { QueuePanel, type QueueActions } from './QueuePanel.tsx';
 import { BrailleSpinner, MicroButton, PendingGlyph, ROW_TEXT, StateDot, StatusRow, StatusSection } from './StatusRows.tsx';
+import { shallowEqual } from './selector.ts';
+import { useChatSelector } from './useChatSelector.ts';
 import {
   groupLabel,
   groupStatusItems,
@@ -48,11 +51,16 @@ const FOLD = { duration: 200, easing: Easing.bezier(0.4, 0, 0.2, 1) };
 
 const GROUP_ICON: Record<StatusGroup['type'], CodiconName> = { goal: 'target', todo: 'checklist', subagent: 'agent', background: 'server-process' };
 
-export function StatusStack({ controller, entry, busy }: { controller: ChatController; entry: ChatEntry; busy: boolean }) {
+const selectStack = (snapshot: ChatSnapshot) => {
+  const { key, stack } = openEntry(snapshot);
+  return { key, stack };
+};
+
+export function StatusStack({ controller, busy }: { controller: ChatController; busy: boolean }) {
   const t = useTokens();
   const { height } = useWindowDimensions();
-  const key = entry.key;
-  const { status, queue, hidden } = entry.stack;
+  const { key, stack } = useChatSelector(controller, selectStack, shallowEqual);
+  const { status, queue, hidden } = stack;
 
   const items = statusItems(status);
   const groups = groupStatusItems(items);

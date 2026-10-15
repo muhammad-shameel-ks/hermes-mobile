@@ -6,7 +6,7 @@
  * turnActivity.ts.
  */
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { mixPct } from '../ui/color.ts';
@@ -19,15 +19,14 @@ import { awaitingInput as isAwaitingInput } from './requests.ts';
 import { useRequests } from './RequestsContext.tsx';
 import type { Message } from './transcript.ts';
 import {
-  activitySignature,
+  createTailStore,
   DRAFTING_REVEAL_MS,
   idleWait,
   parseModelLoadWait,
-  tailParts,
-  tailSlot,
-  toolNarratesWait,
   TURN_QUIET_S,
   waitHint,
+  type TailRender,
+  type TailStore,
   type TurnWait,
 } from './turnActivity.ts';
 
@@ -40,8 +39,34 @@ type Tail = { messages: readonly Message[]; running: boolean; wait: TurnWait };
 /**
  * The open chat's turn state. A context rather than props, so the row inside the
  * tail message follows the turn even when the list does not re-render that row.
+ *
+ * The value should be a `TailStore` (see `useTailStore`): a stable object, so a streamed
+ * delta re-renders nothing here and the row follows only the primitives it paints from.
+ * A bare `Tail` still works but re-renders the row with every change to `messages`.
  */
-export const TurnActivityContext = createContext<Tail>({ messages: [], running: false, wait: idleWait() });
+export const TurnActivityContext = createContext<TailStore | Tail>(createTailStore());
+
+const isStore = (source: TailStore | Tail): source is TailStore => 'getRender' in source;
+
+/** the provider's side: a store that follows the open chat's turn, created once and fed after each commit */
+export function useTailStore(messages: readonly Message[], running: boolean, wait: TurnWait): TailStore {
+  const [store] = useState(() => {
+    const created = createTailStore();
+    created.update(messages, running, wait);
+    return created;
+  });
+  useLayoutEffect(() => store.update(messages, running, wait), [store, messages, running, wait]);
+  return store;
+}
+
+function useTailSource(source: TailStore | Tail): TailStore {
+  return useMemo(() => {
+    if (isStore(source)) return source;
+    const fixed = createTailStore();
+    fixed.update(source.messages, source.running, source.wait);
+    return fixed;
+  }, [source]);
+}
 
 /**
  * Where the row mounts. As on the desktop it belongs to the tail reply, just under
@@ -49,31 +74,38 @@ export const TurnActivityContext = createContext<Tail>({ messages: [], running: 
  * from the list's footer (`footer`, with the rows' inset).
  */
 export function TurnActivity({ placement, inset = 0 }: { placement: 'message' | 'footer'; inset?: number }) {
-  const tail = useContext(TurnActivityContext);
-  const tailIsReply = tail.messages[tail.messages.length - 1]?.role === 'assistant';
-  if (!tail.running || tailIsReply !== (placement === 'message')) return null;
-  return <TailActivity {...tail} inset={inset} />;
+  const store = useTailSource(useContext(TurnActivityContext));
+  const tail = useSyncExternalStore(store.subscribe, store.getRender);
+  if (!tail.running || tail.tailIsReply !== (placement === 'message')) return null;
+  return <TailActivity store={store} tail={tail} inset={inset} />;
 }
 
-function TailActivity({ messages, running, wait, inset }: Tail & { inset: number }) {
+function TailActivity({ store, tail, inset }: { store: TailStore; tail: TailRender; inset: number }) {
+  const { running, wait, narrating, placeholder } = tail;
   // a clarify, approval or prompt is open: the turn is paused on the user, not working
   const awaitingInput = isAwaitingInput(useRequests().requests);
-  const turnStartedAt = useTurnStart(running, messages);
+  const turnStartedAt = useTurnStart(running, store);
   const revealed = useDraftReveal(wait.drafting?.name ?? '');
   const hint = waitHint(wait, revealed);
-  const parts = tailParts(messages);
-  const signature = activitySignature(parts);
-  const narrating = toolNarratesWait(parts);
-  const placeholder = tailSlot(messages) === 'placeholder';
 
-  // the moment the turn last showed something, held once the quiet spell qualifies
+  // the moment the turn last showed something, held once the quiet spell qualifies; the store
+  // rings on each visible step without re-rendering this row, and only the quiet spell does
   const [quietSince, setQuietSince] = useState<number | undefined>(undefined);
   useEffect(() => {
-    setQuietSince(undefined);
-    const seenAt = Date.now();
-    const id = setTimeout(() => setQuietSince(seenAt), TURN_QUIET_S * 1000);
-    return () => clearTimeout(id);
-  }, [signature]);
+    let timer: ReturnType<typeof setTimeout>;
+    const rearm = () => {
+      clearTimeout(timer);
+      setQuietSince(undefined);
+      const seenAt = Date.now();
+      timer = setTimeout(() => setQuietSince(seenAt), TURN_QUIET_S * 1000);
+    };
+    rearm();
+    const off = store.subscribeSignature(rearm);
+    return () => {
+      clearTimeout(timer);
+      off();
+    };
+  }, [store]);
 
   // the user handing the turn back is progress too: the wait after it shows at once, timed from then
   const [handBack, setHandBack] = useState({ awaitingInput, turnStartedAt });
@@ -86,13 +118,12 @@ function TailActivity({ messages, running, wait, inset }: Tail & { inset: number
   const active = running && (placeholder || (!awaitingInput && !narrating && (Boolean(hint) || quietSince !== undefined)));
   // compaction and the pre-first-token wait own the whole turn; any other gap counts from its own mark
   const since = placeholder || wait.compacting ? turnStartedAt : (quietSince ?? wait.drafting?.since ?? turnStartedAt);
-  const elapsed = useElapsedSeconds(active, since);
 
   if (!active) return null;
-  return <ActivityRow hint={hint} elapsed={elapsed} inset={inset} />;
+  return <ActivityRow hint={hint} since={since} inset={inset} />;
 }
 
-function ActivityRow({ hint, elapsed, inset }: { hint: string; elapsed: number; inset: number }) {
+function ActivityRow({ hint, since, inset }: { hint: string; since: number | undefined; inset: number }) {
   const t = useTokens();
   // in the footer the row pads itself like a transcript row; inside the reply the message's gap spaces it
   const footer = inset > 0;
@@ -127,29 +158,33 @@ function ActivityRow({ hint, elapsed, inset }: { hint: string; elapsed: number; 
           ) : null}
         </View>
       ) : null}
-      <Text
-        style={[styles.timer, styles.tabular, { color: mixPct(t.dtMidground, 0.55, 'transparent'), fontSize: t.type.tool * TIMER_SCALE, letterSpacing: t.type.tool * TIMER_SCALE * 0.02 }]}
-      >
-        {formatElapsed(elapsed)}
-      </Text>
+      <Elapsed since={since} />
     </View>
   );
 }
 
+/** the seconds the wait has run: ticking here keeps the once-a-second render off the row and its shimmer */
+function Elapsed({ since }: { since: number | undefined }) {
+  const t = useTokens();
+  const elapsed = useElapsedSeconds(since);
+  return (
+    <Text
+      style={[styles.timer, styles.tabular, { color: mixPct(t.dtMidground, 0.55, 'transparent'), fontSize: t.type.tool * TIMER_SCALE, letterSpacing: t.type.tool * TIMER_SCALE * 0.02 }]}
+    >
+      {formatElapsed(elapsed)}
+    </Text>
+  );
+}
+
 /** epoch ms the open turn began: seeded from its prompt when the chat opens mid-turn, else the moment it started */
-function useTurnStart(running: boolean, messages: readonly Message[]): number | undefined {
-  const [start, setStart] = useState<number | undefined>(() => (running ? promptTime(messages) : undefined));
+function useTurnStart(running: boolean, store: TailStore): number | undefined {
+  const [start, setStart] = useState<number | undefined>(() => (running ? (store.getPromptAt() ?? Date.now()) : undefined));
   const [was, setWas] = useState(running);
   if (was !== running) {
     setWas(running);
     setStart(running ? Date.now() : undefined);
   }
   return start;
-}
-
-function promptTime(messages: readonly Message[]): number {
-  const prompt = [...messages].reverse().find((m) => m.role === 'user');
-  return prompt?.timestamp ? prompt.timestamp * 1000 : Date.now();
 }
 
 /** a drafted tool is named only once it has streamed for DRAFTING_REVEAL_MS */
@@ -163,14 +198,13 @@ function useDraftReveal(name: string): boolean {
   return Boolean(name) && revealed === name;
 }
 
-function useElapsedSeconds(active: boolean, since: number | undefined): number {
+function useElapsedSeconds(since: number | undefined): number {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
-    if (!active) return;
     setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [active, since]);
+  }, [since]);
   return since === undefined ? 0 : Math.max(0, Math.floor((now - since) / 1000));
 }
 

@@ -3,7 +3,7 @@
  * so an old session stays findable (apps/desktop/src/app/chat/sidebar/use-server-session-search.ts `useServerSessionSearch`).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { SessionSearchResult } from './sessionIndex.ts';
 
@@ -13,17 +13,20 @@ export const SEARCH_DEBOUNCE_MS = 200;
 export function useSessionSearch(query: string, search: (query: string) => Promise<SessionSearchResult[]>) {
   const [matches, setMatches] = useState<SessionSearchResult[]>([]);
   const [pending, setPending] = useState(false);
+  // a caller that rebuilds `search` every render must not restart the debounce and refetch each time
+  const searchRef = useRef(search);
+  searchRef.current = search;
 
   useEffect(() => {
     if (!query) {
-      setMatches([]);
+      setMatches((prev) => (prev.length === 0 ? prev : []));
       setPending(false);
       return;
     }
     let cancelled = false;
     setPending(true);
     const timer = setTimeout(() => {
-      search(query)
+      searchRef.current(query)
         .then((results) => {
           if (!cancelled) setMatches(results);
         })
@@ -36,7 +39,7 @@ export function useSessionSearch(query: string, search: (query: string) => Promi
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, search]);
+  }, [query]);
 
   return { matches, pending };
 }

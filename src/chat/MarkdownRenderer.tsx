@@ -9,7 +9,9 @@
  * Keys come from a counter that `reset()` rewinds before every parse, so an
  * element keeps its key from one streaming delta to the next. The base
  * renderer's slugger never rewinds, which would remount the whole reply (and a
- * card's own state) on every token.
+ * card's own state) on every token. Each streamed block (Markdown.tsx) owns its
+ * renderer, so its keys are local to it and a block's key never depends on the
+ * blocks around it.
  */
 
 import type { ReactNode } from 'react';

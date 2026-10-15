@@ -237,13 +237,27 @@ export type LiveEvent = { type: string; payload?: unknown };
 let liveCounter = 0;
 const nextLiveId = () => `live-${Date.now().toString(36)}-${(liveCounter += 1)}`;
 
+/** where a message sits, searched from the tail: the live and the just-sealed messages are the newest */
+function indexOfId(messages: readonly Message[], id: string): number {
+  for (let i = messages.length - 1; i >= 0; i -= 1) if (messages[i].id === id) return i;
+  return -1;
+}
+
+/** only the one message changes identity; an update that changes nothing hands the transcript back as it was */
 function updateMessage(state: Transcript, id: string, update: (message: Message) => Message): Transcript {
-  return { ...state, messages: state.messages.map((message) => (message.id === id ? update(message) : message)) };
+  const index = indexOfId(state.messages, id);
+  if (index < 0) return state;
+  const message = state.messages[index];
+  const next = update(message);
+  if (next === message) return state;
+  const messages = state.messages.slice();
+  messages[index] = next;
+  return { ...state, messages };
 }
 
 /** the live assistant message, opened on demand */
 function ensureLive(state: Transcript): [Transcript, string] {
-  if (state.liveId && state.messages.some((m) => m.id === state.liveId)) return [state, state.liveId];
+  if (state.liveId && indexOfId(state.messages, state.liveId) >= 0) return [state, state.liveId];
   const id = nextLiveId();
   const message: Message = { id, role: 'assistant', parts: [], status: 'streaming', timestamp: Math.floor(Date.now() / 1000) };
   return [{ ...state, messages: [...state.messages, message], liveId: id, breakText: false, running: true }, id];
@@ -252,9 +266,17 @@ function ensureLive(state: Transcript): [Transcript, string] {
 function appendText(parts: Part[], kind: 'text' | 'reasoning', text: string, breakText: boolean): Part[] {
   const last = parts[parts.length - 1];
   if (last && last.kind === kind && !(kind === 'text' && breakText)) {
-    return [...parts.slice(0, -1), { kind, text: last.text + text }];
+    const next = parts.slice();
+    next[next.length - 1] = { kind, text: last.text + text };
+    return next;
   }
   return [...parts, { kind, text }];
+}
+
+/** Array.prototype.findLast without the copy-and-reverse, and without relying on the engine having it */
+export function findLast<T>(items: readonly T[], test: (item: T) => boolean): T | undefined {
+  for (let i = items.length - 1; i >= 0; i -= 1) if (test(items[i])) return items[i];
+  return undefined;
 }
 
 const hasText = (message: Message) => message.parts.some((part) => part.kind === 'text' && part.text.trim() !== '');
@@ -269,7 +291,7 @@ function settle(message: Message, status: MessageStatus): Message {
 
 /** seconds since the turn's prompt was sent, as the desktop stamps a finished turn */
 function turnDuration(state: Transcript): { durationS?: number } {
-  const prompt = [...state.messages].reverse().find((m) => m.role === 'user');
+  const prompt = findLast(state.messages, (m) => m.role === 'user');
   if (!prompt?.timestamp) return {};
   return { durationS: Math.max(1, Math.round(Date.now() / 1000 - prompt.timestamp)) };
 }
@@ -341,9 +363,7 @@ function applyStreamEvent(state: Transcript, type: string, payload: Record<strin
     case 'tool.complete': {
       const toolId = str('tool_id');
       const name = str('name');
-      const target = [...state.messages]
-        .reverse()
-        .find((m) => m.parts.some((p) => p.kind === 'tool' && p.status === 'running' && (toolId ? p.id === toolId : p.name === name)));
+      const target = findLast(state.messages, (m) => m.parts.some((p) => p.kind === 'tool' && p.status === 'running' && (toolId ? p.id === toolId : p.name === name)));
       if (!target) return state;
       return updateMessage(state, target.id, (m) => {
         let done = false;

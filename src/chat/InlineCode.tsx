@@ -6,13 +6,13 @@
  * only its first and last pieces have rounded ends.
  */
 
-import { Fragment } from 'react';
+import { Fragment, memo } from 'react';
 import { Text, View, type TextStyle } from 'react-native';
 
 const RADIUS = 4;
 const PAD = 4;
 
-export function InlineCode({ text, style }: { text: string; style: TextStyle }) {
+function InlineCodeImpl({ text, style }: { text: string; style: TextStyle }) {
   const fontSize = style.fontSize ?? 14;
   const height = Math.round(fontSize * 1.5);
   const backgroundColor = style.backgroundColor;
@@ -51,3 +51,11 @@ export function InlineCode({ text, style }: { text: string; style: TextStyle }) 
     </>
   );
 }
+
+/** the parser hands every codespan a fresh style object each parse, so props are compared by value */
+export const InlineCode = memo(InlineCodeImpl, (before, after) => {
+  if (before.text !== after.text) return false;
+  if (before.style === after.style) return true;
+  const keys = Object.keys(before.style) as (keyof TextStyle)[];
+  return keys.length === Object.keys(after.style).length && keys.every((key) => before.style[key] === after.style[key]);
+});

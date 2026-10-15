@@ -3,6 +3,7 @@
  * 2 px tile, which lands as a checker of 1 px cells in the current colour.
  */
 
+import { memo } from 'react';
 import Svg, { Path } from 'react-native-svg';
 
 const paths = new Map<number, string>();
@@ -18,10 +19,12 @@ function ditherPath(size: number): string {
   return path;
 }
 
-export function Dither({ color, size = 8 }: { color: string; size?: number }) {
+function DitherImpl({ color, size = 8 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} accessibilityElementsHidden importantForAccessibility="no">
       <Path d={ditherPath(size)} fill={color} />
     </Svg>
   );
 }
+
+export const Dither = memo(DitherImpl);

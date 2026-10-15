@@ -5,8 +5,6 @@
  */
 
 import { Directory, File, Paths } from 'expo-file-system';
-import { getContentUriAsync } from 'expo-file-system/legacy';
-import * as IntentLauncher from 'expo-intent-launcher';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
@@ -48,6 +46,8 @@ async function download(release: Release, onProgress: (written: number, total: n
 }
 
 async function install(fileUri: string): Promise<void> {
+  // only an install needs these, and the launch-time update check must not load them
+  const [{ getContentUriAsync }, IntentLauncher] = await Promise.all([import('expo-file-system/legacy'), import('expo-intent-launcher')]);
   const contentUri = await getContentUriAsync(fileUri);
   await IntentLauncher.startActivityAsync('android.intent.action.VIEW', { data: contentUri, type: APK_MIME, flags: GRANT_READ_URI });
 }

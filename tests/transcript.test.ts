@@ -182,3 +182,78 @@ test('a finished live turn is stamped with how long it ran', () => {
   const duration = done.messages[1].durationS;
   assert.ok(duration !== undefined && duration >= 12 && duration <= 14);
 });
+
+// ─── cost of a streamed delta ────────────────────────────────────────────────
+
+function longTranscript(count: number): Transcript {
+  const messages = fromHistory(
+    Array.from({ length: count }, (_, i) => [
+      { role: 'user' as const, content: `question ${i}`, id: i * 2 + 1 },
+      { role: 'assistant' as const, content: `answer ${i}`, id: i * 2 + 2 },
+    ]).flat(),
+  );
+  return { ...emptyTranscript(), messages };
+}
+
+test('a delta replaces only the live message: every other message and part keeps its identity', () => {
+  const settled = longTranscript(50);
+  const started = applyEvent(settled, { type: 'message.start', payload: {} });
+  const first = applyEvent(started, { type: 'reasoning.delta', payload: { text: 'hmm' } });
+  const second = applyEvent(first, { type: 'message.delta', payload: { text: 'Hel' } });
+  const third = applyEvent(second, { type: 'message.delta', payload: { text: 'lo' } });
+
+  settled.messages.forEach((message, i) => assert.equal(third.messages[i], message, `message ${i} is the same object`));
+  const live = third.messages.at(-1)!;
+  assert.deepEqual(live.parts, [
+    { kind: 'reasoning', text: 'hmm' },
+    { kind: 'text', text: 'Hello' },
+  ]);
+  // a text delta leaves the reasoning part it did not touch alone
+  assert.equal(third.messages.at(-1)!.parts[0], second.messages.at(-1)!.parts[0]);
+  // and the transcript a delta was applied to is never mutated
+  assert.deepEqual(second.messages.at(-1)!.parts[1], { kind: 'text', text: 'Hel' });
+});
+
+test('a delta looks at the live message, not at the transcript: the work does not grow with its length', () => {
+  const reads = { count: 0 };
+  const counted = (message: Transcript['messages'][number]) =>
+    new Proxy(message, {
+      get(target, key, receiver) {
+        if (key === 'id') reads.count += 1;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+  const base = longTranscript(2_000);
+  let state: Transcript = { ...base, messages: base.messages.map(counted) };
+  state = applyEvent(state, { type: 'message.start', payload: {} });
+  reads.count = 0;
+  for (let i = 0; i < 500; i += 1) state = applyEvent(state, { type: 'message.delta', payload: { text: 'x' } });
+  assert.equal(reads.count, 0, 'no settled message is ever inspected while the live one streams');
+  const live = state.messages.at(-1)!;
+  assert.equal(live.parts[0].kind === 'text' && live.parts[0].text.length, 500);
+});
+
+test('an event that changes nothing hands the same transcript back', () => {
+  const streaming = play([
+    { type: 'message.start', payload: {} },
+    { type: 'reasoning.available', payload: { text: 'already thinking' } },
+  ]);
+  assert.equal(applyEvent(streaming, { type: 'message.delta', payload: { text: '' } }), streaming);
+  assert.equal(applyEvent(streaming, { type: 'reasoning.available', payload: { text: 'again' } }), streaming);
+  assert.equal(applyEvent(streaming, { type: 'status.update', payload: { kind: 'unrelated' } }), streaming);
+});
+
+test('a tool result lands on the newest matching running call without touching older messages', () => {
+  const before = longTranscript(20);
+  const state = play(
+    [
+      { type: 'message.start', payload: {} },
+      { type: 'tool.start', payload: { tool_id: 't1', name: 'terminal', context: 'ls' } },
+      { type: 'tool.complete', payload: { tool_id: 't1', name: 'terminal', result_text: 'ok' } },
+    ],
+    before,
+  );
+  before.messages.forEach((message, i) => assert.equal(state.messages[i], message));
+  const tool = state.messages.at(-1)!.parts[0];
+  assert.equal(tool.kind === 'tool' && tool.status, 'done');
+});

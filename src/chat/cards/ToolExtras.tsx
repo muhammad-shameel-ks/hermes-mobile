@@ -5,6 +5,7 @@
  * title. MessageView's ToolRow mounts these; everything else stays its own.
  */
 
+import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { MONO, useTokens } from '../../ui/tokens.ts';
@@ -18,7 +19,7 @@ const COUNT_COLORS = {
   remove: { light: '#e11d48', dark: '#fb7185' },
 } as const;
 
-export function ToolDiffStats({ view }: { view: ToolView }) {
+export const ToolDiffStats = memo(function ToolDiffStats({ view }: { view: ToolView }) {
   const t = useTokens();
   const stats = view.diffStats;
   if (view.status === 'running' || !stats || (stats.added === 0 && stats.removed === 0)) return null;
@@ -28,9 +29,9 @@ export function ToolDiffStats({ view }: { view: ToolView }) {
       {stats.removed > 0 ? <Text style={[styles.count, { color: COUNT_COLORS.remove[t.renderedMode] }]}>{`−${stats.removed}`}</Text> : null}
     </View>
   );
-}
+});
 
-export function ToolExtras({ view }: { view: ToolView }) {
+export const ToolExtras = memo(function ToolExtras({ view }: { view: ToolView }) {
   const t = useTokens();
   if (!view.imageUrl && !view.inlineDiff) return null;
   return (
@@ -47,7 +48,7 @@ export function ToolExtras({ view }: { view: ToolView }) {
       ) : null}
     </>
   );
-}
+});
 
 const styles = StyleSheet.create({
   stats: { flexDirection: 'row', gap: 4 },

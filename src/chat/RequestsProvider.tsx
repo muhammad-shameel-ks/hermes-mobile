@@ -6,13 +6,26 @@
 import { useMemo, type ReactNode } from 'react';
 
 import { outcome } from '../ui/haptics.ts';
-import type { ChatController, ChatEntry } from './controller.ts';
+import { openEntry } from './chatSlices.ts';
+import type { ChatController, ChatSnapshot } from './controller.ts';
 import { PromptSheet } from './PromptSheet.tsx';
 import { RequestsContext, type RequestActions } from './RequestsContext.tsx';
 import { approvalActivity } from './requests.ts';
+import { shallowEqualArray } from './selector.ts';
+import { useChatSelector } from './useChatSelector.ts';
 
-export function RequestsProvider({ controller, entry, children }: { controller: ChatController; entry: ChatEntry; children: ReactNode }) {
-  const { key } = entry;
+const selectKey = (snapshot: ChatSnapshot) => openEntry(snapshot).key;
+const selectRequests = (snapshot: ChatSnapshot) => openEntry(snapshot).requests;
+const selectActivity = (snapshot: ChatSnapshot) => approvalActivity(openEntry(snapshot).transcript.messages);
+
+/**
+ * Subscribes to the open chat's requests itself, so a token landing in its transcript does not move the
+ * context value: `activity` is a fresh array per read but equal item-for-item until a terminal or code call changes.
+ */
+export function RequestsProvider({ controller, children }: { controller: ChatController; children: ReactNode }) {
+  const key = useChatSelector(controller, selectKey);
+  const requests = useChatSelector(controller, selectRequests);
+  const activity = useChatSelector(controller, selectActivity, shallowEqualArray);
   const router = controller.serverRequests;
 
   const actions = useMemo<RequestActions>(
@@ -38,9 +51,7 @@ export function RequestsProvider({ controller, entry, children }: { controller: 
     [router, key],
   );
 
-  const { messages } = entry.transcript;
-  const activity = useMemo(() => approvalActivity(messages), [messages]);
-  const value = useMemo(() => ({ requests: entry.requests, actions, activity }), [entry.requests, actions, activity]);
+  const value = useMemo(() => ({ requests, actions, activity }), [requests, actions, activity]);
 
   return (
     <RequestsContext.Provider value={value}>
