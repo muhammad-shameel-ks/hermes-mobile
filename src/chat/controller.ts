@@ -53,6 +53,8 @@ import {
   type HistoryState,
   type MessagesPage,
 } from './history.ts';
+import { nextFinishedAway } from '../drawer/sessionStatus.ts';
+import { emptySessions, SessionsFeed, type SessionsState } from '../drawer/sessionsFeed.ts';
 import { applyReaction } from './actionBar.ts';
 import { ATTACH_WHILE_RUNNING, bubbleText, detachImages, promptText, stageAttachments, type AttachRpc, type ComposerAttachment } from './attachments.ts';
 import { normalizePersonality } from './intro.ts';
@@ -92,12 +94,9 @@ import {
 } from './transcript.ts';
 
 export const DRAFT_KEY = FRESH_DRAFT_KEY;
-const SESSION_LIST_LIMIT = 60;
 /** the notice a replay gap leaves where the transcript was reloaded from saved history */
 export const REPLAY_GAP_NOTICE = 'Some updates were missed while the connection was down. The conversation was reloaded from its saved history.';
 const PROMPT_TIMEOUT_MS = 1_800_000;
-/** desktop `use-session-list-actions.ts`: sources that never list as conversations */
-const UNLISTED_SOURCES = new Set(['acp', 'cron', 'kanban', 'oneshot', 'subagent', 'tool']);
 
 export type SessionInfo = {
   id: string;
@@ -109,6 +108,20 @@ export type SessionInfo = {
   pinned?: boolean;
   source?: string | null;
   profile?: string | null;
+  /** the backend's read watermark: activity postdates the last time it was opened */
+  unread?: boolean;
+  model?: string | null;
+  cwd?: string | null;
+  git_branch?: string | null;
+  /** the original root of a compression chain: stable across compressions */
+  _lineage_root_id?: string | null;
+  /** `'compression'`: this row continues a sealed earlier segment, it is not a fresh conversation */
+  continuation_kind?: 'compression';
+  parent_session_id?: string | null;
+  /** predecessor of a /new or idle reset: a sibling, never a fork */
+  _reset_from?: string | null;
+  /** parent of a genuine /branch fork: the only nesting */
+  _branched_from?: string | null;
 };
 
 export type ChatEntry = {
@@ -151,7 +164,9 @@ export type ChatSnapshot = {
   profile: string;
   openKey: string;
   entries: Record<string, ChatEntry>;
-  sessions: { items: SessionInfo[]; loading: boolean; error: string | null };
+  sessions: SessionsState;
+  /** sessions whose turn finished while another chat was on screen, until the reader opens them: the list's unread dot */
+  finishedAway: Readonly<Record<string, true>>;
   roster: Roster & { loaded: boolean; loading: boolean; error: string | null };
   /** a bot whose chat is being looked up or created */
   openingBot: string | null;
@@ -181,8 +196,6 @@ export type BotDraft = { label: string; description: string };
 export type NewBotLook = { shape: string; color: string | null; image: string | null };
 
 type Rpc = <M extends keyof RpcMethods>(method: M, params: RpcMethods[M]['params'], timeoutMs?: number) => Promise<RpcMethods[M]['result']>;
-
-const listable = (session: SessionInfo) => !UNLISTED_SOURCES.has((session.source ?? '').toLowerCase());
 
 const newEntry = (key: string, profile: string, extra: Partial<ChatEntry> = {}): ChatEntry => ({
   key,
@@ -233,6 +246,7 @@ export class ChatController {
   private creatingBot: Promise<boolean> | null = null;
   readonly queue: QueueDriver;
   readonly status: StatusSync;
+  private readonly sessionsFeed: SessionsFeed;
   /** where queued prompts and the folded choice survive an app kill; set by the app shell */
   stackStore: StackStore | null = null;
   /** the gateway's approval, clarify and prompt requests, parked into each chat's `requests` */
@@ -258,12 +272,18 @@ export class ChatController {
       online: () => this.link.current.kind === 'open',
       notify: (text) => this.notify(text),
     });
+    this.sessionsFeed = new SessionsFeed(api, {
+      profile: () => this.snapshot.profile,
+      get: () => this.snapshot.sessions,
+      set: (sessions) => this.set({ sessions }),
+    });
     this.snapshot = {
       link: link.current,
       profile: initialProfile,
       openKey: DRAFT_KEY,
       entries: { [DRAFT_KEY]: newEntry(DRAFT_KEY, initialProfile) },
-      sessions: { items: [], loading: false, error: null },
+      sessions: emptySessions(),
+      finishedAway: {},
       roster: { visible: [], hidden: [], loaded: false, loading: false, error: null },
       openingBot: null,
       notice: null,
@@ -335,6 +355,8 @@ export class ChatController {
   private set(patch: Partial<ChatSnapshot>) {
     const before = this.snapshot.entries;
     this.snapshot = { ...this.snapshot, ...patch };
+    const finishedAway = nextFinishedAway(this.snapshot.finishedAway, before, this.snapshot.entries, this.snapshot.openKey);
+    if (finishedAway !== this.snapshot.finishedAway) this.snapshot = { ...this.snapshot, finishedAway };
     for (const cwd of startedTurnCwds(before, this.snapshot.entries)) void noteTurnStart(cwd, this.api);
     for (const listener of this.listeners) listener();
     // the queue drains whenever its session is idle, not only on the edge a turn ends
@@ -493,12 +515,7 @@ export class ChatController {
   private retitle(storedId: string, title: string) {
     const entry = this.entry(storedId);
     if (entry) this.putEntry({ ...entry, title });
-    this.set({
-      sessions: {
-        ...this.snapshot.sessions,
-        items: this.snapshot.sessions.items.map((s) => (s.id === storedId ? { ...s, title } : s)),
-      },
-    });
+    this.sessionsFeed.retitle(storedId, title);
   }
 
   private scheduleListRefresh() {
@@ -512,22 +529,23 @@ export class ChatController {
 
   // ─── drawer data ───────────────────────────────────────────────────────────
 
-  async refreshSessions() {
-    const profile = this.snapshot.profile;
-    this.set({ sessions: { ...this.snapshot.sessions, loading: true } });
-    try {
-      const result = await this.api.get<{ sessions?: SessionInfo[] }>('/api/sessions', {
-        limit: SESSION_LIST_LIMIT,
-        offset: 0,
-        archived: 'exclude',
-        order: 'recent',
-        profile,
-      });
-      if (profile !== this.snapshot.profile) return;
-      this.set({ sessions: { items: (result?.sessions ?? []).filter(listable), loading: false, error: null } });
-    } catch (error) {
-      this.set({ sessions: { ...this.snapshot.sessions, loading: false, error: errorText(error) } });
-    }
+  refreshSessions() {
+    return this.sessionsFeed.refresh();
+  }
+
+  /** the list's "Load more": the recents window widens by a page */
+  loadMoreSessions() {
+    return this.sessionsFeed.loadMore();
+  }
+
+  /** the platform sections' "Load more" once their rows run past the messaging window */
+  loadMoreMessaging() {
+    return this.sessionsFeed.loadMoreMessaging();
+  }
+
+  /** the drawer's full-text search, over every session of the active profile */
+  searchSessions(query: string) {
+    return this.sessionsFeed.search(query);
   }
 
   async refreshRoster() {
@@ -577,7 +595,8 @@ export class ChatController {
 
   private setProfile(profile: string) {
     if (profile === this.snapshot.profile) return;
-    this.set({ profile, sessions: { items: [], loading: true, error: null }, personality: '', defaultEffort: null });
+    this.set({ profile, personality: '', defaultEffort: null });
+    this.sessionsFeed.reset();
     void this.refreshSessions();
     void this.refreshModels();
     void this.refreshPersonality();

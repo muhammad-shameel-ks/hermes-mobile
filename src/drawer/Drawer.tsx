@@ -1,38 +1,38 @@
 /**
- * The slide-over drawer (issue "App shell and navigation on a phone"): opened only
- * by the app-bar button, closed by the scrim, back, or picking a row. A SESSIONS |
- * BOTS switch over the two lists, and a footer of chips for the connection, the
- * active profile and signing out.
+ * The slide-over drawer (issue "App shell and navigation on a phone"): opened only by the app-bar
+ * button, closed by the scrim, back, or picking a row. A SESSIONS | BOTS tab strip over the two lists
+ * and a footer of chips for the connection, the active profile, Settings and signing out. The lists
+ * live in SessionsPane and BotsPane; the desktop sidebar's geometry in rowGeometry.ts.
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { useEffect, useState } from 'react';
+import { BackHandler, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
 
-import { useOverlay } from '../app/overlay.tsx';
-import { BotAvatar } from '../bots/BotAvatar.tsx';
-import { faceMood } from '../bots/face.ts';
-import { compactAge, filterBots, type Bot } from '../bots/roster.ts';
+import type { Bot } from '../bots/roster.ts';
 import type { ChatSnapshot, SessionInfo } from '../chat/controller.ts';
-import { openFiles } from '../files/open.tsx';
-import type { LinkState } from '../gateway/link.ts';
-import { Codicon } from '../ui/Codicon.tsx';
-import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
-import { useDrawerRoutes } from './useDrawerRoutes.tsx';
-import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
+import { mixPct } from '../ui/color.ts';
+import { tick } from '../ui/haptics.ts';
+import { useTokens } from '../ui/tokens.ts';
+import { BotsPane } from './BotsPane.tsx';
+import { Footer } from './Footer.tsx';
+import { SessionsPane, type SessionsListApi } from './SessionsPane.tsx';
 
 export type DrawerTab = 'sessions' | 'bots';
+export type { SessionsListApi };
 
 type Props = {
   open: boolean;
   onClose: () => void;
   snapshot: ChatSnapshot;
   connectionLabel: string;
+  /** the connection's base URL, which picks its glyph */
+  connectionUrl: string;
   profileLabel: string;
   tab: DrawerTab;
   onTab: (tab: DrawerTab) => void;
+  list: SessionsListApi;
   onNewSession: () => void;
   onOpenSession: (session: SessionInfo) => void;
   onSessionActions: (session: SessionInfo) => void;
@@ -46,6 +46,10 @@ type Props = {
 };
 
 const DURATION = 220;
+const TABS: Array<{ value: DrawerTab; label: string }> = [
+  { value: 'sessions', label: 'Sessions' },
+  { value: 'bots', label: 'Bots' },
+];
 
 export default function Drawer(props: Props) {
   const { open, onClose } = props;
@@ -77,6 +81,9 @@ export default function Drawer(props: Props) {
 
   if (!mounted) return null;
 
+  // `--sidebar-edge-border`: the foreground at 7.5% (12% dark), the sidebar's one edge line
+  const edge = mixPct(t.uiBase, t.renderedMode === 'dark' ? 0.12 : 0.075, 'transparent');
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents={open ? 'auto' : 'none'}>
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: t.scrim }, scrimStyle]}>
@@ -85,41 +92,74 @@ export default function Drawer(props: Props) {
       <Animated.View
         style={[
           styles.panel,
-          {
-            width,
-            backgroundColor: t.uiBgSidebar,
-            borderRightColor: t.uiStrokeSecondary,
-            paddingTop: insets.top + 10,
-            paddingBottom: insets.bottom + 8,
-          },
+          { width, backgroundColor: t.uiBgSidebar, borderRightColor: edge, paddingTop: insets.top + 4, paddingBottom: insets.bottom + 4 },
           panelStyle,
         ]}
         accessibilityViewIsModal
       >
-        <Segmented t={t} tab={props.tab} onTab={props.onTab} />
-        {props.tab === 'sessions' ? <SessionsPane {...props} t={t} /> : <BotsPane {...props} t={t} />}
-        <Footer t={t} link={props.snapshot.link} connectionLabel={props.connectionLabel} profileLabel={props.profileLabel} onProfileChip={props.onProfileChip} onSignOut={props.onSignOut} onClose={onClose} />
+        <TabStrip tab={props.tab} onTab={props.onTab} />
+        {props.tab === 'sessions' ? (
+          <SessionsPane
+            snapshot={props.snapshot}
+            list={props.list}
+            onClose={onClose}
+            onNewSession={props.onNewSession}
+            onOpenSession={props.onOpenSession}
+            onSessionActions={props.onSessionActions}
+          />
+        ) : (
+          <BotsPane
+            snapshot={props.snapshot}
+            onOpenBot={props.onOpenBot}
+            onBotActions={props.onBotActions}
+            onNewBot={props.onNewBot}
+            onRetryRoster={props.onRetryRoster}
+            loadImage={props.loadImage}
+          />
+        )}
+        <Footer
+          link={props.snapshot.link}
+          connectionLabel={props.connectionLabel}
+          connectionUrl={props.connectionUrl}
+          profileName={props.snapshot.profile}
+          profileLabel={props.profileLabel}
+          onProfileChip={props.onProfileChip}
+          onSignOut={props.onSignOut}
+          onClose={onClose}
+        />
       </Animated.View>
     </View>
   );
 }
 
-function Segmented({ t, tab, onTab }: { t: Tokens; tab: DrawerTab; onTab: (tab: DrawerTab) => void }) {
+/**
+ * The zone's tab strip (components/ui/pane-tab.tsx `PaneTabStrip`): tabs on the sidebar surface, the
+ * active one in the foreground with a 2 px underline in the skin's primary, the label 0.6875rem medium
+ * uppercase at the wide tracking. Parity deviation (touch): 40dp, not 28.
+ */
+function TabStrip({ tab, onTab }: { tab: DrawerTab; onTab: (tab: DrawerTab) => void }) {
+  const t = useTokens();
   return (
-    <View style={[styles.segmented, { borderColor: t.uiStrokeSecondary, borderRadius: t.radius['3xl'] }]} accessibilityRole="tablist">
-      {(['sessions', 'bots'] as const).map((value) => {
+    <View style={styles.strip} accessibilityRole="tablist">
+      {TABS.map(({ value, label }, index) => {
         const active = value === tab;
         return (
           <Pressable
             key={value}
-            onPress={() => onTab(value)}
+            onPress={() => {
+              if (!active) tick();
+              onTab(value);
+            }}
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
-            style={[styles.segment, active && { backgroundColor: t.uiRowActiveBackground, borderRadius: t.radius['2xl'] }]}
+            style={({ pressed }) => [
+              styles.tab,
+              index > 0 && { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: t.uiStrokeQuaternary },
+              pressed && !active && { backgroundColor: t.uiControlHoverBackground },
+            ]}
           >
-            <Text style={{ color: active ? t.uiTextPrimary : t.uiTextTertiary, fontSize: 11, fontWeight: '600', letterSpacing: 0.6 }}>
-              {value === 'sessions' ? 'SESSIONS' : 'BOTS'}
-            </Text>
+            <Text style={[styles.tabLabel, { color: active ? t.dtForeground : t.uiTextTertiary }]}>{label}</Text>
+            {active ? <View pointerEvents="none" style={[styles.underline, { backgroundColor: t.uiAccentSecondary }]} /> : null}
           </Pressable>
         );
       })}
@@ -127,333 +167,10 @@ function Segmented({ t, tab, onTab }: { t: Tokens; tab: DrawerTab; onTab: (tab: 
   );
 }
 
-function SearchField({ t, value, onChange, placeholder }: { t: Tokens; value: string; onChange: (v: string) => void; placeholder: string }) {
-  return (
-    <View style={[styles.search, { backgroundColor: t.uiBgTertiary, borderRadius: t.radius['2xl'] }]}>
-      <Svg width={13} height={13} viewBox="0 0 16 16">
-        <Path d="M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10Zm3.6-1.4L14 14" stroke={t.uiTextQuaternary} strokeWidth={1.6} fill="none" strokeLinecap="round" />
-      </Svg>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={t.uiTextQuaternary}
-        style={[styles.searchInput, { color: t.uiTextPrimary }]}
-        autoCorrect={false}
-        autoCapitalize="none"
-        clearButtonMode="while-editing"
-        accessibilityLabel={placeholder}
-      />
-    </View>
-  );
-}
-
-function SectionLabel({ t, children }: { t: Tokens; children: string }) {
-  return <Text style={[styles.section, { color: t.uiTextQuaternary }]}>{children}</Text>;
-}
-
-function NavRow({ t, label, onPress, icon }: { t: Tokens; label: string; onPress: () => void; icon: React.ReactNode }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [styles.row, { borderRadius: t.radius.md }, pressed && { backgroundColor: t.uiRowActiveBackground }]}
-    >
-      <View style={styles.lead}>{icon}</View>
-      <Text style={{ color: t.uiTextSecondary, fontSize: 13 }}>{label}</Text>
-    </Pressable>
-  );
-}
-
-const sessionTime = (s: SessionInfo) => s.last_active || s.started_at;
-
-function SessionsPane({ t, snapshot, onClose, onNewSession, onOpenSession, onSessionActions }: Props & { t: Tokens }) {
-  const overlay = useOverlay();
-  const [query, setQuery] = useState('');
-  const routes = useDrawerRoutes(onClose);
-  const now = Math.floor(Date.now() / 1000);
-  const { items, loading, error } = snapshot.sessions;
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? items.filter((s) => `${s.title ?? ''} ${s.preview ?? ''}`.toLowerCase().includes(q)) : items;
-  }, [items, query]);
-  const pinned = filtered.filter((s) => s.pinned);
-  const rest = filtered.filter((s) => !s.pinned);
-
-  const row = (session: SessionInfo) => {
-    const active = snapshot.openKey === session.id;
-    const running = snapshot.entries[session.id]?.transcript.running === true;
-    return (
-      <Pressable
-        key={session.id}
-        onPress={() => onOpenSession(session)}
-        onLongPress={() => onSessionActions(session)}
-        delayLongPress={350}
-        accessibilityRole="button"
-        accessibilityHint="Long press for more actions"
-        accessibilityState={{ selected: active }}
-        style={({ pressed }) => [
-          styles.row,
-          { borderRadius: t.radius.md },
-          (active || pressed) && { backgroundColor: t.uiRowActiveBackground },
-        ]}
-      >
-        <View style={styles.lead}>
-          <View style={[styles.dot, { backgroundColor: running ? t.uiAccent : active ? t.uiTextTertiary : t.uiStrokePrimary }]} />
-        </View>
-        <Text numberOfLines={1} style={{ flex: 1, color: active ? t.uiTextPrimary : t.uiTextSecondary, fontSize: 13 }}>
-          {session.title || session.preview || 'Untitled session'}
-        </Text>
-        <Text style={{ color: t.uiTextTertiary, fontSize: 10, marginLeft: 6 }}>{compactAge(sessionTime(session), now)}</Text>
-      </Pressable>
-    );
-  };
-
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-      <NavRow
-        t={t}
-        label="New session"
-        onPress={onNewSession}
-        icon={
-          <Svg width={14} height={14} viewBox="0 0 14 14">
-            <Path d="M7 2.5v9M2.5 7h9" stroke={t.uiTextSecondary} strokeWidth={1.5} strokeLinecap="round" />
-          </Svg>
-        }
-      />
-      <NavRow
-        t={t}
-        label="Files"
-        onPress={() => {
-          onClose();
-          openFiles(overlay);
-        }}
-        icon={<Codicon name="folder" size={14} color={t.uiTextSecondary} />}
-      />
-      <NavRow t={t} label="Capabilities" onPress={routes.openCapabilities} icon={<Codicon name="tools" size={14} color={t.uiTextSecondary} />} />
-      <SearchField t={t} value={query} onChange={setQuery} placeholder="Search sessions…" />
-      {pinned.length ? <SectionLabel t={t}>PINNED</SectionLabel> : null}
-      {pinned.map(row)}
-      <SectionLabel t={t}>SESSIONS</SectionLabel>
-      {rest.map(row)}
-      {!loading && !error && filtered.length === 0 ? (
-        <Text style={[styles.emptyText, { color: t.uiTextTertiary }]}>{query ? 'No sessions match.' : 'No sessions yet.'}</Text>
-      ) : null}
-      {error ? <Text style={[styles.emptyText, { color: t.dtDestructive }]}>{error}</Text> : null}
-    </ScrollView>
-  );
-}
-
-function BotRow({
-  t,
-  bot,
-  now,
-  selected,
-  opening,
-  thinking,
-  onPress,
-  onLongPress,
-  loadImage,
-}: {
-  t: Tokens;
-  bot: Bot;
-  now: number;
-  selected: boolean;
-  opening: boolean;
-  thinking: boolean;
-  onPress: () => void;
-  onLongPress: () => void;
-  loadImage: (name: string) => Promise<string | null>;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={350}
-      accessibilityRole="button"
-      accessibilityHint="Long press for more actions"
-      accessibilityState={{ selected }}
-      style={({ pressed }) => [styles.botRow, { borderRadius: t.radius['2xl'] }, (selected || pressed) && { backgroundColor: t.uiRowActiveBackground }]}
-    >
-      <View>
-        <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={34} loadImage={loadImage} mood={faceMood(thinking, bot.working)} />
-        {bot.active ? <View style={[styles.activeDot, { backgroundColor: t.uiSuccess, borderColor: t.uiBgSidebar }]} /> : null}
-      </View>
-      <View style={styles.botText}>
-        <View style={styles.botTitleLine}>
-          <Text numberOfLines={1} style={{ flex: 1, color: t.uiTextPrimary, fontSize: 13, fontWeight: '600' }}>
-            {bot.label}
-          </Text>
-          {bot.pinned ? (
-            <Svg width={10} height={10} viewBox="0 0 16 16" style={{ marginRight: 4 }}>
-              <Path d="M9.5 1.5 14.5 6.5 12 7.3 9 10.3 9.5 13.5 2.5 6.5 5.7 7 8.7 4Z" fill={t.uiTextQuaternary} />
-            </Svg>
-          ) : null}
-          {opening ? <GlyphSpinner size={14} color={t.uiTextSecondary} style={styles.rowSpinner} label="Opening chat…" /> : null}
-          <Text style={{ color: t.uiTextTertiary, fontSize: 10 }}>{compactAge(bot.lastActive, now)}</Text>
-        </View>
-        <Text numberOfLines={1} style={{ color: t.uiTextTertiary, fontSize: 12, marginTop: 2 }}>
-          {bot.preview || bot.description || 'No messages yet'}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function BotsPane({ t, snapshot, onOpenBot, onBotActions, onNewBot, onRetryRoster, loadImage }: Props & { t: Tokens }) {
-  const [query, setQuery] = useState('');
-  const [showHidden, setShowHidden] = useState(false);
-  const now = Math.floor(Date.now() / 1000);
-  const { visible, hidden, loaded, error } = snapshot.roster;
-  const shown = filterBots(visible, query);
-  const shownHidden = filterBots(hidden, query);
-  const selectedBot = snapshot.entries[snapshot.openKey]?.isBotChat ? snapshot.entries[snapshot.openKey]?.bot : null;
-  const thinkingBot = selectedBot && snapshot.entries[snapshot.openKey].transcript.running ? selectedBot : null;
-  const gatewayUp = snapshot.link.kind === 'open';
-  const empty = visible.length === 0 && hidden.length === 0;
-
-  const renderBot = (bot: Bot) => (
-    <BotRow
-      key={bot.name}
-      t={t}
-      bot={bot}
-      now={now}
-      selected={bot.name === selectedBot}
-      opening={bot.name === snapshot.openingBot}
-      thinking={bot.name === thinkingBot}
-      onPress={() => onOpenBot(bot)}
-      onLongPress={() => onBotActions(bot)}
-      loadImage={loadImage}
-    />
-  );
-
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-      <View style={styles.botsHeader}>
-        <View style={{ flex: 1 }}>
-          <SearchField t={t} value={query} onChange={setQuery} placeholder="Search bots…" />
-        </View>
-        <Pressable
-          onPress={onNewBot}
-          accessibilityRole="button"
-          accessibilityLabel="New bot"
-          hitSlop={6}
-          style={({ pressed }) => [styles.plus, { backgroundColor: t.uiBgTertiary, borderRadius: t.radius['2xl'] }, pressed && { opacity: 0.6 }]}
-        >
-          <Svg width={14} height={14} viewBox="0 0 14 14">
-            <Path d="M7 2.5v9M2.5 7h9" stroke={t.uiTextSecondary} strokeWidth={1.6} strokeLinecap="round" />
-          </Svg>
-        </Pressable>
-      </View>
-      {error && !empty ? (
-        <View style={[styles.stale, { backgroundColor: t.uiRowActiveBackground, borderRadius: t.radius['2xl'] }]} accessibilityLiveRegion="polite">
-          <Text style={{ flex: 1, color: t.uiTextTertiary, fontSize: 11, lineHeight: 15 }}>
-            {`Roster refresh failed — showing the last good list.${gatewayUp ? '' : ' Waiting for the gateway to reconnect…'}`}
-          </Text>
-          <Pressable onPress={onRetryRoster} hitSlop={8} accessibilityRole="button">
-            <Text style={{ color: t.uiAccent, fontSize: 11, fontWeight: '600' }}>Retry now</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {empty && !loaded && !error ? <GlyphSpinner size={14} color={t.uiTextTertiary} style={styles.rosterEmpty} /> : null}
-      {error && empty ? (
-        <View style={styles.rosterUnavailable}>
-          <Text style={{ color: t.uiTextTertiary, fontSize: 12, lineHeight: 17 }}>
-            {gatewayUp
-              ? `Roster unavailable: ${error}. If your gateway predates profiles.list, update Hermes and restart the gateway.`
-              : 'Waiting for the gateway connection… (remote gateways can take a few seconds; retries automatically)'}
-          </Text>
-          <Pressable
-            onPress={onRetryRoster}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.retry, { backgroundColor: t.uiBgSecondary, borderRadius: t.radius['2xl'] }, pressed && { opacity: 0.6 }]}
-          >
-            <Text style={{ color: t.uiTextSecondary, fontSize: 12 }}>Retry now</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {shown.map(renderBot)}
-      {loaded && !error && empty ? (
-        <View style={styles.rosterEmpty}>
-          <Text style={{ color: t.uiTextSecondary, fontSize: 13, fontWeight: '600' }}>No bots yet</Text>
-          <Text style={{ color: t.uiTextTertiary, fontSize: 12, marginTop: 4 }}>Create your first bot.</Text>
-        </View>
-      ) : null}
-      {loaded && query && shown.length === 0 && shownHidden.length === 0 ? (
-        <Text style={[styles.emptyText, { color: t.uiTextTertiary }]}>No bots match.</Text>
-      ) : null}
-      {shownHidden.length ? (
-        <>
-          <Pressable
-            onPress={() => setShowHidden((v) => !v)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: showHidden }}
-            style={styles.hiddenToggle}
-          >
-            <Text style={{ color: t.uiTextTertiary, fontSize: 11, width: 12 }}>{showHidden ? '▾' : '▸'}</Text>
-            <Text style={{ color: t.uiTextTertiary, fontSize: 12 }}>{`Show hidden bots (${shownHidden.length})`}</Text>
-          </Pressable>
-          {showHidden ? shownHidden.map(renderBot) : null}
-        </>
-      ) : null}
-    </ScrollView>
-  );
-}
-
-function Footer({ t, link, connectionLabel, profileLabel, onProfileChip, onSignOut, onClose }: { t: Tokens; link: LinkState; connectionLabel: string; profileLabel: string; onProfileChip: () => void; onSignOut: () => void; onClose: () => void }) {
-  const healthy = link.kind === 'open';
-  const routes = useDrawerRoutes(onClose);
-  const chip = [styles.chip, { backgroundColor: t.uiBgSecondary, borderRadius: t.radius['2xl'] }];
-  return (
-    <View style={[styles.footer, { borderTopColor: t.uiStrokeQuaternary }]}>
-      <View style={chip} accessibilityLabel={`Gateway ${connectionLabel}, ${healthy ? 'connected' : 'not connected'}`}>
-        <View style={[styles.dot, { backgroundColor: healthy ? t.uiSuccess : link.kind === 'connecting' ? t.uiTextTertiary : t.dtDestructive }]} />
-        <Text numberOfLines={1} style={[styles.chipText, { color: t.uiTextSecondary, fontFamily: MONO, maxWidth: 120 }]}>
-          {connectionLabel}
-        </Text>
-      </View>
-      <Pressable onPress={onProfileChip} accessibilityRole="button" accessibilityLabel={`Active profile ${profileLabel}`} style={({ pressed }) => [...chip, pressed && { opacity: 0.6 }]}>
-        <Text numberOfLines={1} style={[styles.chipText, { color: t.uiTextSecondary, maxWidth: 90 }]}>
-          {profileLabel}
-        </Text>
-      </Pressable>
-      <Pressable onPress={routes.openSettings} accessibilityRole="button" accessibilityLabel="Settings" style={({ pressed }) => [...chip, pressed && { opacity: 0.6 }]}>
-        <Codicon name="settings-gear" size={12} color={t.uiTextSecondary} />
-        <Text style={[styles.chipText, { color: t.uiTextSecondary }]}>Settings</Text>
-      </Pressable>
-      <Pressable onPress={onSignOut} accessibilityRole="button" style={({ pressed }) => [...chip, pressed && { opacity: 0.6 }]}>
-        <Text style={[styles.chipText, { color: t.uiTextTertiary }]}>Sign out</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   panel: { position: 'absolute', top: 0, bottom: 0, left: 0, borderRightWidth: StyleSheet.hairlineWidth },
-  segmented: { flexDirection: 'row', marginHorizontal: 10, marginBottom: 8, borderWidth: StyleSheet.hairlineWidth, padding: 2 },
-  segment: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 30 },
-  scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 8, paddingBottom: 12 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, minHeight: 34, marginVertical: 6 },
-  searchInput: { flex: 1, fontSize: 13, paddingVertical: 6 },
-  section: { fontSize: 10, fontWeight: '600', letterSpacing: 0.8, marginTop: 12, marginBottom: 4, marginLeft: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', minHeight: 40, paddingHorizontal: 8, gap: 6, marginBottom: 1 },
-  lead: { width: 14, alignItems: 'center' },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-  emptyText: { fontSize: 12, marginHorizontal: 8, marginTop: 8 },
-  botsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  plus: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  botRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, paddingVertical: 8, marginBottom: 1 },
-  activeDot: { position: 'absolute', right: -1, bottom: -1, width: 10, height: 10, borderRadius: 5, borderWidth: 2 },
-  botText: { flex: 1, minWidth: 0 },
-  botTitleLine: { flexDirection: 'row', alignItems: 'center' },
-  rosterEmpty: { alignItems: 'center', paddingVertical: 24 },
-  rosterUnavailable: { gap: 10, paddingHorizontal: 8, paddingVertical: 16 },
-  retry: { alignSelf: 'flex-start', minHeight: 30, justifyContent: 'center', paddingHorizontal: 12 },
-  stale: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 4 },
-  rowSpinner: { marginRight: 4, transform: [{ scale: 0.7 }] },
-  hiddenToggle: { flexDirection: 'row', alignItems: 'center', minHeight: 36, paddingHorizontal: 8, marginTop: 8 },
-  footer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 10, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, minHeight: 28 },
-  chipText: { fontSize: 11 },
+  strip: { flexDirection: 'row', height: 40 },
+  tab: { justifyContent: 'center', paddingHorizontal: 16, maxWidth: 192 },
+  underline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2 },
+  tabLabel: { fontSize: 11, lineHeight: 14, fontWeight: '500', letterSpacing: 0.55, textTransform: 'uppercase' },
 });

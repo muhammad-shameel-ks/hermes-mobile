@@ -122,7 +122,17 @@ export function useSessionActions(controller: ChatController) {
     </>
   );
 
-  return { open: setTarget, element };
+  /** desktop `clearUnreadOnOpen`: best-effort, a failed write is healed by the next refresh */
+  const markRead = async (session: SessionInfo) => {
+    try {
+      await actions.setUnread(session.id, false, session.profile);
+      void controller.refreshSessions();
+    } catch {
+      // the dot returns until a refresh reconciles
+    }
+  };
+
+  return { open: setTarget, markRead, element };
 }
 
 function RenameSheet({ session, onClose, onSubmit }: { session: SessionInfo | null; onClose: () => void; onSubmit: (session: SessionInfo, title: string) => Promise<void> }) {

@@ -12,7 +12,7 @@ import type { GatewayApi, Query } from '../gateway/api.ts';
 type Method = 'PATCH' | 'DELETE';
 
 /** desktop lib/gateway-rpc.ts `isUnroutedRestPath`: the route is absent, not the session */
-function isUnroutedRestPath(error: unknown): boolean {
+export function isUnroutedRestPath(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /no such api endpoint|endpoint is likely missing/i.test(message) || /404:.*headless backend \(hermes serve\): web ui disabled/i.test(message);
 }
@@ -49,6 +49,7 @@ export function createSessionActions(api: SessionActionsApi) {
 
   return {
     setPinned: (id: string, pinned: boolean, profile?: string | null) => mutate<{ ok: boolean }>(id, 'PATCH', { pinned }, profile),
+    setUnread: (id: string, unread: boolean, profile?: string | null) => mutate<{ ok: boolean }>(id, 'PATCH', { unread }, profile),
     setArchived: (id: string, archived: boolean, profile?: string | null) => mutate<{ ok: boolean }>(id, 'PATCH', { archived }, profile),
     rename: (id: string, title: string, profile?: string | null) => mutate<{ ok: boolean; title: string }>(id, 'PATCH', { title }, profile),
     remove: (id: string, profile?: string | null) => mutate<{ ok: boolean }>(id, 'DELETE', {}, profile),
