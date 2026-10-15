@@ -40,6 +40,7 @@ import { errorText } from '../gateway/http.ts';
 import type { GatewayLink, LinkState } from '../gateway/link.ts';
 import { normalizePersonality } from './intro.ts';
 import type { ModelSelection } from './models.ts';
+import { runSlash, type SlashEnv } from './slashRun.ts';
 import {
   addSystemNotice,
   addUserMessage,
@@ -499,19 +500,7 @@ export class ChatController {
     const entry = this.entry(key);
     if (!entry) return;
 
-    if (/^\/(new|reset)\s*$/.test(text)) {
-      if (entry.isBotChat) {
-        this.notify('This chat never resets. Bot chats are one continuous conversation, so it is compacting instead.');
-        await this.compact(key);
-      } else {
-        this.newChat();
-      }
-      return;
-    }
-    if (/^\/(compact|compress)\s*$/.test(text) && key !== DRAFT_KEY) {
-      await this.compact(key);
-      return;
-    }
+    if (await runSlash(this.slashEnv(key), text)) return;
 
     if (entry.transcript.running && entry.runtimeId) {
       // Send while busy steers the running turn (issue "Transcript and composer parity on touch")
@@ -535,30 +524,36 @@ export class ChatController {
   private async sendFromDraft(draft: ChatEntry, text: string) {
     this.updateTranscript(DRAFT_KEY, (t) => addUserMessage(t, text));
     try {
-      const pick = this.entry(DRAFT_KEY)?.model ?? draft.model;
-      const created = await this.rpc('session.create', {
-        profile: draft.profile,
-        source: 'desktop',
-        cols: 96,
-        ...(pick ? { model: pick.model, provider: pick.provider } : {}),
-        ...(pick?.effort ? { reasoning_effort: pick.effort } : {}),
-      });
-      const key = created.stored_session_id;
-      const moved = this.entry(DRAFT_KEY) ?? draft;
-      this.set({
-        entries: {
-          ...this.snapshot.entries,
-          [key]: { ...moved, key, model: selectionFromInfo(created.info, moved.model) },
-          [DRAFT_KEY]: newEntry(DRAFT_KEY, draft.profile, { model: pick }),
-        },
-        openKey: this.snapshot.openKey === DRAFT_KEY ? key : this.snapshot.openKey,
-      });
-      this.bindRuntime(key, created.session_id);
+      const key = await this.createFromDraft(draft);
       await this.submit(key, text, { optimistic: false });
       this.scheduleListRefresh();
     } catch (error) {
       this.updateTranscript(DRAFT_KEY, (t) => ({ ...addSystemNotice(t, `Could not start the session: ${errorText(error)}`), running: false }));
     }
+  }
+
+  /** create the draft's session and move the draft's transcript into it; the draft is fresh again */
+  private async createFromDraft(draft: ChatEntry): Promise<string> {
+    const pick = this.entry(DRAFT_KEY)?.model ?? draft.model;
+    const created = await this.rpc('session.create', {
+      profile: draft.profile,
+      source: 'desktop',
+      cols: 96,
+      ...(pick ? { model: pick.model, provider: pick.provider } : {}),
+      ...(pick?.effort ? { reasoning_effort: pick.effort } : {}),
+    });
+    const key = created.stored_session_id;
+    const moved = this.entry(DRAFT_KEY) ?? draft;
+    this.set({
+      entries: {
+        ...this.snapshot.entries,
+        [key]: { ...moved, key, model: selectionFromInfo(created.info, moved.model) },
+        [DRAFT_KEY]: newEntry(DRAFT_KEY, draft.profile, { model: pick }),
+      },
+      openKey: this.snapshot.openKey === DRAFT_KEY ? key : this.snapshot.openKey,
+    });
+    this.bindRuntime(key, created.session_id);
+    return key;
   }
 
   private async submit(key: string, text: string, { optimistic = true } = {}) {
@@ -588,7 +583,7 @@ export class ChatController {
     }
   }
 
-  private async compact(key: string) {
+  private async compact(key: string, focusTopic = '') {
     const entry = this.entry(key);
     if (!entry || key === DRAFT_KEY) return;
     try {
@@ -596,7 +591,7 @@ export class ChatController {
       const runtimeId = this.entry(key)?.runtimeId;
       if (!runtimeId) throw new Error('The session is not attached to the gateway.');
       this.updateTranscript(key, (t) => ({ ...t, running: true, status: 'Compacting…' }));
-      const result = await this.rpc('session.compress', { session_id: runtimeId, profile: entry.profile }, 600_000);
+      const result = await this.rpc('session.compress', { session_id: runtimeId, profile: entry.profile, ...(focusTopic ? { focus_topic: focusTopic } : {}) }, 600_000);
       const messages = Array.isArray(result.messages) ? fromHistory(result.messages as SessionMessage[]) : null;
       this.updateTranscript(key, (t) => ({ ...t, messages: messages ?? t.messages, running: false, status: null }));
       this.updateTranscript(key, (t) => addSystemNotice(t, result.message || 'Conversation compacted.'));
@@ -604,6 +599,64 @@ export class ChatController {
       this.updateTranscript(key, (t) => ({ ...addSystemNotice(t, `Compacting failed: ${errorText(error)}`), running: false, status: null }));
     }
   }
+
+  /** the gateway surface `runSlash` works against; a draft gets its session only when a command needs one */
+  private slashEnv(initialKey: string): SlashEnv {
+    let key = initialKey;
+    const entry = this.entry(key);
+    return {
+      isBotChat: entry?.isBotChat ?? false,
+      running: entry?.transcript.running ?? false,
+      hasSession: key !== DRAFT_KEY,
+      request: (method, params, timeoutMs) => {
+        const profile = this.entry(key)?.profile ?? this.snapshot.profile;
+        return this.link.client.request(method, { profile, ...params }, timeoutMs);
+      },
+      sessionId: async () => {
+        try {
+          const open = this.entry(key);
+          if (!open) return null;
+          if (key === DRAFT_KEY) key = await this.createFromDraft(open);
+          if (!this.entry(key)?.runtimeId) await this.resume(key, { rebind: false });
+          return this.entry(key)?.runtimeId ?? null;
+        } catch {
+          return null;
+        }
+      },
+      runtimeId: () => this.entry(key)?.runtimeId ?? null,
+      say: (text) => this.updateTranscript(key, (t) => addSystemNotice(t, text)),
+      notify: (text) => this.notify(text),
+      newChat: () => this.newChat(),
+      compact: (focusTopic) => this.compact(key, focusTopic),
+      stop: () => this.stop(),
+      setEffort: (effort) => this.setEffort(effort),
+      retitle: (title) => {
+        this.updateEntry(key, (e) => ({ ...e, title: title || null }));
+        this.scheduleListRefresh();
+      },
+      submit: async (text, display) => {
+        if (key === DRAFT_KEY) {
+          const draft = this.entry(DRAFT_KEY);
+          if (!draft) return;
+          this.updateTranscript(DRAFT_KEY, (t) => addUserMessage(t, display ?? text));
+          try {
+            key = await this.createFromDraft(draft);
+          } catch (error) {
+            this.updateTranscript(DRAFT_KEY, (t) => ({ ...addSystemNotice(t, `Could not start the session: ${errorText(error)}`), running: false }));
+            return;
+          }
+          await this.submit(key, text, { optimistic: false });
+          this.scheduleListRefresh();
+          return;
+        }
+        if (display && display !== text) this.updateTranscript(key, (t) => addUserMessage(t, display));
+        await this.submit(key, text, { optimistic: !display || display === text });
+      },
+    };
+  }
+
+  /** a raw gateway call for the composer's completions (src/chat/SlashSheet.tsx, MentionSheet.tsx) */
+  request = <T>(method: string, params: Record<string, unknown>): Promise<T> => this.link.client.request<T>(method, params);
 
   // ─── models ────────────────────────────────────────────────────────────────
 
