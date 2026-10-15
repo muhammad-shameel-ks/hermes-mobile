@@ -11,6 +11,8 @@
  * takes a second result.
  */
 
+import { reactionsFromMetadata, withAgentReactions, type Reaction } from './actionBar.ts';
+
 export type ToolPart = {
   kind: 'tool';
   id: string;
@@ -43,6 +45,11 @@ export type Message = {
   error?: string;
   /** epoch seconds */
   timestamp?: number;
+  /** the durable `messages.id`, once the row exists; reactions and rewinds address a message by it */
+  rowId?: number;
+  reactions?: Reaction[];
+  /** wall-clock seconds a live turn ran */
+  durationS?: number;
 };
 
 export type Transcript = {
@@ -75,6 +82,7 @@ export type SessionMessage = {
   tool_name?: string;
   args?: unknown;
   display_kind?: string;
+  display_metadata?: unknown;
   timestamp?: number;
   id?: number;
   row_id?: number;
@@ -180,7 +188,18 @@ export function fromHistory(rows: SessionMessage[]): Message[] {
     if (row.role === 'user' || row.role === 'system') {
       closeTurn();
       const text = textOf(row.display_content ?? row.content ?? row.text);
-      if (text.trim()) messages.push({ id, role: row.role, parts: [{ kind: 'text', text }], status: 'complete', timestamp: row.timestamp });
+      if (text.trim()) {
+        const reactions = reactionsFromMetadata(row.display_metadata);
+        messages.push({
+          id,
+          role: row.role,
+          parts: [{ kind: 'text', text }],
+          status: 'complete',
+          timestamp: row.timestamp,
+          ...(rowId !== undefined ? { rowId } : {}),
+          ...(reactions.length ? { reactions } : {}),
+        });
+      }
       return;
     }
 
@@ -206,6 +225,12 @@ export function fromHistory(rows: SessionMessage[]): Message[] {
     if (reasoning) turn.parts.push({ kind: 'reasoning', text: reasoning });
     const text = textOf(row.display_content ?? row.content ?? row.text);
     if (text.trim()) turn.parts.push({ kind: 'text', text });
+    // the turn answers to its last reply row: that row is what a reaction lands on
+    if (rowId !== undefined && (text.trim() || turn.rowId === undefined)) {
+      turn.rowId = rowId;
+      const reactions = reactionsFromMetadata(row.display_metadata);
+      turn.reactions = reactions.length ? reactions : undefined;
+    }
     if (Array.isArray(row.tool_calls)) row.tool_calls.forEach((call, i) => turn!.parts.push(storedCall(call, i)));
   });
 
@@ -248,6 +273,13 @@ function settle(message: Message, status: MessageStatus): Message {
     status,
     parts: message.parts.map((part) => (part.kind === 'tool' && part.status === 'running' ? { ...part, status: 'done' } : part)),
   };
+}
+
+/** seconds since the turn's prompt was sent, as the desktop stamps a finished turn */
+function turnDuration(state: Transcript): { durationS?: number } {
+  const prompt = [...state.messages].reverse().find((m) => m.role === 'user');
+  if (!prompt?.timestamp) return {};
+  return { durationS: Math.max(1, Math.round(Date.now() / 1000 - prompt.timestamp)) };
 }
 
 export function addUserMessage(state: Transcript, text: string): Transcript {
@@ -362,10 +394,17 @@ export function applyEvent(state: Transcript, event: LiveEvent): Transcript {
       if (id) {
         next = updateMessage(next, id, (m) => {
           const withText = finalText && !hasText(m) ? { ...m, parts: [...m.parts, { kind: 'text' as const, text: finalText }] } : m;
-          return { ...settle(withText, status), error };
+          return { ...settle(withText, status), error, ...turnDuration(next) };
         });
       }
       return { ...next, running: false, liveId: null, breakText: false, status: null };
+    }
+    case 'message.reaction': {
+      const rowId = payload.row_id;
+      if (typeof rowId !== 'number' || !Array.isArray(payload.reactions)) return state;
+      const announced = payload.reactions as Reaction[];
+      const target = state.messages.find((m) => m.rowId === rowId);
+      return target ? updateMessage(state, target.id, (m) => ({ ...m, reactions: withAgentReactions(m.reactions, announced) })) : state;
     }
     case 'status.update': {
       const text = str('text');

@@ -17,8 +17,15 @@ const GLYPHS = {
   'chevron-down': 0xeab4,
   'chevron-right': 0xeab6,
   'chevron-left': 0xeab5,
+  clone: 0xea78,
+  close: 0xea76,
+  copy: 0xebcc,
   discard: 0xeae2,
+  edit: 0xea73,
+  mute: 0xeb24,
   pulse: 0xeb31,
+  reactions: 0xeb35,
+  refresh: 0xeb37,
   'settings-gear': 0xeb51,
   'star-empty': 0xea6a,
   'star-full': 0xeb59,
@@ -34,6 +41,7 @@ const GLYPHS = {
   terminal: 0xea85,
   tools: 0xeb6d,
   zap: 0xea86,
+  unmute: 0xeb75,
 } as const;
 
 export type CodiconName = keyof typeof GLYPHS;

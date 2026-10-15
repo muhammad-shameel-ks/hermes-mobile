@@ -7,7 +7,7 @@
  * row renders our own message by id.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +30,7 @@ import { Wordmark } from '../ui/Wordmark.tsx';
 import { DRAFT_KEY, type ChatController, type ChatEntry, type ModelCatalog } from './controller.ts';
 import { ComposerSheets } from './ComposerSheets.tsx';
 import { FOLLOW_UP_PLACEHOLDERS, introBody, NEW_SESSION_PLACEHOLDERS } from './intro.ts';
+import { EditBanner, MessageActionsProvider, useEditingText, useMessageChrome, type MessageEdit } from './messageChrome.tsx';
 import { MessageView } from './MessageView.tsx';
 import { ModelPicker } from './ModelPicker.tsx';
 import { modelPillLabel, type ModelSelection } from './models.ts';
@@ -124,6 +125,8 @@ export default function ChatScreen({
   );
   const runtime = useExternalStoreRuntime({ messages, isRunning: running, convertMessage, onNew });
   const jump = useJumpToBottom(entry.key, messages);
+  const reactionsEnabled = useSyncExternalStore(controller.subscribe, () => controller.getSnapshot().reactionsEnabled);
+  const chrome = useMessageChrome(controller, entry, reactionsEnabled);
 
   const title = entry.isBotChat && bot ? bot.label : entry.title || (entry.key === 'draft' ? 'New session' : 'Untitled session');
   const subtitle = entry.isBotChat ? 'Bot Chat' : profileLabel;
@@ -158,7 +161,9 @@ export default function ChatScreen({
                     const ours = byId.get(message.id);
                     return ours ? (
                       <View style={styles.row}>
-                        <MessageView message={ours} />
+                        <MessageActionsProvider value={chrome.actions}>
+                          <MessageView message={ours} bar={chrome.bars.get(ours.id)} />
+                        </MessageActionsProvider>
                       </View>
                     ) : null;
                   }}
@@ -185,6 +190,7 @@ export default function ChatScreen({
             disabled={link.kind !== 'open' || entry.loading}
             botLabel={entry.isBotChat && bot ? bot.label : null}
             followUp={messages.length > 0}
+            edit={chrome.edit}
             modelLabel={modelPillLabel(currentModel?.model)}
             onSheet={setSheet}
             onSend={(text) => {
@@ -200,6 +206,7 @@ export default function ChatScreen({
         </View>
 
         <ComposerSheets sheet={sheet} scope={sheetScope} bottom={dock.height - COMPOSER_DOCK_TOP + 4} available={dock.top - 56} onUi={openUi} />
+        {chrome.sheets}
 
         <ModelPicker
           visible={pickerOpen}
@@ -360,6 +367,7 @@ function Composer({
   disabled,
   botLabel,
   followUp,
+  edit,
   modelLabel,
   onSend,
   onSheet,
@@ -375,6 +383,7 @@ function Composer({
   disabled: boolean;
   botLabel: string | null;
   followUp: boolean;
+  edit: MessageEdit;
   modelLabel: string;
   onSend: (text: string) => void;
   onSheet: (sheet: ComposerSheet | null) => void;
@@ -385,6 +394,7 @@ function Composer({
   const { text, setText, clear } = useComposerDraft(drafts, profile, session);
   const inputRef = useRef<TextInput>(null);
   const triggers = useComposerTriggers({ text, setText, inputRef, onSheet });
+  useEditingText(edit, text, setText, () => inputRef.current?.focus());
   const [seed] = useState(() => Math.floor(Math.random() * 100000));
   const canSend = text.trim() !== '' && !disabled;
   const showStop = running && text.trim() === '';
@@ -394,6 +404,10 @@ function Composer({
 
   const submit = () => {
     if (!canSend) return;
+    if (edit.target) {
+      void edit.submit(text);
+      return;
+    }
     onSend(text);
     clear();
   };
@@ -401,6 +415,7 @@ function Composer({
   return (
     <View style={styles.composerDock}>
       {session === DRAFT_KEY ? <RestoredDraftNotice drafts={drafts} profile={profile} liveText={text} /> : null}
+      <EditBanner edit={edit} />
       <View
         style={[styles.composer, { backgroundColor: t.uiBgEditor, borderColor: t.uiStrokeSecondary, borderRadius: t.radius['2xl'] }]}
       >
@@ -451,7 +466,7 @@ function Composer({
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={showStop ? 'Stop' : running ? 'Steer' : 'Send'}
+          accessibilityLabel={showStop ? 'Stop' : edit.target ? 'Send edited message' : running ? 'Steer' : 'Send'}
           disabled={!primaryActive}
           onPress={showStop ? onStop : submit}
           hitSlop={6}
