@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.5] - 2026-10-15
+
+- Mount the turn activity row inside the tail reply ([83f409b](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/83f409b))
+
 ## [0.1.4] - 2026-10-15
 
 - Draw the turn activity row the way the desktop does ([01e7ac0](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/01e7ac0))
