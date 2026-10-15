@@ -15,8 +15,11 @@ import { saveCredentials, type SavedConnection } from '../auth/store.ts';
 import type { Credentials } from '../auth/tokens.ts';
 import { BotFormLauncher, type BotFormLaunch } from '../bots/BotFormLauncher.tsx';
 import { botLabel, type Bot } from '../bots/roster.ts';
+import { setCardEnv } from '../chat/cards/env.ts';
+import { CardEnvBridge } from '../chat/cards/CardEnvBridge.tsx';
 import ChatScreen from '../chat/ChatScreen.tsx';
 import { ChatController } from '../chat/controller.ts';
+import { createMediaResolver } from '../chat/mediaResolver.ts';
 import Drawer, { type DrawerTab } from '../drawer/Drawer.tsx';
 import { useSessionActions } from '../drawer/useSessionActions.tsx';
 import { bindGateway } from '../files/gateway.ts';
@@ -55,6 +58,7 @@ function useController({ connection, credentials, onReauthRequired }: Props) {
       },
       onAuthRejected: onReauthRequired,
     });
+    setCardEnv({ media: createMediaResolver(auth, api) });
     const controller = new ChatController(link, api, undefined, createPersistence(connection.id));
     bindGateway({ auth, api, profile: () => controller.getSnapshot().profile });
     return controller;
@@ -139,6 +143,7 @@ export default function SignedInApp(props: Props) {
   return (
     <SettingsProvider value={{ controller, snapshot, connection: props.connection, onSignOut: props.onSignOut }}>
     <OverlayProvider>
+      <CardEnvBridge controller={controller} />
       <View style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground, paddingTop: insets.top }]}>
         <ChatScreen
           controller={controller}

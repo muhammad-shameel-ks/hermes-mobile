@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { mixPct } from '../ui/color.ts';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
@@ -29,6 +29,7 @@ import {
   type Stage,
 } from './requests.ts';
 import type { ToolPart } from './transcript.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 /** how long a painted card may wait for its request before asking the backend to re-deliver it */
 const DELIVERY_GRACE_MS = 4_000;
@@ -169,7 +170,7 @@ function ClarifyForm({ request, toolArgs, undelivered = false }: { request: Clar
   if (questions.length === 0) {
     return (
       <Shell style={styles.loading}>
-        <ActivityIndicator size="small" color={t.uiTextTertiary} accessibilityLabel={CLARIFY_COPY.loadingQuestion} />
+        <GlyphSpinner size={14} color={t.uiTextTertiary} label={CLARIFY_COPY.loadingQuestion} />
       </Shell>
     );
   }

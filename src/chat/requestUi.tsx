@@ -6,11 +6,12 @@
  */
 
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { mixPct } from '../ui/color.ts';
 import { useTokens } from '../ui/tokens.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'text' | 'destructive' | 'ghost';
 
@@ -61,7 +62,7 @@ export function RequestButton({
       ]}
     >
       {busy ? (
-        <ActivityIndicator size="small" color={palette.fg} style={styles.spinner} />
+        <GlyphSpinner size={14} color={palette.fg} style={styles.spinner} />
       ) : (
         <>
           <Text style={[styles.buttonText, size === 'xs' && styles.buttonTextXs, { color: palette.fg }]}>{label}</Text>

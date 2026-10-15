@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -14,6 +14,7 @@ import { mixPct } from '../ui/color.ts';
 import { useTokens } from '../ui/tokens.ts';
 import { FileGlyph, type FileGlyphName } from './glyphs.tsx';
 import { paletteFor } from './palette.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 export function HeaderAction({ icon, label, onPress, busy, disabled }: { icon: FileGlyphName; label: string; onPress: () => void; busy?: boolean; disabled?: boolean }) {
   const t = useTokens();
@@ -26,7 +27,7 @@ export function HeaderAction({ icon, label, onPress, busy, disabled }: { icon: F
       accessibilityLabel={label}
       style={({ pressed }) => [styles.headerAction, (pressed || disabled) && { opacity: 0.5 }]}
     >
-      {busy ? <ActivityIndicator size="small" color={t.uiTextTertiary} /> : <FileGlyph name={icon} size={16} color={t.uiTextSecondary} />}
+      {busy ? <GlyphSpinner size={14} color={t.uiTextTertiary} /> : <FileGlyph name={icon} size={16} color={t.uiTextSecondary} />}
     </Pressable>
   );
 }
@@ -35,7 +36,7 @@ export function Loading({ label }: { label: string }) {
   const t = useTokens();
   return (
     <View style={styles.center} accessibilityRole="progressbar" accessibilityLabel={label}>
-      <ActivityIndicator color={t.uiTextTertiary} />
+      <GlyphSpinner size={14} color={t.uiTextTertiary} />
       <Text style={{ color: t.uiTextTertiary, fontSize: 12, marginTop: 10 }}>{label}</Text>
     </View>
   );

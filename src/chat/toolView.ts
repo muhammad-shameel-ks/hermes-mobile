@@ -7,6 +7,8 @@
  * describe the same call in the same words. Pure, so it is tested directly.
  */
 
+import { countDiffLineStats, inlineDiffFromResult, type DiffStats } from './diff.ts';
+import { toolImageUrl } from './media.ts';
 import type { ToolPart } from './transcript.ts';
 
 export type ToolStatus = 'running' | 'success' | 'error' | 'warning' | 'notice';
@@ -38,6 +40,11 @@ export type ToolView = {
   command?: string;
   /** the body an expanded row shows */
   detail: string;
+  /** the unified diff the call's result carried; its row opens on it */
+  inlineDiff?: string;
+  diffStats?: DiffStats;
+  /** an image the row's body shows (a screenshot, an analysed picture) */
+  imageUrl?: string;
 };
 
 type Json = Record<string, unknown>;
@@ -594,7 +601,9 @@ export function buildToolView(tool: ToolPart): ToolView {
   const count = status === 'error' ? null : resultCount(tool, result);
   const seconds = typeof result.duration_s === 'number' ? result.duration_s : tool.durationS;
   const body = pending ? '' : prettyResult(tool, result);
-  const detail = error ? [error, body].filter((value, index, list) => value && list.indexOf(value) === index).join('\n\n') : body;
+  const inlineDiff = pending ? '' : inlineDiffFromResult(result);
+  // a diff stands in for the raw result dump, as on the desktop
+  const detail = inlineDiff ? '' : error ? [error, body].filter((value, index, list) => value && list.indexOf(value) === index).join('\n\n') : body;
 
   return {
     title,
@@ -605,6 +614,9 @@ export function buildToolView(tool: ToolPart): ToolView {
     error,
     command: tool.name === 'terminal' ? shellCommand(args) || undefined : undefined,
     detail,
+    inlineDiff: inlineDiff || undefined,
+    diffStats: inlineDiff && isFileEditTool(tool.name) ? countDiffLineStats(inlineDiff) : undefined,
+    imageUrl: pending ? undefined : toolImageUrl(args, result) || undefined,
   };
 }
 

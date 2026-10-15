@@ -19,8 +19,12 @@ import { AlertGlyph, ToolIcon } from '../ui/ToolIcon.tsx';
 import { ActionBar } from './ActionBar.tsx';
 import type { BarPlan } from './actionBar.ts';
 import { ClarifyCard } from './ClarifyCard.tsx';
+import { ChangedFilesCard } from './cards/ChangedFilesCard.tsx';
+import { ToolCard } from './cards/ToolCard.tsx';
+import { ToolDiffStats, ToolExtras } from './cards/ToolExtras.tsx';
+import { generatedImageEchoSources, stripGeneratedImageEchoes } from './generatedImage.ts';
 import { Markdown } from './Markdown.tsx';
-import { buildToolView, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
+import { buildToolView, isFileEditTool, splitRunItems, summarizeToolRun, type ToolView } from './toolView.ts';
 import type { Message, Part, ToolPart } from './transcript.ts';
 
 type Block = { kind: 'text'; text: string } | { kind: 'reasoning'; text: string } | { kind: 'tools'; tools: ToolPart[] };
@@ -40,7 +44,7 @@ function blocks(parts: Part[]): Block[] {
   return out;
 }
 
-function MessageViewImpl({ message, bar }: { message: Message; bar?: BarPlan }) {
+function MessageViewImpl({ message, bar, latest = false }: { message: Message; bar?: BarPlan; latest?: boolean }) {
   const t = useTokens();
 
   if (message.role === 'user') {
@@ -73,6 +77,7 @@ function MessageViewImpl({ message, bar }: { message: Message; bar?: BarPlan }) 
 
   const streaming = message.status === 'streaming';
   const content = blocks(message.parts);
+  const echoes = generatedImageEchoSources(message.parts);
   return (
     <EnterView enabled={streaming} animationKey={`assistant-message:${message.id}`} style={styles.assistant}>
       {content.map((block, index) => {
@@ -92,8 +97,9 @@ function MessageViewImpl({ message, bar }: { message: Message; bar?: BarPlan }) 
             </EnterView>
           );
         }
-        return <Markdown key={index} text={block.text} />;
+        return <Markdown key={index} text={stripGeneratedImageEchoes(block.text, echoes)} streaming={streaming && last} />;
       })}
+      {latest && !streaming ? <ChangedFilesCard parts={message.parts} /> : null}
       {message.status === 'error' ? (
         <Text style={[styles.footnote, { color: t.dtDestructive, fontSize: t.type.caption }]}>
           {message.error ? `The turn failed: ${message.error}` : 'The turn failed.'}
@@ -190,7 +196,8 @@ function ToolBlock({ tools, live }: { tools: ToolPart[]; live: boolean }) {
       {items.map((item, index) => {
         if (item.kind === 'card') {
           const tool = tools[item.index];
-          return tool.name === 'clarify' ? <ClarifyCard key={tool.id} tool={tool} fallback={<ToolRow tool={tool} />} /> : <ToolRow key={tool.id} tool={tool} />;
+          if (tool.name === 'clarify') return <ClarifyCard key={tool.id} tool={tool} fallback={<ToolRow tool={tool} />} />;
+          return <ToolCard key={tool.id} tool={tool} fallback={<ToolRow tool={tool} />} />;
         }
         const run = tools.slice(item.start, item.end + 1);
         if (run.length === 1) return <ToolRow key={run[0].id} tool={run[0]} />;
@@ -236,29 +243,35 @@ function ToolGlyph({ view, color }: { view: ToolView; color: string }) {
 
 function ToolRow({ tool }: { tool: ToolPart }) {
   const t = useTokens();
-  const [open, setOpen] = useState(false);
   const view = useMemo(() => buildToolView(tool), [tool]);
-  const expandable = view.status !== 'running' && Boolean(view.detail || view.command);
+  // a row that carries a diff opens on it until the reader says otherwise
+  const [picked, setPicked] = useState<boolean | null>(null);
+  const open = picked ?? Boolean(view.inlineDiff);
+  const expandable = view.status !== 'running' && Boolean(view.detail || view.command || view.inlineDiff || view.imageUrl);
+  // an edit that landed with no diff to review is a bare, dead row (a `write_file` create after a reload)
+  if (isFileEditTool(tool.name) && tool.status === 'done' && view.status !== 'error' && !view.inlineDiff) return null;
   const failed = view.status === 'error';
   const titleColor =
     failed ? t.dtDestructive : view.status === 'warning' ? AMBER[t.renderedMode] : view.status === 'running' ? t.conversationScaffoldMeta : t.conversationScaffoldText;
 
   return (
     <View
-      style={[styles.scaffold, open && [styles.toolShell, { borderColor: t.uiStrokeTertiary }]]}
+      style={[styles.scaffold, open && [styles.toolShell, { borderColor: t.uiStrokeTertiary }], open && isFileEditTool(tool.name) && styles.fileEdit]}
     >
       <View style={open ? [styles.toolShellHeader, { borderBottomColor: t.uiStrokeTertiary }] : undefined}>
-        <ScaffoldRow open={open} onToggle={expandable ? () => setOpen((v) => !v) : undefined} caretRest={0} label={view.title}>
+        <ScaffoldRow open={open} onToggle={expandable ? () => setPicked(!open) : undefined} caretRest={0} label={view.title}>
           <ToolGlyph view={view} color={view.status === 'warning' ? AMBER[t.renderedMode] : t.dtDestructive} />
           <FadeText style={scaffoldLabel(t, titleColor)} fadeColor={t.uiChatSurfaceBackground}>
             {view.title}
           </FadeText>
           {view.status !== 'running' && view.countLabel ? <Text style={scaffoldMeta(t)}>{view.countLabel}</Text> : null}
+          <ToolDiffStats view={view} />
           {view.durationLabel ? <Text style={scaffoldMeta(t)}>{view.durationLabel}</Text> : null}
         </ScaffoldRow>
       </View>
       {open ? (
         <View style={styles.toolBody}>
+          <ToolExtras view={view} />
           {view.command ? (
             <View style={[styles.terminal, { borderColor: t.uiStrokeTertiary, backgroundColor: t.uiBgTertiary }]}>
               <Text selectable style={[styles.code, { color: t.uiTextSecondary, fontSize: t.type.tool * 0.95 }]}>
@@ -298,6 +311,8 @@ const styles = StyleSheet.create({
   glyph: { width: GLYPH, height: GLYPH, alignItems: 'center', justifyContent: 'center' },
   reasoningText: { marginTop: 2, paddingBottom: 4 },
   toolBlock: { gap: 6 },
+  // an open edit is the turn's deliverable, not scaffolding: full strength and the full block gap
+  fileEdit: { opacity: 1, marginVertical: 6 },
   toolShell: { borderWidth: 1, borderRadius: 5 },
   toolShellHeader: { borderBottomWidth: 1, paddingHorizontal: 8, paddingVertical: 6 },
   toolBody: { padding: 6, gap: 6 },

@@ -194,7 +194,7 @@ export default function ChatScreen({
                     return ours ? (
                       <View style={styles.row}>
                         <MessageActionsProvider value={chrome.actions}>
-                          <MessageView message={ours} bar={chrome.bars.get(ours.id)} />
+                          <MessageView message={ours} bar={chrome.bars.get(ours.id)} latest={ours.id === messages[messages.length - 1]?.id} />
                         </MessageActionsProvider>
                       </View>
                     ) : null;

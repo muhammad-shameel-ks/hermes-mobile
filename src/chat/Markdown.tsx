@@ -9,6 +9,9 @@ import { View } from 'react-native';
 import { useMarkdown, type MarkedStyles } from 'react-native-marked';
 
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
+import { MediaAttachment } from './cards/MediaAttachment.tsx';
+import { TranscriptRenderer } from './MarkdownRenderer.tsx';
+import { splitMediaTags } from './media.ts';
 
 function stylesFor(t: Tokens): MarkedStyles {
   const text = { color: t.uiTextPrimary, fontSize: t.type.text, lineHeight: t.type.lineHeight };
@@ -51,15 +54,34 @@ function stylesFor(t: Tokens): MarkedStyles {
   };
 }
 
-function MarkdownImpl({ text }: { text: string }) {
+function MarkdownChunk({ text, streaming }: { text: string; streaming: boolean }) {
   const t = useTokens();
+  const renderer = useMemo(() => new TranscriptRenderer({ streaming }), [streaming]);
+  renderer.reset();
   const styles = useMemo(() => stylesFor(t), [t]);
   const theme = useMemo(
     () => ({ colors: { text: t.uiTextPrimary, link: t.uiAccent, code: t.uiWidgetSurfaceBackground, border: t.uiStrokeTertiary } }),
     [t],
   );
-  const elements = useMarkdown(text, { styles, theme, colorScheme: t.renderedMode, selectable: true });
+  const elements = useMarkdown(text, { styles, theme, colorScheme: t.renderedMode, renderer });
   return <View>{elements}</View>;
+}
+
+/** the reply's markdown, with the files its `MEDIA:` tags deliver rendered between the text around them */
+function MarkdownImpl({ text, streaming = false }: { text: string; streaming?: boolean }) {
+  const segments = useMemo(() => splitMediaTags(text), [text]);
+  if (segments.length === 1 && segments[0].kind === 'text') return <MarkdownChunk text={text} streaming={streaming} />;
+  return (
+    <View>
+      {segments.map((segment, index) =>
+        segment.kind === 'media' ? (
+          <MediaAttachment key={`media:${index}:${segment.path}`} path={segment.path} />
+        ) : segment.text.trim() ? (
+          <MarkdownChunk key={`text:${index}`} text={segment.text} streaming={streaming} />
+        ) : null,
+      )}
+    </View>
+  );
 }
 
 export const Markdown = memo(MarkdownImpl);
