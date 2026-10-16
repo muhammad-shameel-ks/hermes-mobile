@@ -1,8 +1,8 @@
 /**
  * The BOTS tab, the bot roster (apps/desktop/src/plugins/hermes-bots/roster-pane-toolbar.tsx,
- * roster-pane-content.tsx): the "Bots" heading with its add button, the search field, the rows, and
- * the hidden bots behind a disclosure. No filters menu, mute bell, group chats or user-section
- * management in v1 (issues #12, #17).
+ * roster-pane-content.tsx): the "Bots" heading with its add button, the search field, a "Group chats"
+ * section when any gateway-hosted rooms exist, the bot rows, and the hidden bots behind a disclosure.
+ * No filters menu, mute bell or user-section management in v1 (issues #12, #17).
  */
 
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -10,12 +10,15 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { filterBots, type Bot } from '../bots/roster.ts';
 import type { ChatSnapshot } from '../chat/controller.ts';
+import type { GroupRow as GroupRowData, GroupsState } from '../groups/model.ts';
+import type { GroupRoom } from '../groups/rooms.ts';
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { DisclosureCaret } from '../ui/motion.tsx';
 import { tick } from '../ui/haptics.ts';
 import { useTokens } from '../ui/tokens.ts';
 import { BotRow } from './BotRow.tsx';
+import { GroupRow } from './GroupRow.tsx';
 import { SearchField } from './chrome.tsx';
 import { updateFolds, useDrawerFolds } from './drawerState.ts';
 import { SIDEBAR_INSET } from './rowGeometry.ts';
@@ -27,9 +30,12 @@ export type BotsPaneSnapshot = Pick<ChatSnapshot, 'roster' | 'entries' | 'openKe
 
 type Props = {
   snapshot: BotsPaneSnapshot;
+  groups: GroupsState;
   onOpenBot: (bot: Bot) => void;
   onBotActions: (bot: Bot) => void;
-  onNewBot: () => void;
+  onOpenGroup: (room: GroupRoom) => void;
+  onGroupActions: (room: GroupRoom) => void;
+  onAddPress: () => void;
   onRetryRoster: () => void;
   loadImage: (name: string) => Promise<string | null>;
 };
@@ -42,6 +48,13 @@ function botState(activities: Activities, openKey: string, finishedAway: Readonl
     unread: key !== null && openKey !== key && finishedAway[key] === true,
     draft: key === null,
   });
+}
+
+/** a room matches a query by its name, its members' labels or its preview; search never re-ranks */
+function matchesGroup(row: GroupRowData, query: string): boolean {
+  if (row.room.name.toLowerCase().includes(query)) return true;
+  if (row.preview.toLowerCase().includes(query)) return true;
+  return row.room.members.some((member) => member.label.toLowerCase().includes(query));
 }
 
 /** `PanelEmpty`: a glyph, a title, a line of help */
@@ -57,7 +70,7 @@ function PanelEmpty({ icon, title, description, action }: { icon: CodiconName; t
   );
 }
 
-export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryRoster, loadImage }: Props) {
+export function BotsPane({ snapshot, groups, onOpenBot, onBotActions, onOpenGroup, onGroupActions, onAddPress, onRetryRoster, loadImage }: Props) {
   const t = useTokens();
   const { hiddenBotsOpen } = useDrawerFolds();
   const [query, setQuery] = useState('');
@@ -67,13 +80,25 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
   const activitiesRef = useRef(NO_ACTIVITIES);
   const activities = stableActivities(activitiesRef.current, entries);
   activitiesRef.current = activities;
-  const latest = useRef({ onOpenBot, onBotActions });
-  latest.current = { onOpenBot, onBotActions };
+  const latest = useRef({ onOpenBot, onBotActions, onOpenGroup, onGroupActions });
+  latest.current = { onOpenBot, onBotActions, onOpenGroup, onGroupActions };
   const open = useCallback((bot: Bot) => latest.current.onOpenBot(bot), []);
   const actions = useCallback((bot: Bot) => latest.current.onBotActions(bot), []);
+  const openGroup = useCallback((room: GroupRoom) => latest.current.onOpenGroup(room), []);
+  const groupActions = useCallback((room: GroupRoom) => latest.current.onGroupActions(room), []);
   const trimmed = query.trim();
+  const queryLower = trimmed.toLowerCase();
   const shown = useMemo(() => filterBots(visible, query), [visible, query]);
   const shownHidden = useMemo(() => filterBots(hidden, query), [hidden, query]);
+  const botsByName = useMemo(() => {
+    const map: Record<string, Bot> = {};
+    for (const bot of visible) map[bot.name] = bot;
+    for (const bot of hidden) map[bot.name] = bot;
+    return map;
+  }, [visible, hidden]);
+  const groupsExist = groups.rows.length > 0;
+  const shownGroups = useMemo(() => (queryLower ? groups.rows.filter((row) => matchesGroup(row, queryLower)) : groups.rows), [groups.rows, queryLower]);
+  const showGroupsSection = groupsExist && (queryLower === '' || shownGroups.length > 0);
   const selected = entries[openKey]?.isBotChat ? entries[openKey]?.bot : null;
   const thinking = selected && entries[openKey]?.transcript.running ? selected : null;
   const gatewayUp = snapshot.link.kind === 'open';
@@ -102,16 +127,23 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
   const shownRows = useMemo(() => shown.map(renderBot), [shown, renderBot]);
   const hiddenRows = useMemo(() => shownHidden.map(renderBot), [shownHidden, renderBot]);
 
-  const noMatch = loaded && trimmed.length > 0 && shown.length === 0 && shownHidden.length === 0;
+  const renderGroup = useCallback(
+    (row: GroupRowData) => <GroupRow key={row.room.id} row={row} now={now} bots={botsByName} onOpen={openGroup} onActions={groupActions} loadImage={loadImage} />,
+    [now, botsByName, openGroup, groupActions, loadImage],
+  );
+  const groupRows = useMemo(() => shownGroups.map(renderGroup), [shownGroups, renderGroup]);
+
+  const noMatch = loaded && trimmed.length > 0 && shown.length === 0 && shownHidden.length === 0 && !(groupsExist && shownGroups.length > 0);
+  const searchPlaceholder = groupsExist ? 'Search bots and group chats…' : 'Search bots…';
 
   return (
     <View style={styles.pane}>
       <View style={styles.heading}>
         <Text style={[styles.headingLabel, { color: t.uiTextQuaternary }]}>Bots</Text>
         <Pressable
-          onPress={onNewBot}
+          onPress={onAddPress}
           accessibilityRole="button"
-          accessibilityLabel="New bot"
+          accessibilityLabel="New bot or group chat"
           hitSlop={4}
           style={({ pressed }) => [styles.add, { borderRadius: t.radius.md, backgroundColor: pressed ? t.uiControlHoverBackground : 'transparent' }]}
         >
@@ -119,7 +151,7 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
         </Pressable>
       </View>
       <View style={styles.search}>
-        <SearchField value={query} onChange={setQuery} placeholder="Search bots…" rest={0.5} />
+        <SearchField value={query} onChange={setQuery} placeholder={searchPlaceholder} rest={0.5} />
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
@@ -153,7 +185,17 @@ export function BotsPane({ snapshot, onOpenBot, onBotActions, onNewBot, onRetryR
           </View>
         ) : null}
 
-        {loaded && !error && empty ? <PanelEmpty icon="hubot" title="No bots yet" description="Create your first bot." /> : null}
+        {showGroupsSection ? (
+          <View style={styles.groupSection}>
+            <View style={styles.groupHeading}>
+              <Text style={[styles.groupLabel, { color: t.uiTextQuaternary }]}>Group chats</Text>
+              <Text style={[styles.groupCount, { color: t.uiTextQuaternary }]}>{shownGroups.length}</Text>
+            </View>
+            <View style={styles.rows}>{groupRows}</View>
+          </View>
+        ) : null}
+
+        {loaded && !error && empty && !groupsExist ? <PanelEmpty icon="hubot" title="No bots yet" description="Create your first bot." /> : null}
         {noMatch ? <PanelEmpty icon="search" description={`No bots match “${trimmed}”`} /> : null}
         {showAllHidden ? (
           <PanelEmpty
@@ -214,6 +256,10 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 6, paddingBottom: 8 },
   rows: { gap: 2 },
+  groupSection: { marginBottom: 6 },
+  groupHeading: { flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingLeft: SIDEBAR_INSET - 6, paddingRight: 6, paddingTop: 6, paddingBottom: 4 },
+  groupLabel: { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' },
+  groupCount: { fontSize: 11, lineHeight: 14, fontWeight: '500' },
   empty: { alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 40 },
   loading: { alignSelf: 'center', marginVertical: 24 },
   unavailable: { gap: 10, paddingHorizontal: 12, paddingVertical: 16 },

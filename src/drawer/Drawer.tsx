@@ -2,7 +2,8 @@
  * The slide-over drawer (issue "App shell and navigation on a phone"): opened only by the app-bar
  * button, closed by the scrim, back, or picking a row. A SESSIONS | BOTS tab strip over the two lists
  * and a footer of chips for the connection, the active profile, Settings and signing out. The lists
- * live in SessionsPane and BotsPane; the desktop sidebar's geometry in rowGeometry.ts.
+ * live in SessionsPane and BotsPane (the latter also showing group chats); the desktop sidebar's
+ * geometry in rowGeometry.ts.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -15,6 +16,9 @@ import { createDrawerSlice } from '../chat/chatSlices.ts';
 import type { ChatController, SessionInfo } from '../chat/controller.ts';
 import { shallowEqual } from '../chat/selector.ts';
 import { useChatSelector } from '../chat/useChatSelector.ts';
+import { useGroups } from '../groups/hooks.ts';
+import type { GroupsModel } from '../groups/model.ts';
+import type { GroupRoom } from '../groups/rooms.ts';
 import { mixPct } from '../ui/color.ts';
 import { tick } from '../ui/haptics.ts';
 import { useTokens } from '../ui/tokens.ts';
@@ -41,7 +45,10 @@ type Props = {
   onSessionActions: (session: SessionInfo) => void;
   onOpenBot: (bot: Bot) => void;
   onBotActions: (bot: Bot) => void;
-  onNewBot: () => void;
+  groups: GroupsModel;
+  onOpenGroup: (room: GroupRoom) => void;
+  onGroupActions: (room: GroupRoom) => void;
+  onAdd: () => void;
   onRetryRoster: () => void;
   onProfileChip: () => void;
   loadImage: (name: string) => Promise<string | null>;
@@ -114,6 +121,8 @@ export default function Drawer(props: Props) {
 function DrawerContent(props: Props) {
   const slice = useMemo(createDrawerSlice, []);
   const snapshot = useChatSelector(props.controller, slice, shallowEqual);
+  // the drawer mounts this only while open, so a closed drawer subscribes to neither store
+  const groups = useGroups(props.groups);
   return (
     <>
       {props.tab === 'sessions' ? (
@@ -128,9 +137,12 @@ function DrawerContent(props: Props) {
       ) : (
         <BotsPane
           snapshot={snapshot}
+          groups={groups}
           onOpenBot={props.onOpenBot}
           onBotActions={props.onBotActions}
-          onNewBot={props.onNewBot}
+          onOpenGroup={props.onOpenGroup}
+          onGroupActions={props.onGroupActions}
+          onAddPress={props.onAdd}
           onRetryRoster={props.onRetryRoster}
           loadImage={props.loadImage}
         />
