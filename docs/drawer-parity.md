@@ -42,7 +42,8 @@ decisions in issues #12 (shell), #15 and #16 (what is deferred or dropped) and #
 - **Platform sections** use a monogram chip in the platform's colour, the desktop's own fallback where a brand has no glyph.
 - **Folds are in memory.** Pinned, Sessions, platform sections, date groups and Hidden reset when the app restarts; the desktop persists them.
 - **No virtual list.** Sessions render in one scroll view; the window grows by 50 on request up to the route's 500.
-- **Roster.** No mute bell, filter menu, group chats, user sections or gateway headings (#17); search placeholder is "Search bots…".
+- **Roster.** No mute bell, filter menu, user sections or gateway headings (#17); search placeholder is "Search bots…", or "Search bots and group chats…" once a group exists.
+- **Group chats** are the gateway's hosted rooms only (ADR 0003): a "Group chats" section above the bots, each row a 2x2 face cluster, name, age and the newest message. The desktop's legacy client-driven rooms, drag reorder, per-room pin and settings (hold detection, compress history) are not ported; the `+` button offers New bot or New group chat.
 
 ## Left out by decision
 

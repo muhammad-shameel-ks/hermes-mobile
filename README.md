@@ -11,6 +11,7 @@ Hermes Mobile does not run an agent itself. It connects to a Hermes gateway you 
 - Chat with streaming replies, reasoning and tool-call cards, attachments, dictation and read-aloud
 - Approvals and clarification prompts from the agent, answered on the phone
 - Bot Mode: your gateway's profiles shown as bots, each with its own sessions
+- Group chats: rooms of two to six bots hosted by the gateway, with @mentions, stop, approvals and retries
 - Files and Review surfaces for browsing what the agent produced and the changes it made
 - Model picker with thinking level, slash commands, and a message queue
 - Skins with light and dark appearances
@@ -74,6 +75,7 @@ CI runs both on every pull request, along with a check that the vendored code st
 | `src/gateway/` | Gateway address handling, status probe and HTTP client |
 | `src/chat/` | Chat screen, controller, transcript, composer and request cards |
 | `src/bots/`, `src/drawer/` | Bot roster, avatars and the navigation drawer |
+| `src/groups/` | Group chats: the room protocol, live room store, creation and room screens |
 | `src/files/`, `src/review/` | Files and Review surfaces |
 | `src/settings/` | Settings screens and persisted preferences |
 | `src/updates/` | In-app update check for release builds |

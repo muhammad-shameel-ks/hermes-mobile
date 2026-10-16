@@ -4,6 +4,7 @@
  * socket follows the app into the background and back (foreground-scoped).
  */
 
+import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
@@ -29,6 +30,10 @@ import { bindGateway } from '../files/gateway.ts';
 import { createGatewayApi } from '../gateway/api.ts';
 import { gatewaySocketUrl, GatewayLink } from '../gateway/link.ts';
 import { createPersistence } from '../store/index.ts';
+import { createGroupsApi } from '../groups/api.ts';
+import { GroupLauncher, type GroupLaunch } from '../groups/GroupLauncher.tsx';
+import { GroupsModel } from '../groups/model.ts';
+import { useGroupActions } from '../groups/useGroupActions.tsx';
 import ColdBootOverlay from '../screens/ColdBootOverlay.tsx';
 import { SettingsProvider } from '../settings/context.tsx';
 import { useSeedActiveProfile } from '../settings/useSeedActiveProfile.ts';
@@ -85,6 +90,23 @@ export default function SignedInApp(props: Props) {
   const sessionActions = useSessionActions(controller);
   useSeedActiveProfile(controller);
   const openForm = useRef<BotFormLaunch | null>(null);
+  const openGroup = useRef<GroupLaunch | null>(null);
+  const [addSheet, setAddSheet] = useState(false);
+  const groups = useMemo(
+    () =>
+      new GroupsModel({
+        api: createGroupsApi(controller.rpc, () => controller.getSnapshot().profile, Crypto.randomUUID),
+        online: () => controller.getSnapshot().link.kind === 'open',
+        // the roster's current name for a profile, so a renamed bot is renamed in its rooms too
+        labelOf: (profile) => {
+          const { visible, hidden } = controller.getSnapshot().roster;
+          return [...visible, ...hidden].find((bot) => bot.name === profile)?.label;
+        },
+        newId: Crypto.randomUUID,
+      }),
+    [controller],
+  );
+  const groupActions = useGroupActions(groups, controller, (room) => openGroup.current?.openRoom(room));
 
   useEffect(() => {
     controller.start();
@@ -124,8 +146,9 @@ export default function SignedInApp(props: Props) {
     setTimeout(() => {
       void controller.refreshSessions();
       void controller.refreshRoster();
+      void groups.refresh();
     }, 0);
-  }, [controller]);
+  }, [controller, groups]);
   const openProfileSheet = useCallback(() => setProfileSheet(true), []);
 
   const confirmDelete = (bot: Bot) => {
@@ -201,7 +224,10 @@ export default function SignedInApp(props: Props) {
             void controller.openBot(bot);
           }}
           onBotActions={setActionsFor}
-          onNewBot={() => openForm.current?.(null)}
+          groups={groups}
+          onOpenGroup={(room) => openGroup.current?.openRoom(room)}
+          onGroupActions={groupActions.open}
+          onAdd={() => setAddSheet(true)}
           onRetryRoster={() => void controller.refreshRoster()}
           onProfileChip={openProfileSheet}
           loadImage={controller.avatarDataFn}
@@ -221,7 +247,17 @@ export default function SignedInApp(props: Props) {
           actions={profileActions}
           onClose={() => setProfileSheet(false)}
         />
+        <ActionSheet
+          visible={addSheet}
+          actions={[
+            { label: 'New bot', onPress: () => openForm.current?.(null) },
+            { label: 'New group chat', onPress: () => openGroup.current?.newGroup() },
+          ]}
+          onClose={() => setAddSheet(false)}
+        />
         <BotFormLauncher controller={controller} launchRef={openForm} onCreated={closeDrawer} />
+        <GroupLauncher controller={controller} model={groups} launchRef={openGroup} onNavigate={closeDrawer} />
+        {groupActions.element}
         {sessionActions.element}
         <ColdBootOverlay link={link} onRetry={() => controller.retryLink()} onSignOut={props.onSignOut} />
       </View>

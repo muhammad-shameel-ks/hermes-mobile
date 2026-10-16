@@ -138,6 +138,28 @@ _Avoid_: side thread, sub-chat
 The drawer's BOTS tab: bot rows of avatar, name, last-message preview and time, with hidden bots behind a disclosure.
 _Avoid_: bots list, bot drawer
 
+## Group chats
+
+**Group chat**:
+A gateway-hosted room of two to six bots that the reader talks into; the gateway's driver runs each member's turn and the phone reads the room's log. Only hosted rooms exist on the phone; the desktop's older client-driven rooms do not.
+_Avoid_: room (except in gateway method names), channel, bot group
+
+**Room log**:
+A group chat's ordered, append-only event list: messages, plus the control events that explain a bot's silence. The phone polls it while a group chat is open.
+_Avoid_: history, feed
+
+**Mention**:
+An `@handle` in a message that addresses one member, or `@everyone` for the whole room; a message with no mention goes to every member.
+_Avoid_: tag, ping
+
+**Pending action**:
+What the driver waits on the reader for: a member's command approval, or a retry of a turn left unfinished.
+_Avoid_: prompt, request
+
+**Unconfirmed send**:
+A message whose answer never arrived, held under its event id so a retry cannot post it twice.
+_Avoid_: failed send, draft
+
 ## Surfaces
 
 **Files root**:
