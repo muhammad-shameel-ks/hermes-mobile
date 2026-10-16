@@ -21,6 +21,7 @@ import { useRoom } from './hooks.ts';
 import type { GroupsModel } from './model.ts';
 import { MAX_GROUP_NAME, type PendingAction } from './rooms.ts';
 import { MembersSheet } from './room/MembersSheet.tsx';
+import { RoomActivity } from './room/RoomActivity.tsx';
 import { RoomComposer } from './room/RoomComposer.tsx';
 import { RoomHeader } from './room/RoomHeader.tsx';
 import { RoomTimeline } from './room/RoomTimeline.tsx';
@@ -163,6 +164,7 @@ export default function GroupRoomScreen({ controller, model, roomId, name, onClo
             <Text style={{ flex: 1, color: t.uiTextTertiary, fontSize: 13, lineHeight: 18 }}>Group driver unavailable. Update or reconnect the owning gateway.</Text>
           </View>
         ) : null}
+        <RoomActivity events={room.events} members={members} working={room.driver?.working ?? false} now={Math.floor(Date.now() / 1000)} />
         <RoomTimeline
           events={room.events}
           members={members}
