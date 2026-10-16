@@ -8,7 +8,6 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import type { Bot } from '../bots/roster.ts';
 import type { ChatController, ChatSnapshot } from '../chat/controller.ts';
 import { shallowEqual } from '../chat/selector.ts';
@@ -21,6 +20,7 @@ import { useRoom } from './hooks.ts';
 import type { GroupsModel } from './model.ts';
 import { MAX_GROUP_NAME, type PendingAction } from './rooms.ts';
 import { MembersSheet } from './room/MembersSheet.tsx';
+import { RoomActivity } from './room/RoomActivity.tsx';
 import { RoomComposer } from './room/RoomComposer.tsx';
 import { RoomHeader } from './room/RoomHeader.tsx';
 import { RoomTimeline } from './room/RoomTimeline.tsx';
@@ -70,6 +70,11 @@ export default function GroupRoomScreen({ controller, model, roomId, name, onClo
 
   const onStop = useCallback(() => void store.stopRun(), [store]);
   const onLoadEarlier = useCallback(() => void store.loadEarlier(), [store]);
+  const [pulling, setPulling] = useState(false);
+  const onPull = useCallback(() => {
+    setPulling(true);
+    void store.refresh().finally(() => setPulling(false));
+  }, [store]);
   const onSend = useCallback((text: string) => store.send(text), [store]);
   const onRetryUnsent = useCallback(() => void store.retryUnsent(), [store]);
   const onApprove = useCallback(
@@ -163,6 +168,7 @@ export default function GroupRoomScreen({ controller, model, roomId, name, onClo
             <Text style={{ flex: 1, color: t.uiTextTertiary, fontSize: 13, lineHeight: 18 }}>Group driver unavailable. Update or reconnect the owning gateway.</Text>
           </View>
         ) : null}
+        <RoomActivity events={room.events} members={members} working={room.driver?.working ?? false} now={Math.floor(Date.now() / 1000)} />
         <RoomTimeline
           events={room.events}
           members={members}
@@ -171,6 +177,8 @@ export default function GroupRoomScreen({ controller, model, roomId, name, onClo
           more={room.more}
           loadingEarlier={room.loadingEarlier}
           onLoadEarlier={onLoadEarlier}
+          refreshing={pulling}
+          onRefresh={onPull}
           pending={pending}
           busy={room.busy}
           onApprove={onApprove}

@@ -18,6 +18,7 @@ import { BOT_CHAT_EMPTY, type Bot } from '../bots/roster.ts';
 import { ThreadLoader } from '../ui/loaders/presets.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { Wordmark } from '../ui/Wordmark.tsx';
+import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { PendingApprovals } from './ApprovalCard.tsx';
 import { openTranscript, type ChatMeta } from './chatSlices.ts';
 import type { ChatController } from './controller.ts';
@@ -37,7 +38,6 @@ const WORDMARK = 'HERMES AGENT';
 const BOT_FACE = 96;
 const BOT_FACE_GAP = 16;
 
-/** the runtime caches each converted message by message object, so a token converts the live message once and no other */
 function convertMessage(message: Message): ThreadMessageLike {
   const text = message.parts.map((part) => (part.kind === 'text' ? part.text : '')).join('\n');
   const base = { id: message.id, role: message.role, content: [{ type: 'text' as const, text }] };
@@ -99,9 +99,25 @@ export const TranscriptPane = memo(function TranscriptPane({ controller, meta, b
   const jump = useJumpToBottom(meta.key, messages);
   const tail = useTailStore(messages, running, wait);
 
-  const { key, historyMore, loadingEarlier } = meta;
+  const { key, historyMore, loadingEarlier, loading } = meta;
   const showEarlier = useCallback(() => void controller.showEarlier(key), [controller, key]);
-  const header = useMemo(() => (historyMore ? <ShowEarlier loading={loadingEarlier} onPress={showEarlier} /> : null), [historyMore, loadingEarlier, showEarlier]);
+  const [pulling, setPulling] = useState(false);
+  const refreshKey = useMemo(() => ({ controller, key }), [controller, key]);
+  const onPull = useCallback(() => {
+    setPulling(true);
+    void refreshKey.controller.refreshOpen(refreshKey.key).finally(() => setPulling(false));
+  }, [refreshKey]);
+  // a reload replays the newest page; never while a turn streams under it or a load is already in flight
+  const pull = usePullRefresh({ refreshing: pulling || loading, onRefresh: onPull, enabled: !running && !loading && key !== 'draft' });
+  const header = useMemo(
+    () => (
+      <>
+        {pull.header}
+        {historyMore ? <ShowEarlier loading={loadingEarlier} onPress={showEarlier} /> : null}
+      </>
+    ),
+    [historyMore, loadingEarlier, showEarlier, pull.header],
+  );
   const footer = useMemo(
     () => (
       <>
@@ -129,11 +145,16 @@ export const TranscriptPane = memo(function TranscriptPane({ controller, meta, b
                     keyboardDismissMode="interactive"
                     keyboardShouldPersistTaps="handled"
                     CellRendererComponent={jump.Cell}
-                    onScroll={jump.onScroll}
+                    onScroll={(event) => {
+                      pull.track(event);
+                      jump.onScroll(event);
+                    }}
                     onScrollBeginDrag={jump.onDrag}
                     onContentSizeChange={jump.onContentSize}
                     ListHeaderComponent={header}
                     ListFooterComponent={footer}
+                    refreshControl={pull.refreshControl}
+                    scrollEventThrottle={16}
                   >
                     {renderRow}
                   </ThreadPrimitive.MessagesFlatList>

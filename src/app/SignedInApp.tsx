@@ -132,6 +132,7 @@ export default function SignedInApp(props: Props) {
     () => ({
       loadMore: () => void controller.loadMoreSessions(),
       loadMoreMessaging: () => void controller.loadMoreMessaging(),
+      refresh: () => controller.refreshSessions(),
       retry: () => void controller.refreshSessions(),
       search: (query) => controller.searchSessions(query),
     }),
@@ -229,6 +230,7 @@ export default function SignedInApp(props: Props) {
           onGroupActions={groupActions.open}
           onAdd={() => setAddSheet(true)}
           onRetryRoster={() => void controller.refreshRoster()}
+          onRefreshRoster={() => Promise.all([controller.refreshRoster(), controller.refreshSessions(), groups.refresh()]).then(() => undefined)}
           onProfileChip={openProfileSheet}
           loadImage={controller.avatarDataFn}
         />

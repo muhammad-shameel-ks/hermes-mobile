@@ -160,6 +160,10 @@ _Avoid_: prompt, request
 A message whose answer never arrived, held under its event id so a retry cannot post it twice.
 _Avoid_: failed send, draft
 
+**Room activity**:
+The group chat's turn lifecycle as a feed: who replied, passed, failed, waited or was interrupted, derived from the room log. The desktop's run epochs have no wire analogue; rows are the newest 50, newest first.
+_Avoid_: activity log, status feed
+
 ## Surfaces
 
 **Files root**:

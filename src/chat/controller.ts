@@ -627,6 +627,14 @@ export class ChatController {
     this.syncScope();
   }
 
+  /** pull-to-refresh on the open chat: the newest page is re-read and re-anchored onto older pages the reader pulled in */
+  refreshOpen(key: string = this.snapshot.openKey) {
+    const entry = this.entry(key);
+    if (!entry || key === DRAFT_KEY || entry.loading || entry.transcript.running) return Promise.resolve();
+    // a refresh replays the newest page; `load` already keeps older pages it covers out of the way
+    return this.load(key);
+  }
+
   /** open a listed session of the active profile */
   openSession(session: Pick<SessionInfo, 'id' | 'title'>) {
     const existing = this.entry(session.id);
