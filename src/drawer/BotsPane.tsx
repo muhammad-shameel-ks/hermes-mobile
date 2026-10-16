@@ -17,6 +17,7 @@ import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { DisclosureCaret } from '../ui/motion.tsx';
 import { tick } from '../ui/haptics.ts';
 import { useTokens } from '../ui/tokens.ts';
+import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { BotRow } from './BotRow.tsx';
 import { GroupRow } from './GroupRow.tsx';
 import { SearchField } from './chrome.tsx';
@@ -24,7 +25,6 @@ import { updateFolds, useDrawerFolds } from './drawerState.ts';
 import { SIDEBAR_INSET } from './rowGeometry.ts';
 import { NO_ACTIVITIES, stableActivities, type Activities } from './dotStates.ts';
 import { IDLE_ACTIVITY, resolveDotState } from './sessionStatus.ts';
-
 /** the slices the roster reads; a narrower object than the whole snapshot works as well */
 export type BotsPaneSnapshot = Pick<ChatSnapshot, 'roster' | 'entries' | 'openKey' | 'openingBot' | 'finishedAway' | 'link'>;
 
@@ -37,6 +37,7 @@ type Props = {
   onGroupActions: (room: GroupRoom) => void;
   onAddPress: () => void;
   onRetryRoster: () => void;
+  onRefresh: () => Promise<unknown>;
   loadImage: (name: string) => Promise<string | null>;
 };
 
@@ -70,13 +71,21 @@ function PanelEmpty({ icon, title, description, action }: { icon: CodiconName; t
   );
 }
 
-export function BotsPane({ snapshot, groups, onOpenBot, onBotActions, onOpenGroup, onGroupActions, onAddPress, onRetryRoster, loadImage }: Props) {
+export function BotsPane({ snapshot, groups, onOpenBot, onBotActions, onOpenGroup, onGroupActions, onAddPress, onRetryRoster, onRefresh, loadImage }: Props) {
   const t = useTokens();
   const { hiddenBotsOpen } = useDrawerFolds();
   const [query, setQuery] = useState('');
   const now = Math.floor(Date.now() / 60_000) * 60;
-  const { visible, hidden, loaded, error } = snapshot.roster;
+  const { visible, hidden, loaded, loading, error } = snapshot.roster;
   const { openKey, openingBot, finishedAway, entries } = snapshot;
+  const [pulling, setPulling] = useState(false);
+  const refreshRef = useRef(onRefresh);
+  refreshRef.current = onRefresh;
+  const onPull = useCallback(() => {
+    setPulling(true);
+    void refreshRef.current().finally(() => setPulling(false));
+  }, []);
+  const pull = usePullRefresh({ refreshing: pulling || loading, onRefresh: onPull });
   const activitiesRef = useRef(NO_ACTIVITIES);
   const activities = stableActivities(activitiesRef.current, entries);
   activitiesRef.current = activities;
@@ -154,7 +163,16 @@ export function BotsPane({ snapshot, groups, onOpenBot, onBotActions, onOpenGrou
         <SearchField value={query} onChange={setQuery} placeholder={searchPlaceholder} rest={0.5} />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        refreshControl={pull.refreshControl}
+        onScroll={pull.track}
+        scrollEventThrottle={16}
+      >
+        {pull.header}
         {error && !empty ? (
           <View style={[styles.stale, { backgroundColor: t.uiRowActiveBackground, borderRadius: t.radius['2xl'] }]} accessibilityLiveRegion="polite">
             <Text style={{ flex: 1, color: t.uiTextTertiary, fontSize: 13, lineHeight: 18 }}>

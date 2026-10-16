@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
+import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { OverlayScreen } from '../app/overlay.tsx';
 import { errorText } from '../gateway/http.ts';
 import { useTokens } from '../ui/tokens.ts';
@@ -97,6 +97,13 @@ export default function CapabilitiesScreen({ onBack }: { onBack: () => void }) {
 
   const active = tab === 'skills' ? skills : tab === 'toolsets' ? toolsets : servers;
   const reload = tab === 'skills' ? reloadSkills : tab === 'toolsets' ? reloadToolsets : reloadServers;
+  const [pulling, setPulling] = useState(false);
+  const onPull = useCallback(() => {
+    setPulling(true);
+    reload();
+    setTimeout(() => setPulling(false), 600);
+  }, [reload]);
+  const pull = usePullRefresh({ refreshing: pulling || active.kind === 'loading', onRefresh: onPull });
   const counts: Record<Tab, number | null> = {
     skills: skills.kind === 'ready' ? skills.items.length : null,
     toolsets: toolsets.kind === 'ready' ? visibleToolsetCount(toolsets.items) : null,
@@ -160,6 +167,9 @@ export default function CapabilitiesScreen({ onBack }: { onBack: () => void }) {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: insets.bottom + 24 }}
+          refreshControl={pull.refreshControl}
+          onScroll={pull.track}
+          scrollEventThrottle={16}
           ListEmptyComponent={
             <View style={styles.center}>
               <Text style={{ color: t.uiTextPrimary, fontSize: t.type.text, fontWeight: '500' }}>

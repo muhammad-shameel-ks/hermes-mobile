@@ -15,16 +15,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { MONO, useTokens } from '../ui/tokens.ts';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
-
+import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 /** `SettingsContent`: the scrolling page body */
-export function SettingsContent({ children }: { children: ReactNode }) {
+export function SettingsContent({ children, refreshing, onRefresh }: { children: ReactNode; refreshing?: boolean; onRefresh?: () => void }) {
   const insets = useSafeAreaInsets();
+  const pull = usePullRefresh({ refreshing: refreshing ?? false, onRefresh: onRefresh ?? (() => undefined), enabled: onRefresh !== undefined });
   return (
     <ScrollView
       style={styles.flex}
       contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: Math.max(insets.bottom, 12) + 40 }}
       keyboardShouldPersistTaps="handled"
+      refreshControl={onRefresh ? pull.refreshControl : undefined}
+      onScroll={onRefresh ? pull.track : undefined}
+      scrollEventThrottle={onRefresh ? 16 : undefined}
     >
+      {onRefresh ? pull.header : null}
       {children}
     </ScrollView>
   );

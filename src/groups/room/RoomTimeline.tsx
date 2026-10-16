@@ -8,8 +8,8 @@
  */
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-
 import type { Bot } from '../../bots/roster.ts';
+import { usePullRefresh } from '../../ui/usePullRefresh.tsx';
 import { ScrollToBottomButton } from '../../chat/ScrollToBottomButton.tsx';
 import { ShowEarlier } from '../../chat/ShowEarlier.tsx';
 import { GlyphSpinner } from '../../ui/loaders/GlyphSpinner.tsx';
@@ -18,7 +18,6 @@ import { buildTimeline, type GroupMember, type PendingAction, type TimelineRow }
 import type { RoomEvent } from '../../../vendor/hermes-shared/src/gateway-contract.generated.ts';
 import { PendingActionCard } from './PendingActionCard.tsx';
 import { RoomMessageRow } from './RoomMessage.tsx';
-
 /** within this of the tail the reader is "at the bottom": new rows still scroll into view */
 const NEAR_BOTTOM_PX = 72;
 
@@ -47,6 +46,8 @@ type Props = {
   more: boolean;
   loadingEarlier: boolean;
   onLoadEarlier: () => void;
+  refreshing: boolean;
+  onRefresh: () => void;
   pending: readonly PendingAction[];
   busy: boolean;
   onApprove: (action: Extract<PendingAction, { kind: 'approval' }>, choice: 'once' | 'deny') => void;
@@ -54,8 +55,9 @@ type Props = {
   working: boolean;
 };
 
-function RoomTimelineImpl({ events, members, roster, loadImage, more, loadingEarlier, onLoadEarlier, pending, busy, onApprove, onRetryTask, working }: Props) {
+function RoomTimelineImpl({ events, members, roster, loadImage, more, loadingEarlier, onLoadEarlier, refreshing, onRefresh, pending, busy, onApprove, onRetryTask, working }: Props) {
   const t = useTokens();
+  const pull = usePullRefresh({ refreshing, onRefresh });
   const rows = useMemo(() => buildTimeline(events, members), [events, members]);
   const entries = useMemo(() => decorate(rows), [rows]);
 
@@ -73,6 +75,7 @@ function RoomTimelineImpl({ events, members, roster, loadImage, more, loadingEar
 
   const onScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      pull.track(event);
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
       const distance = contentSize.height - contentOffset.y - layoutMeasurement.height;
       const atBottom = distance < NEAR_BOTTOM_PX;
@@ -86,7 +89,7 @@ function RoomTimelineImpl({ events, members, roster, loadImage, more, loadingEar
         setJumpVisible(true);
       }
     },
-    [entries.length],
+    [entries.length, pull],
   );
 
   const onContentSizeChange = useCallback(() => {
@@ -115,7 +118,15 @@ function RoomTimelineImpl({ events, members, roster, loadImage, more, loadingEar
     if (nearBottom.current) listRef.current?.scrollToEnd({ animated: false });
   }, []);
 
-  const header = useMemo(() => (more ? <ShowEarlier loading={loadingEarlier} onPress={onLoadEarlier} /> : null), [more, loadingEarlier, onLoadEarlier]);
+  const header = useMemo(
+    () => (
+      <>
+        {pull.header}
+        {more ? <ShowEarlier loading={loadingEarlier} onPress={onLoadEarlier} /> : null}
+      </>
+    ),
+    [more, loadingEarlier, onLoadEarlier, pull.header],
+  );
 
   // the last row is the most recent event; it reads as a reply to the newest user turn only when it is one
   const showWorking = working && rows[rows.length - 1]?.kind !== 'member';
@@ -152,6 +163,7 @@ function RoomTimelineImpl({ events, members, roster, loadImage, more, loadingEar
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={header}
         ListFooterComponent={footer}
+        refreshControl={pull.refreshControl}
       />
       <ScrollToBottomButton visible={jumpVisible} count={jumpCount} onPress={toBottom} />
     </View>

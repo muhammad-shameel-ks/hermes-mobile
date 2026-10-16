@@ -50,6 +50,7 @@ type Props = {
   onGroupActions: (room: GroupRoom) => void;
   onAdd: () => void;
   onRetryRoster: () => void;
+  onRefreshRoster: () => Promise<unknown>;
   onProfileChip: () => void;
   loadImage: (name: string) => Promise<string | null>;
 };
@@ -144,6 +145,7 @@ function DrawerContent(props: Props) {
           onGroupActions={props.onGroupActions}
           onAddPress={props.onAdd}
           onRetryRoster={props.onRetryRoster}
+          onRefresh={props.onRefreshRoster}
           loadImage={props.loadImage}
         />
       )}

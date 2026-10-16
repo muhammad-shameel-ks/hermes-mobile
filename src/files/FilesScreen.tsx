@@ -7,9 +7,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { OverlayScreen } from '../app/overlay.tsx';
+import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { Codicon } from '../ui/Codicon.tsx';
 import { copyText } from '../ui/clipboard.ts';
 import { ActionSheet, Sheet, type SheetAction } from '../ui/Sheet.tsx';
@@ -57,6 +58,8 @@ export default function FilesScreen({ root, path, onClose, onOpenDirectory, onOp
     }
   }, [rest, path]);
 
+  const pull = usePullRefresh({ refreshing: loading, onRefresh: () => void load() });
+
   useEffect(() => {
     void load();
   }, [load, version]);
@@ -64,7 +67,6 @@ export default function FilesScreen({ root, path, onClose, onOpenDirectory, onOp
   const activePath = listing?.path ?? path ?? '';
   const rootPath = root ?? listing?.locked_root ?? listing?.path ?? '';
   const title = root ? baseName(activePath || path || '') || 'Files' : 'Files';
-
   const upload = async (sources: UploadSource[]) => {
     if (!sources.length || !activePath) return;
     setUploading(true);
@@ -187,7 +189,10 @@ export default function FilesScreen({ root, path, onClose, onOpenDirectory, onOp
           data={listing?.entries ?? []}
           keyExtractor={(entry) => entry.path}
           renderItem={renderRow}
-          refreshControl={<RefreshControl refreshing={loading && !!listing} onRefresh={() => void load()} tintColor={t.uiTextTertiary} />}
+          refreshControl={pull.refreshControl}
+          onScroll={pull.track}
+          scrollEventThrottle={16}
+          ListHeaderComponent={pull.header}
           ListEmptyComponent={listing ? <EmptyState title="No files" /> : null}
           contentContainerStyle={listing && listing.entries.length === 0 ? styles.emptyList : undefined}
         />

@@ -76,7 +76,7 @@ export default function ModelsSection() {
   };
 
   return (
-    <SettingsContent>
+    <SettingsContent refreshing={models.loading} onRefresh={() => void controller.refreshModels(true)}>
       <SettingsSection title={COPY.main} icon="chip">
         <Text style={{ color: t.uiTextTertiary, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight, marginBottom: 4 }}>{COPY.applies}</Text>
         {models.loading && !models.providers.length ? (

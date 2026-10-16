@@ -28,9 +28,8 @@ const COPY = {
 export default function ProfilesSection() {
   const t = useTokens();
   const { controller, snapshot } = useSettings();
-  const { visible, hidden, loaded, error } = snapshot.roster;
+  const { visible, hidden, loaded, loading, error } = snapshot.roster;
   const bots = [...visible, ...hidden];
-
   const row = (bot: Bot) => {
     const active = bot.name === snapshot.profile;
     return (
@@ -57,7 +56,7 @@ export default function ProfilesSection() {
   };
 
   return (
-    <SettingsContent>
+    <SettingsContent refreshing={loading} onRefresh={() => void controller.refreshRoster()}>
       <SettingsSection title={COPY.title} icon="account" meta={loaded ? COPY.count(bots.length) : undefined}>
         <Text style={{ color: t.uiTextTertiary, fontSize: t.type.caption, lineHeight: t.type.captionLineHeight, marginBottom: 8 }}>{COPY.intro}</Text>
         {!loaded && !error ? <Text style={{ color: t.uiTextTertiary, fontSize: t.type.caption }}>{COPY.loading}</Text> : null}

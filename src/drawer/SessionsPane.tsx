@@ -12,6 +12,7 @@ import { FlatList, StyleSheet, View } from 'react-native';
 import { useOverlay } from '../app/overlay.tsx';
 import type { ChatSnapshot, SessionInfo } from '../chat/controller.ts';
 import { openFiles } from '../files/open.tsx';
+import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { NavRow, SearchField } from './chrome.tsx';
 import { NO_ACTIVITIES, rowDotState, stableActivities } from './dotStates.ts';
 import { getDrawerFolds, toggleIn, updateFolds, useDrawerFolds } from './drawerState.ts';
@@ -29,6 +30,7 @@ import { useSessionSearch } from './useSessionSearch.ts';
 export type SessionsListApi = {
   loadMore: () => void;
   loadMoreMessaging: () => void;
+  refresh: () => Promise<unknown>;
   retry: () => void;
   search: (query: string) => Promise<SessionSearchResult[]>;
 };
@@ -62,9 +64,15 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
   const searching = trimmed.length > 0;
   const { matches, pending } = useSessionSearch(trimmed, list.search);
 
-  const { items, messaging, loaded, loadingMore, error, hasMore, hasMoreMessaging, corrupt } = snapshot.sessions;
+  const { items, messaging, loading, loaded, loadingMore, error, hasMore, hasMoreMessaging, corrupt } = snapshot.sessions;
   const { openKey, finishedAway, profile } = snapshot;
   const minute = Math.floor(Date.now() / 60_000) * 60;
+  const [pulling, setPulling] = useState(false);
+  const onPull = useCallback(() => {
+    setPulling(true);
+    void latest.current.list.refresh().finally(() => setPulling(false));
+  }, []);
+  const pull = usePullRefresh({ refreshing: pulling || (loading && loaded), onRefresh: onPull });
 
   const activitiesRef = useRef(NO_ACTIVITIES);
   const activities = stableActivities(activitiesRef.current, snapshot.entries);
@@ -161,6 +169,7 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
   const header = useMemo(
     () => (
       <>
+        {pull.header}
         <View style={styles.nav}>
           <NavRow label="New session" icon="robot" onPress={() => latest.current.onNewSession()} />
           <NavRow label="Capabilities" icon="symbol-misc" onPress={routes.openCapabilities} />
@@ -181,7 +190,7 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
         </View>
       </>
     ),
-    [routes, corrupt, query, searchBusy],
+    [routes, corrupt, query, searchBusy, pull.header],
   );
 
   return (
@@ -193,6 +202,9 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
       keyExtractor={keyOf}
       extraData={rowState}
       ListHeaderComponent={header}
+      refreshControl={pull.refreshControl}
+      onScroll={pull.track}
+      scrollEventThrottle={16}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       initialNumToRender={18}

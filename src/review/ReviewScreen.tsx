@@ -7,9 +7,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { OverlayScreen } from '../app/overlay.tsx';
+import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { gateway } from '../files/gateway.ts';
 import { displayPath, joinPath } from '../files/path.ts';
 import { createFilesRest, createReviewRest, errorMessage, type RepoStatus } from '../files/rest.ts';
@@ -111,6 +112,7 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
     void load();
   }, [load]);
 
+  const pull = usePullRefresh({ refreshing: loading, onRefresh: () => void load() });
   const effectiveBase = givenBase ?? (cwd ? turnBaseFor(cwd) : null);
   const target = (dir: string): ReviewTarget => ({ cwd: dir, scope, base: effectiveBase });
 
@@ -213,7 +215,10 @@ export default function ReviewScreen({ cwd: givenCwd, scope: givenScope, base: g
           data={rows}
           keyExtractor={(row) => row.node.id}
           renderItem={renderRow}
-          refreshControl={<RefreshControl refreshing={loading && !!list} onRefresh={() => void load()} tintColor={t.uiTextTertiary} />}
+          refreshControl={pull.refreshControl}
+          onScroll={pull.track}
+          scrollEventThrottle={16}
+          ListHeaderComponent={pull.header}
           ListEmptyComponent={
             list ? <EmptyState title="No diffs" body={scope === 'lastTurn' && !effectiveBase ? 'The last turn has no starting point yet.' : undefined} /> : null
           }
