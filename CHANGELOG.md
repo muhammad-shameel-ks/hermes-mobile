@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.21] - 2026-10-16
+
+- Show room activity in group chats (#30) ([00c6ee4](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/00c6ee4))
+
 ## [0.1.20] - 2026-10-16
 
 - Add group chats: gateway-hosted rooms of bots (#29) ([229ed88](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/229ed88))
