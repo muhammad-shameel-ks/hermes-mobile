@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.20] - 2026-10-16
+
+- Add group chats: gateway-hosted rooms of bots (#29) ([229ed88](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/229ed88))
+
 ## [0.1.19] - 2026-10-15
 
 - Keep the app responsive while a reply streams (#28) ([7813dde](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/7813dde))
