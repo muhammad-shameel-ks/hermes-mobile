@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.23] - 2026-10-18
+
+- Swipe right on the chat to open the drawer and left to close it (#32) ([a6c54fe](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/a6c54fe))
+
 ## [0.1.22] - 2026-10-18
 
 - Refresh the open chat when the app returns from the background (#31) ([b9aa86e](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/b9aa86e))
