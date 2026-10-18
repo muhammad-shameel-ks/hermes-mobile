@@ -6,7 +6,7 @@
  */
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardPaddedView } from '../ui/KeyboardPaddedView.tsx';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Bot } from '../bots/roster.ts';
 import type { ChatController, ChatSnapshot } from '../chat/controller.ts';
@@ -206,7 +206,7 @@ export default function GroupRoomScreen({ controller, model, roomId, name, onClo
   }
 
   return (
-    <KeyboardAvoidingView behavior="padding" style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground }]}>
+    <KeyboardPaddedView style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground }]}>
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <RoomHeader
           title={title}
@@ -224,7 +224,7 @@ export default function GroupRoomScreen({ controller, model, roomId, name, onClo
         <MembersSheet visible={membersOpen} members={members} roster={rosterByProfile} loadImage={controller.avatarDataFn} onClose={closeMembers} />
         <RenameSheet visible={renaming} initial={title} busy={room.busy} onClose={closeRename} onSubmit={submitRename} />
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardPaddedView>
   );
 }
 
