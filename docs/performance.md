@@ -32,6 +32,7 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 4. Transcript reducers touch only the live message and the changed part. Find messages from the tail, never `map`/`some`/`[...arr].reverse().find` over the list. Never mutate a `Part` or `ToolPart` after it enters state - replace it (caches below key on identity).
 5. Derived values handed to React are memoised by input identity (see `currentModel()`).
 6. Every timer has a `forget`/`dispose` path and an injectable clock.
+7. A non-React subscriber to the controller (the attention center in `src/attention/center.ts`) runs on every wake-up, streamed ones included. Keep its work O(entries), cache per-chat derivations on the `requests` identity (`attentionOf`), and wake its own listeners only when its output changes.
 
 ### Subscriptions (`useChatSelector`, `chatSlices.ts`)
 1. Never read the whole snapshot in a mounted component. No bare `useSyncExternalStore(controller.subscribe, controller.getSnapshot)`; use `useChatSelector(controller, selector, shallowEqual)` with a slice from `chatSlices.ts`.

@@ -106,6 +106,24 @@ _Avoid_: autoscroll, follow mode
 The one transcript that consumes a session's event stream on a phone; the desktop's per-pane mirrors have no mobile counterpart.
 _Avoid_: subscriber, listener, client
 
+## Attention
+
+**Attention**:
+A chat's open request - an approval, a clarify, a sudo, secret or vault prompt - lifted out of its chat so the reader sees it wherever they are. One per request; the next request in the same chat is a new attention.
+_Avoid_: alert, ping, pending request
+
+**Attention banner**:
+The card dropped over the screen when an attention waits in a chat other than the open one. Run and Reject answer an approval in place; Open switches to the chat; the X waves that one attention off.
+_Avoid_: toast, in-app notification, heads-up
+
+**Attention notification**:
+The system notification an attention raises while the app is out of sight. It carries no actions: a tap opens the chat, where the request is answered on its card.
+_Avoid_: push notification, alert
+
+**Background hold**:
+Android's foreground service that keeps the app and its socket running while a turn streams or waits on the reader out of sight, released as soon as nothing is left to wait for. Without it the socket closes with the app and no attention can arrive.
+_Avoid_: keep-alive, wake lock, background mode
+
 ## Connections and profiles
 
 **Connection**:

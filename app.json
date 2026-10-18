@@ -45,6 +45,12 @@
       "expo-sharing",
       "expo-asset",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png"
+        }
+      ],
+      [
         "expo-speech-recognition",
         {
           "microphonePermission": "Hermes uses the microphone for dictation.",

@@ -5,14 +5,19 @@ import type { Persistence } from '../../src/store/index.ts';
 
 type Handler = (params: Record<string, unknown>) => unknown;
 
-/** A scripted gateway on the far side of a fake socket: answers RPCs and pushes events. */
+/** A scripted gateway on the far side of a fake socket: answers RPCs, pushes events and server requests. */
 export class FakeGateway extends EventTarget {
   readyState: number = WebSocket.CONNECTING;
   calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+  /** the phone's responses to server requests */
+  answers: Array<{ id: string; result?: unknown }> = [];
   handlers: Record<string, Handler> = {};
   send(text: string) {
-    const frame = JSON.parse(text) as { id?: string; method?: string; params?: Record<string, unknown> };
-    if (!frame.method) return;
+    const frame = JSON.parse(text) as { id?: string; method?: string; params?: Record<string, unknown>; result?: unknown };
+    if (!frame.method) {
+      if (frame.id) this.answers.push({ id: frame.id, result: frame.result });
+      return;
+    }
     this.calls.push({ method: frame.method, params: frame.params ?? {} });
     const handler = this.handlers[frame.method];
     queueMicrotask(() => {
@@ -28,6 +33,9 @@ export class FakeGateway extends EventTarget {
   }
   event(type: string, sessionId: string, payload: unknown = {}) {
     this.push({ jsonrpc: '2.0', method: 'event', params: { type, session_id: sessionId, payload } });
+  }
+  request(id: string, method: string, params: Record<string, unknown>) {
+    this.push({ jsonrpc: '2.0', id, method, params });
   }
   open() {
     this.readyState = WebSocket.OPEN;

@@ -10,6 +10,7 @@ Hermes Mobile does not run an agent itself. It connects to a Hermes gateway you 
 
 - Chat with streaming replies, reasoning and tool-call cards, attachments, dictation and read-aloud
 - Approvals and clarification prompts from the agent, answered on the phone
+- Attention: a request waiting in another chat drops in as a banner (approvals can be run or rejected right there), and while the app is in the background on Android a system notification opens the chat that needs you
 - Bot Mode: your gateway's profiles shown as bots, each with its own sessions
 - Group chats: rooms of two to six bots hosted by the gateway, with @mentions, stop, approvals and retries
 - Files and Review surfaces for browsing what the agent produced and the changes it made

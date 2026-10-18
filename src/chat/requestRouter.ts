@@ -12,12 +12,16 @@
  * once per socket after `gateway.ready` and re-delivers `open_requests` on
  * every resume, so a reconnect brings pending questions back by itself.
  *
- * Approvals are answered in the foreground only. The socket closes with the app,
- * the backend keeps the question until its own deadline (`approvals.timeout`,
- * 300s by default), and a resume re-surfaces whatever it still holds. What it
- * dropped meanwhile comes down: a clarify the resume omits, an approval
- * `approval.pending` no longer lists, a `request.cancel` replayed from the
- * event ring (which also leaves the timeout line in the transcript).
+ * A request is answered in the app: its own chat's card, or the attention
+ * banner over another chat (src/attention). While a turn streams or waits on
+ * the reader, Android holds the socket open in the background so a request
+ * still arrives and raises a system notification; otherwise the socket closes
+ * with the app, the backend keeps the question until its own deadline
+ * (`approvals.timeout`, 300s by default), and a resume re-surfaces whatever it
+ * still holds. What it dropped meanwhile comes down: a clarify the resume
+ * omits, an approval `approval.pending` no longer lists, a `request.cancel`
+ * replayed from the event ring (which also leaves the timeout line in the
+ * transcript).
  */
 
 import type { RpcMethods, SessionResumeResult } from '../../vendor/hermes-shared/src/gateway-contract.generated.ts';

@@ -43,3 +43,7 @@ yarn-error.*
 # release artifacts
 /dist
 /RELEASE_NOTES.md
+
+# local native modules build output
+/modules/*/android/build
+/modules/*/android/.cxx

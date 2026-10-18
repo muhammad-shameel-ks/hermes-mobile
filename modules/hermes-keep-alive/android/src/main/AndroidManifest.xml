@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <application>
+    <!-- stopWithTask: swiping the app away ends the hold with the app -->
+    <service
+      android:name="dev.hermes.keepalive.KeepAliveService"
+      android:exported="false"
+      android:foregroundServiceType="dataSync"
+      android:stopWithTask="true" />
+  </application>
+</manifest>
