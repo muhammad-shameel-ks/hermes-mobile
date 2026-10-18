@@ -100,15 +100,21 @@ test('returning from the background re-reads the open chat once the socket is ba
   controller.dispose();
 });
 
-test('a redial that was not a background return leaves the open chat alone', async () => {
+test('a dropped socket that redials re-reads the open chat without a background trip', async () => {
   let total = 4;
-  const { controller, gateway, snap } = await rig((path, query) => server(total).get(path, query));
+  const { controller, gateway, link, snap } = await rig((path, query) => server(total).get(path, query));
   controller.openSession({ id: 's1', title: 'One' });
   await flush();
+  assert.equal(snap().entries.s1.transcript.messages.length, 4);
 
   total = 6;
+  gateway.close();
+  await flush();
+  link.retryNow();
+  await flush();
   gateway.open();
   await flush();
-  assert.equal(snap().entries.s1.transcript.messages.length, 4);
+  assert.deepEqual(snap().entries.s1.transcript.messages.map(messageText), ['m1', 'm2', 'm3', 'm4', 'm5', 'm6']);
+  assert.equal(snap().entries.s1.loading, false);
   controller.dispose();
 });

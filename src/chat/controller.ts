@@ -254,8 +254,8 @@ export class ChatController {
   private readonly unsubscribe: Array<() => void> = [];
   readonly rpc: Rpc;
   private listTimer: ReturnType<typeof setTimeout> | null = null;
-  /** set when the app backgrounds: the next time the socket opens, the open chat is re-read */
-  private reloadOpenOnLinkOpen = false;
+  /** set once the socket has opened: every later open is a reconnect, and the open chat is re-read on it */
+  private linkHasOpened = false;
   private readonly interrupts = new RecentInterrupts();
   private readonly link: GatewayLink;
   readonly api: GatewayApi;
@@ -483,9 +483,8 @@ export class ChatController {
     this.link.resume();
   }
 
-  /** the app left the foreground: the socket closes and redials on return, and the open chat is re-read once it does */
+  /** the app left the foreground: the socket closes and redials on return */
   pause() {
-    this.reloadOpenOnLinkOpen = true;
     this.link.pause();
     void this.persistence?.flush();
   }
@@ -508,12 +507,12 @@ export class ChatController {
   // ─── link + events ─────────────────────────────────────────────────────────
 
   private onLinkOpen() {
-    const returning = this.reloadOpenOnLinkOpen;
-    this.reloadOpenOnLinkOpen = false;
+    const reconnected = this.linkHasOpened;
+    this.linkHasOpened = true;
     const open = this.entry(this.snapshot.openKey);
     // a turn still streaming is caught up by the resume's replay; every other open chat may have moved
     // on another device while this one was away, so its newest page is read again
-    const reloadOpen = Boolean(returning && open && open.key !== DRAFT_KEY && !open.loading && !open.transcript.running);
+    const reloadOpen = Boolean(reconnected && open && open.key !== DRAFT_KEY && !open.loading && !open.transcript.running);
     void this.refreshRoster();
     void this.refreshSessions();
     void this.refreshModels();
