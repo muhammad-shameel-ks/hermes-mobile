@@ -5,8 +5,9 @@
  * watermarks survive redials and the client replays what a drop missed. Each dial
  * mints a single-use ticket first; drops redial with full-jitter backoff that only
  * resets once a socket has stayed up; a 4401/4403 close, or a ticket the gateway
- * refuses, is terminal and goes back to sign-in. The socket is foreground-scoped:
- * `pause` closes it, `resume` dials again.
+ * refuses, is terminal and goes back to sign-in. `pause` closes the socket and
+ * `resume` dials again; the app pauses it on leaving the foreground unless the
+ * attention center holds it open for a live turn.
  */
 
 import {

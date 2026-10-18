@@ -36,7 +36,8 @@ export function useOverlay(): OverlayApi {
   return api;
 }
 
-export function OverlayProvider({ children }: { children: ReactNode }) {
+/** `above` draws over every pushed route: what has to reach the reader wherever they are */
+export function OverlayProvider({ children, above }: { children: ReactNode; above?: ReactNode }) {
   const [stack, setStack] = useState<Entry[]>([]);
   const nextId = useRef(1);
 
@@ -65,6 +66,7 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
           {entry.render(() => setStack((prev) => prev.filter((e) => e.id !== entry.id)))}
         </Animated.View>
       ))}
+      {above}
     </OverlayContext.Provider>
   );
 }

@@ -1,7 +1,9 @@
 /**
  * The signed-in app: chat root plus the drawer. Builds the session's credential
- * holder, REST client, socket link and chat controller once per sign-in; the
- * socket follows the app into the background and back (foreground-scoped).
+ * holder, REST client, socket link and chat controller once per sign-in. The
+ * socket follows the app into the background and back, unless a turn is still
+ * streaming or waiting on the reader: then the attention center holds it open
+ * so the reader hears when Hermes needs them.
  */
 
 import * as Crypto from 'expo-crypto';
@@ -11,6 +13,10 @@ import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeInUp, FadeOutUp, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { keepAlive } from '../../modules/hermes-keep-alive/index.ts';
+import { AttentionHost } from '../attention/AttentionBanner.tsx';
+import { AttentionCenter } from '../attention/center.ts';
+import { prepareNotifications, systemNotifier } from '../attention/notifier.ts';
 import { refreshCredentials } from '../auth/native-flow.ts';
 import { createAuthSession } from '../auth/session.ts';
 import { saveCredentials, type SavedConnection } from '../auth/store.ts';
@@ -110,21 +116,32 @@ export default function SignedInApp(props: Props) {
     [controller],
   );
   const groupActions = useGroupActions(groups, controller, (room) => openGroup.current?.openRoom(room));
+  const attention = useMemo(
+    () =>
+      new AttentionCenter({
+        source: controller,
+        notifier: systemNotifier,
+        hold: keepAlive,
+        app: { pause: () => controller.pause(), resume: () => controller.start(), flush: () => controller.flush() },
+        active: AppState.currentState !== 'background',
+      }),
+    [controller],
+  );
 
   useEffect(() => {
     controller.start();
+    attention.start();
+    void prepareNotifications();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        controller.start();
-      } else if (state === 'background') {
-        controller.pause();
-      }
+      if (state === 'active') attention.foreground();
+      else if (state === 'background') attention.background();
     });
     return () => {
       sub.remove();
+      attention.dispose();
       controller.dispose();
     };
-  }, [controller]);
+  }, [controller, attention]);
 
   const allBots = useMemo(() => [...roster.visible, ...roster.hidden], [roster]);
   const openBot = openBotName ? (allBots.find((b) => b.name === openBotName) ?? null) : null;
@@ -196,7 +213,7 @@ export default function SignedInApp(props: Props) {
 
   return (
     <SettingsProvider value={settingsHost}>
-    <OverlayProvider>
+    <OverlayProvider above={<AttentionHost center={attention} controller={controller} onNavigate={closeDrawer} />}>
       <CardEnvBridge controller={controller} />
       <View style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground, paddingTop: insets.top }]}>
         <GestureDetector gesture={openDrawerGesture}>

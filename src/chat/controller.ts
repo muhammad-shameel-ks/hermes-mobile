@@ -479,13 +479,20 @@ export class ChatController {
     this.set({ notice: { text, at: Date.now() } });
   }
 
+  /** the app is in front: dial, or skip the rest of a backoff the socket fell into while it was held in the background */
   start() {
     this.link.resume();
+    this.link.retryNow();
   }
 
-  /** the app left the foreground: the socket closes and redials on return */
+  /** the app left the foreground with nothing to wait for: the socket closes and redials on return */
   pause() {
     this.link.pause();
+    this.flush();
+  }
+
+  /** save what would be lost if the system ended the app now */
+  flush() {
     void this.persistence?.flush();
   }
 
@@ -646,10 +653,23 @@ export class ChatController {
 
   /** open a listed session of the active profile */
   openSession(session: Pick<SessionInfo, 'id' | 'title'>) {
-    const existing = this.entry(session.id);
-    if (!existing) this.putEntry(newEntry(session.id, this.snapshot.profile, { title: session.title }));
-    this.set({ openKey: session.id });
-    if (!existing || (!existing.runtimeId && !existing.loading)) void this.load(session.id);
+    this.openEntry(session.id, () => newEntry(session.id, this.snapshot.profile, { title: session.title }));
+  }
+
+  /**
+   * open the chat an attention points at: the one held, else a fresh entry under its own profile (a
+   * notification tapped after the system ended the app), a Bot Chat under its bot
+   */
+  openChat(target: { key: string; profile: string; title: string | null; bot: string | null }) {
+    if (target.bot) this.openBotChat(target.bot, target.key);
+    else this.openEntry(target.key, () => newEntry(target.key, target.profile, { title: target.title }));
+  }
+
+  private openEntry(key: string, create: () => ChatEntry) {
+    const existing = this.entry(key);
+    if (!existing) this.putEntry(create());
+    this.set({ openKey: key });
+    if (!existing || (!existing.runtimeId && !existing.loading)) void this.load(key);
     this.syncScope();
   }
 
@@ -696,11 +716,7 @@ export class ChatController {
   }
 
   private openBotChat(botName: string, storedId: string) {
-    const existing = this.entry(storedId);
-    if (!existing) this.putEntry(newEntry(storedId, botName, { title: BOT_CHAT_TITLE, isBotChat: true, bot: botName }));
-    this.set({ openKey: storedId });
-    if (!existing || (!existing.runtimeId && !existing.loading)) void this.load(storedId);
-    this.syncScope();
+    this.openEntry(storedId, () => newEntry(storedId, botName, { title: BOT_CHAT_TITLE, isBotChat: true, bot: botName }));
   }
 
   /** exact-title lookup through the hidden registry; fails closed rather than minting a second chat */
