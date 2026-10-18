@@ -65,5 +65,5 @@ export async function rig(get: (path: string, query: Record<string, unknown>) =>
   await flush();
   gateway.open();
   await flush();
-  return { gateway, controller, snap: () => controller.getSnapshot() };
+  return { gateway, link, controller, snap: () => controller.getSnapshot() };
 }
