@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.25] - 2026-10-18
+
+- No user-facing changes.
+
 ## [0.1.24] - 2026-10-18
 
 - Lift the composer fully above the keyboard (#33) ([68bde39](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/68bde39))
