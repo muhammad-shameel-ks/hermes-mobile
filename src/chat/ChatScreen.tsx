@@ -134,7 +134,9 @@ function ChatScreen({ controller, bot, profileLabel, onOpenDrawer, onProfile }: 
   );
 
   return (
-    <KeyboardAvoidingView behavior="padding" style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground }]}>
+    // the shell pads the status bar above this view, so its onLayout y is 0 while the window y is insets.top;
+    // automaticOffset measures the true window position or the padding falls short by the status bar height
+    <KeyboardAvoidingView automaticOffset behavior="padding" style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground }]}>
       <View style={styles.root}>
         <AppBar t={t} title={title} subtitle={subtitle} avatar={avatar} onOpenDrawer={onOpenDrawer} onNewChat={newChat} />
         <LinkBanner link={link} onRetry={retryLink} />
