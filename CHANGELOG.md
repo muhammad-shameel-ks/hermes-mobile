@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.28] - 2026-10-18
+
+- Surface requests from other chats and while the app is away (#37) ([7162dff](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/7162dff))
+
 ## [0.1.27] - 2026-10-18
 
 - Fade in streamed replies, keep the reader's place while they stream, smooth the running-session arc and add the desktop backdrop (#36) ([c155d7f](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/c155d7f))
