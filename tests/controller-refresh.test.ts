@@ -80,3 +80,35 @@ test('refreshOpen reloads a session whose history failed to load', async () => {
   assert.deepEqual(snap().entries.s1.transcript.messages.map(messageText), ['m1', 'm2']);
   controller.dispose();
 });
+
+test('returning from the background re-reads the open chat once the socket is back', async () => {
+  let total = 4;
+  const { controller, gateway, snap } = await rig((path, query) => server(total).get(path, query));
+  controller.openSession({ id: 's1', title: 'One' });
+  await flush();
+  assert.deepEqual(snap().entries.s1.transcript.messages.map(messageText), ['m1', 'm2', 'm3', 'm4']);
+
+  controller.pause();
+  await flush();
+  total = 6;
+  controller.start();
+  await flush();
+  gateway.open();
+  await flush();
+  assert.deepEqual(snap().entries.s1.transcript.messages.map(messageText), ['m1', 'm2', 'm3', 'm4', 'm5', 'm6']);
+  assert.equal(snap().entries.s1.loading, false);
+  controller.dispose();
+});
+
+test('a redial that was not a background return leaves the open chat alone', async () => {
+  let total = 4;
+  const { controller, gateway, snap } = await rig((path, query) => server(total).get(path, query));
+  controller.openSession({ id: 's1', title: 'One' });
+  await flush();
+
+  total = 6;
+  gateway.open();
+  await flush();
+  assert.equal(snap().entries.s1.transcript.messages.length, 4);
+  controller.dispose();
+});

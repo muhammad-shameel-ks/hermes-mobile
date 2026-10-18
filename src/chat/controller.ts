@@ -254,6 +254,8 @@ export class ChatController {
   private readonly unsubscribe: Array<() => void> = [];
   readonly rpc: Rpc;
   private listTimer: ReturnType<typeof setTimeout> | null = null;
+  /** set when the app backgrounds: the next time the socket opens, the open chat is re-read */
+  private reloadOpenOnLinkOpen = false;
   private readonly interrupts = new RecentInterrupts();
   private readonly link: GatewayLink;
   readonly api: GatewayApi;
@@ -481,8 +483,9 @@ export class ChatController {
     this.link.resume();
   }
 
-  /** the app left the foreground: the socket closes and redials on return */
+  /** the app left the foreground: the socket closes and redials on return, and the open chat is re-read once it does */
   pause() {
+    this.reloadOpenOnLinkOpen = true;
     this.link.pause();
     void this.persistence?.flush();
   }
@@ -505,16 +508,23 @@ export class ChatController {
   // ─── link + events ─────────────────────────────────────────────────────────
 
   private onLinkOpen() {
+    const returning = this.reloadOpenOnLinkOpen;
+    this.reloadOpenOnLinkOpen = false;
+    const open = this.entry(this.snapshot.openKey);
+    // a turn still streaming is caught up by the resume's replay; every other open chat may have moved
+    // on another device while this one was away, so its newest page is read again
+    const reloadOpen = Boolean(returning && open && open.key !== DRAFT_KEY && !open.loading && !open.transcript.running);
     void this.refreshRoster();
     void this.refreshSessions();
     void this.refreshModels();
     void this.refreshPersonality();
     // live events reach a socket only after it resumes a session; a redial rebinds every bound chat
+    // (a reload resumes the open chat itself)
     for (const entry of Object.values(this.snapshot.entries)) {
+      if (reloadOpen && entry.key === open?.key) continue;
       if (entry.key !== DRAFT_KEY && entry.runtimeId) void this.resume(entry.key, { rebind: true });
     }
-    const open = this.entry(this.snapshot.openKey);
-    if (open && open.key !== DRAFT_KEY && !open.runtimeId && !open.loading) void this.load(open.key);
+    if (open && open.key !== DRAFT_KEY && !open.loading && (reloadOpen || !open.runtimeId)) void this.load(open.key);
   }
 
   private onEvent(event: GatewayEvent) {
