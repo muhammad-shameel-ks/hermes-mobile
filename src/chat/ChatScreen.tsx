@@ -25,6 +25,7 @@ import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { useTokens, type Tokens } from '../ui/tokens.ts';
 import { AttachMenu, AttachmentChips } from './AttachmentChips.tsx';
 import { BackendPopover, useBackendMenu } from './BackendPopover.tsx';
+import { ChatBackdrop } from './ChatBackdrop.tsx';
 import { ChatStatusRow } from './ChatStatusRow.tsx';
 import { ATTACH_WHILE_RUNNING, type ComposerAttachment } from './attachments.ts';
 import { chatEnv, chatMeta, sameModel } from './chatSlices.ts';
@@ -135,6 +136,7 @@ function ChatScreen({ controller, bot, profileLabel, onOpenDrawer, onProfile }: 
 
   return (
     <KeyboardPaddedView style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground }]}>
+      <ChatBackdrop />
       <View style={styles.root}>
         <AppBar t={t} title={title} subtitle={subtitle} avatar={avatar} onOpenDrawer={onOpenDrawer} onNewChat={newChat} />
         <LinkBanner link={link} onRetry={retryLink} />

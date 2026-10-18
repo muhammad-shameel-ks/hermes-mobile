@@ -61,6 +61,7 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 6. Per-delta code in the markdown path is bounded by the open block, not the reply. Prefer exact early exits to caches.
 7. Components the parser creates (`InlineCode`, cards) are memoised by value, because the parser hands them fresh style objects.
 8. Keep `useDeferredValue` on streaming text and bypass it when `streaming` is false.
+9. The streamed-text fade (`streamFade.ts`) repaints only a streamed block's trailing characters, cloning just the elements on that path. Its repaint timer runs only while a chunk is still fading and nothing else re-renders the block.
 
 ### Animation (`ui/clock.ts`, `ui/loops.ts`, `ShimmerText.tsx`)
 1. Decorative loops use `useLoop` from `ui/clock.ts`: one shared timeline per spec, paused in the background, freezable with `holdLoops()`. No per-instance `withRepeat`, `setInterval` or `setTimeout` for decoration.
@@ -92,7 +93,7 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 - One very large open markdown block (a giant paragraph, loose list or fence) is still re-lexed whole per update: O(that block), not O(reply).
 - Expanding a Tool run with hundreds of calls mounts every row in one commit (each is now cheap). `DiffView` is still one `View` and `Text` per line when fully expanded.
 - `AnimatedFace` (15 Hz) and `Loader` (60 Hz) animate SVG props, which cost a shadow-tree commit per tick. The bot-chat face is the only one that runs during streaming.
-- assistant-ui's `ExternalStoreRuntimeCore` still does an O(messages) pass per update and per-row accessor evaluations; avoiding that means replacing `MessagesFlatList` and its stick-to-bottom logic.
-- Streamed text appears in steps of up to 50 ms (`STREAM_NOTIFY_MS`) rather than per token.
+- assistant-ui's `ExternalStoreRuntimeCore` still does an O(messages) pass per update and per-row accessor evaluations; avoiding that means replacing `MessagesFlatList`. Following a streaming reply is already ours (`TailFollow` in `scroll.ts`, driven by `useJumpToBottom`), with assistant-ui's `autoScroll` off.
+- Streamed text arrives in steps of up to 50 ms (`STREAM_NOTIFY_MS`) rather than per token; each step fades in over `FADE_MS`, so the open block repaints on a 50 ms timer for up to that long after the last step.
 - Eager native modules still on the launch path: `expo-audio`, `expo-media-library`, `expo-video`, `expo-speech` (chat cards) and `expo-speech-recognition` (`chat/dictation.ts`).
 - `@assistant-ui/*` is about 2 MB and Reanimated about 2.1 MB of the 12 MB dev bundle.
