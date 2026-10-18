@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.24] - 2026-10-18
+
+- Lift the composer fully above the keyboard (#33) ([68bde39](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/68bde39))
+
 ## [0.1.23] - 2026-10-18
 
 - Swipe right on the chat to open the drawer and left to close it (#32) ([a6c54fe](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/a6c54fe))
