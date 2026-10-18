@@ -7,7 +7,8 @@
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Animated, { FadeInUp, FadeOutUp, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { refreshCredentials } from '../auth/native-flow.ts';
@@ -25,6 +26,7 @@ import { createMediaResolver } from '../chat/mediaResolver.ts';
 import { shallowEqual } from '../chat/selector.ts';
 import { useChatSelector } from '../chat/useChatSelector.ts';
 import Drawer, { type DrawerTab, type SessionsListApi } from '../drawer/Drawer.tsx';
+import { useDrawerOpenGesture } from '../drawer/useDrawerGestures.ts';
 import { useSessionActions } from '../drawer/useSessionActions.tsx';
 import { bindGateway } from '../files/gateway.ts';
 import { createGatewayApi } from '../gateway/api.ts';
@@ -84,6 +86,7 @@ export default function SignedInApp(props: Props) {
   const controller = useController(props);
   const { roster, profile, link, notice, openBot: openBotName } = useChatSelector(controller, shellSlice, shallowEqual);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerProgress = useSharedValue(0);
   const [tab, setTab] = useState<DrawerTab>('sessions');
   const [actionsFor, setActionsFor] = useState<Bot | null>(null);
   const [profileSheet, setProfileSheet] = useState(false);
@@ -150,6 +153,7 @@ export default function SignedInApp(props: Props) {
       void groups.refresh();
     }, 0);
   }, [controller, groups]);
+  const openDrawerGesture = useDrawerOpenGesture(drawerProgress, !drawerOpen, openDrawer);
   const openProfileSheet = useCallback(() => setProfileSheet(true), []);
 
   const confirmDelete = (bot: Bot) => {
@@ -195,12 +199,17 @@ export default function SignedInApp(props: Props) {
     <OverlayProvider>
       <CardEnvBridge controller={controller} />
       <View style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground, paddingTop: insets.top }]}>
-        <ChatScreen controller={controller} bot={openBot} profileLabel={profileLabel} onOpenDrawer={openDrawer} onProfile={openProfileSheet} />
+        <GestureDetector gesture={openDrawerGesture}>
+          <View style={styles.root}>
+            <ChatScreen controller={controller} bot={openBot} profileLabel={profileLabel} onOpenDrawer={openDrawer} onProfile={openProfileSheet} />
+          </View>
+        </GestureDetector>
 
         {notice ? <Notice key={notice.at} text={notice.text} top={insets.top + 56} onDone={controller.clearNotice} /> : null}
 
         <Drawer
           open={drawerOpen}
+          progress={drawerProgress}
           onClose={closeDrawer}
           controller={controller}
           connectionLabel={props.connection.label}
