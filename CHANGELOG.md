@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.29] - 2026-10-18
+
+- Keep the chat background near black in dark mode (#38) ([a88049b](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/a88049b))
+
 ## [0.1.28] - 2026-10-18
 
 - Surface requests from other chats and while the app is away (#37) ([7162dff](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/7162dff))
