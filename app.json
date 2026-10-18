@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hermes",
     "slug": "hermes-mobile",
-    "version": "0.1.21",
+    "version": "0.1.22",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -27,7 +27,7 @@
       "permissions": [
         "android.permission.REQUEST_INSTALL_PACKAGES"
       ],
-      "versionCode": 121
+      "versionCode": 122
     },
     "web": {
       "favicon": "./assets/favicon.png"

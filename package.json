@@ -1,6 +1,6 @@
 {
   "name": "hermes-mobile",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "A native mobile client for the Hermes agent, built with Expo and React Native.",
   "license": "MIT",
   "private": true,

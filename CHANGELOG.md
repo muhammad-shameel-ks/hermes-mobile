@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.22] - 2026-10-18
+
+- Refresh the open chat when the app returns from the background (#31) ([b9aa86e](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/b9aa86e))
+
 ## [0.1.21] - 2026-10-16
 
 - Show room activity in group chats (#30) ([00c6ee4](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/00c6ee4))
