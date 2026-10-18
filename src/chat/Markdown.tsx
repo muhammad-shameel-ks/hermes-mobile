@@ -7,18 +7,22 @@
  * memoised `MarkdownBlock`: a delta re-lexes and re-renders the open block at
  * the tail and nothing before it. While `streaming`, the text also goes through
  * `useDeferredValue`, so a tap or drag is not queued behind a markdown render:
- * React renders the new text at low priority and yields to input.
+ * React renders the new text at low priority and yields to input. A streamed
+ * block's newest text fades in (streamFade.ts).
  */
 
-import { memo, useDeferredValue, useMemo, useRef } from 'react';
-import { View } from 'react-native';
+import { memo, useDeferredValue, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
+import { ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { MarkedLexer, useMarkdown, type MarkedStyles } from 'react-native-marked';
 
+import { mixPct } from '../ui/color.ts';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
 import { MediaAttachment } from './cards/MediaAttachment.tsx';
 import { splitMarkdownBlocks, type BlockState, type Lex } from './markdownBlocks.ts';
 import { TranscriptRenderer } from './MarkdownRenderer.tsx';
 import { splitMediaTags } from './media.ts';
+import { fadeSpans, fadeTail, growTrail, type FadePainter, type FadeTrail } from './streamFade.ts';
 
 // the same call useMarkdown makes, so a block lexes exactly as it would inside the whole reply
 const lex: Lex = (src) => MarkedLexer(src, { gfm: true }) as ReturnType<Lex>;
@@ -85,20 +89,79 @@ function markdownTheme(t: Tokens) {
   return entry;
 }
 
-/** one top-level block, or the whole reply; renders into its parent's view, so blocks add no native views */
-const MarkdownBlock = memo(function MarkdownBlock({ text, streaming }: { text: string; streaming: boolean }) {
+const inkStyles = new Map<string, TextStyle>();
+
+const FADE_PAINTER: FadePainter = {
+  // host text and the views a block nests it in; react-native-marked's list keeps its items in `li`
+  slot: (element) => {
+    if (element.type === Text || element.type === View || element.type === ScrollView) return 'children';
+    return Array.isArray(element.props.li) ? 'li' : null;
+  },
+  ink: (element) => {
+    const color = StyleSheet.flatten(element.props.style)?.color;
+    return typeof color === 'string' ? color : undefined;
+  },
+  paint: (text, ink, alpha, key) => {
+    const color = mixPct(ink, alpha, 'transparent');
+    let style = inkStyles.get(color);
+    if (!style) {
+      style = { color };
+      inkStyles.set(color, style);
+    }
+    return (
+      <Text key={key} style={style}>
+        {text}
+      </Text>
+    );
+  },
+};
+
+/** how soon a block whose tail is still fading repaints when no new text arrives to repaint it */
+const FADE_TICK_MS = 50;
+
+/**
+ * A streamed block's elements with the newest text fading in. The trail grows while the block is
+ * the open tail (`live`) and keeps ageing after it seals or the reply ends, so no chunk freezes
+ * half-inked; repaints come from the stream's own renders, and from a short timer only while a
+ * fade is still running with nothing else arriving.
+ */
+function FadeIn({ elements, length, live, ink }: { elements: ReactNode[]; length: number; live: boolean; ink: string }) {
+  const reduced = useReducedMotion();
+  const trail = useRef<FadeTrail | null>(null);
+  const [, repaint] = useReducer((count: number) => count + 1, 0);
+  const now = performance.now();
+  // a cache over (length, clock): a render React discards or repeats records the same growth
+  if (reduced) trail.current = null;
+  else if (live) trail.current = growTrail(trail.current, length, now);
+  else if (trail.current && trail.current.length !== length) trail.current = null;
+  const spans = trail.current ? fadeSpans(trail.current, now) : [];
+  const fading = spans.length > 0;
+  useEffect(() => {
+    if (!fading) return;
+    const timer = setTimeout(repaint, FADE_TICK_MS);
+    return () => clearTimeout(timer);
+  });
+  return <>{fading ? fadeTail(elements, spans, ink, FADE_PAINTER) : elements}</>;
+}
+
+/**
+ * One top-level block, or the whole reply; renders into its parent's view, so blocks add no native
+ * views. `fades` is fixed per call site: only a reply seen streaming fades its text in.
+ */
+const MarkdownBlock = memo(function MarkdownBlock({ text, streaming, fades, live }: { text: string; streaming: boolean; fades: boolean; live: boolean }) {
   const t = useTokens();
   const renderer = useMemo(() => new TranscriptRenderer({ streaming }), [streaming]);
   renderer.reset();
   const { styles, theme } = markdownTheme(t);
   const elements = useMarkdown(text, { styles, theme, colorScheme: t.renderedMode, renderer });
-  return <>{elements}</>;
+  if (!fades) return <>{elements}</>;
+  return <FadeIn elements={elements} length={text.length} live={live} ink={t.uiTextPrimary} />;
 });
 
 function WholeChunk({ text, streaming }: { text: string; streaming: boolean }) {
   return (
     <View>
-      <MarkdownBlock text={text} streaming={streaming} />
+      <MarkdownBlock text={text} streaming={streaming} fades={false} live={false} />
     </View>
   );
 }
@@ -111,8 +174,8 @@ function BlockChunk({ text, streaming }: { text: string; streaming: boolean }) {
   return (
     <View>
       {state.blocks.map((block, index) => (
-        // `streaming` only changes how a fence renders, so blocks without one do not re-render when it ends
-        <MarkdownBlock key={index} text={block.text} streaming={streaming && block.fenced} />
+        // `streaming` only changes how a fence renders and `live` only the open tail, so a sealed block without a fence does not re-render when the reply ends
+        <MarkdownBlock key={index} text={block.text} streaming={streaming && block.fenced} fades live={streaming && index === state.blocks.length - 1} />
       ))}
     </View>
   );

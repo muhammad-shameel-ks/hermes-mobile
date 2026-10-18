@@ -149,8 +149,14 @@ export const TranscriptPane = memo(function TranscriptPane({ controller, meta, b
                       pull.track(event);
                       jump.onScroll(event);
                     }}
-                    onScrollBeginDrag={jump.onDrag}
+                    onScrollBeginDrag={jump.onDragStart}
+                    onScrollEndDrag={jump.onDragEnd}
+                    onMomentumScrollBegin={jump.onFlingStart}
+                    onMomentumScrollEnd={jump.onFlingEnd}
                     onContentSizeChange={jump.onContentSize}
+                    onLayout={jump.onLayout}
+                    // following a streaming reply is useJumpToBottom's; assistant-ui's own follow can yank a reader mid-drag
+                    autoScroll={false}
                     ListHeaderComponent={header}
                     ListFooterComponent={footer}
                     refreshControl={pull.refreshControl}

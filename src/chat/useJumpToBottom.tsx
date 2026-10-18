@@ -1,24 +1,31 @@
 /**
- * Drives the jump-to-bottom pill from the transcript's FlatList. assistant-ui
- * keeps owning stick-to-bottom; this only watches: it shows the pill once the
- * reader scrolls up past the threshold, counts rows below the fold from the
- * cells' own layouts, and on a tap chases the tail until the list re-pins.
+ * The transcript's FlatList scroll behaviour: following a streaming reply, and
+ * the jump-to-bottom pill. assistant-ui still places the list on the bottom when
+ * a thread opens, a run starts or the thread switches; following growing content
+ * is ours (`TailFollow`), because assistant-ui's follow reads a pinned flag that
+ * only a scroll echo refreshes, so a token landing as the reader starts to drag
+ * pulls them back down. The pill shows once the reader scrolls up past the
+ * threshold, counts rows below the fold from the cells' own layouts, and on a
+ * tap chases the tail until the list re-pins.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, type CellRendererProps, type FlatList, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import type { ThreadMessage } from '@assistant-ui/react-native';
 
-import { distanceFromBottom, JUMP_SHOW_DISTANCE, messagesBelow, type RowFrame } from './scroll.ts';
+import { distanceFromBottom, JUMP_SHOW_DISTANCE, messagesBelow, PINNED_DISTANCE, TailFollow, type RowFrame } from './scroll.ts';
 import type { Message } from './transcript.ts';
 
-/** within this of the edge the list is back on the tail */
-const PINNED_DISTANCE = 4;
+type ScrollEvent = NativeSyntheticEvent<NativeScrollEvent>;
+
+const distanceOf = ({ nativeEvent: { contentOffset, layoutMeasurement, contentSize } }: ScrollEvent) =>
+  distanceFromBottom(contentOffset.y, layoutMeasurement.height, contentSize.height);
 
 export function useJumpToBottom(sessionKey: string, messages: readonly Message[]) {
   const listRef = useRef<FlatList<ThreadMessage>>(null);
   const frames = useRef(new Map<string, RowFrame>());
-  const metrics = useRef({ scrollY: 0, viewport: 0 });
+  const metrics = useRef({ scrollY: 0, viewport: 0, content: 0 });
+  const follow = useRef(new TailFollow());
   // the ids are only read while the pill shows, so a streamed token never maps the whole thread
   const latest = useRef({ messages, ids: null as string[] | null });
   if (latest.current.messages !== messages) latest.current = { messages, ids: null };
@@ -55,19 +62,30 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
   useEffect(() => {
     frames.current.clear();
     chasing.current = false;
+    follow.current.reset();
     show(false);
     setCount(0);
   }, [sessionKey, show]);
 
   useEffect(schedule, [messages, schedule]);
 
+  // commands the bottom of the last measured content; nothing until the viewport is measured
+  const stickToBottom = useCallback((animated: boolean) => {
+    const { viewport, content } = metrics.current;
+    if (viewport === 0) return;
+    follow.current.commanded();
+    listRef.current?.scrollToOffset({ offset: Math.max(0, content - viewport), animated });
+  }, []);
+
   const onScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    (event: ScrollEvent) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
       const upward = contentOffset.y < metrics.current.scrollY;
       metrics.current.scrollY = contentOffset.y;
       metrics.current.viewport = layoutMeasurement.height;
-      const distance = distanceFromBottom(contentOffset.y, layoutMeasurement.height, contentSize.height);
+      metrics.current.content = contentSize.height;
+      const distance = distanceOf(event);
+      follow.current.scrolled(distance);
       if (distance <= PINNED_DISTANCE) chasing.current = false;
       // Only the reader leaves the tail: programmatic follow never moves the list up.
       if (distance <= JUMP_SHOW_DISTANCE) show(false);
@@ -77,17 +95,41 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
     [schedule, show],
   );
 
-  const onDrag = useCallback(() => {
+  const onDragStart = useCallback(() => {
     chasing.current = false;
+    follow.current.dragStart();
   }, []);
+  const onDragEnd = useCallback((event: ScrollEvent) => follow.current.dragEnd(distanceOf(event)), []);
+  const onFlingStart = useCallback(() => follow.current.flingStart(), []);
+  const onFlingEnd = useCallback((event: ScrollEvent) => follow.current.flingEnd(distanceOf(event)), []);
 
-  const onContentSize = useCallback(() => {
-    if (chasing.current) listRef.current?.scrollToEnd({ animated: true });
-    else schedule();
-  }, [schedule]);
+  const onContentSize = useCallback(
+    (_width: number, height: number) => {
+      const { scrollY, viewport, content } = metrics.current;
+      // a reader who let go a little above the bottom (or a pill chase) glides down; on the tail it is a plain step
+      const away = chasing.current || distanceFromBottom(scrollY, viewport, content) > PINNED_DISTANCE;
+      metrics.current.content = height;
+      if (follow.current.follows) stickToBottom(away);
+      schedule();
+    },
+    [schedule, stickToBottom],
+  );
+
+  // a keyboard opening or closing resizes the viewport with no content-size event to follow it
+  const onLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { height } = event.nativeEvent.layout;
+      const previous = metrics.current.viewport;
+      metrics.current.viewport = height;
+      if (previous > 0 && height !== previous && follow.current.follows) stickToBottom(false);
+    },
+    [stickToBottom],
+  );
 
   const toBottom = useCallback(() => {
     chasing.current = true;
+    follow.current.pin();
+    follow.current.commanded();
     show(false);
     listRef.current?.scrollToEnd({ animated: true });
   }, [show]);
@@ -113,5 +155,5 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
     [schedule],
   );
 
-  return { listRef, Cell, visible, count, onScroll, onDrag, onContentSize, toBottom };
+  return { listRef, Cell, visible, count, onScroll, onDragStart, onDragEnd, onFlingStart, onFlingEnd, onContentSize, onLayout, toBottom };
 }
