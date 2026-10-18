@@ -1,0 +1,72 @@
+diff --git a/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/core/GestureHandlerOrchestrator.kt b/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/core/GestureHandlerOrchestrator.kt
+index 8d78aea..39774c0 100644
+--- a/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/core/GestureHandlerOrchestrator.kt
++++ b/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/core/GestureHandlerOrchestrator.kt
+@@ -370,6 +370,8 @@ class GestureHandlerOrchestrator(
+ 
+   fun isAnyHandlerActive() = gestureHandlers.any { it.state == GestureHandler.STATE_ACTIVE }
+ 
++  fun isAnyNativeViewHandlerActive() = gestureHandlers.any { it.state == GestureHandler.STATE_ACTIVE && it is NativeViewGestureHandler }
++
+   /**
+    * Transforms an event in the coordinates of wrapperView into the coordinate space of the received view.
+    *
+diff --git a/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/react/RNGestureHandlerRootHelper.kt b/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/react/RNGestureHandlerRootHelper.kt
+index 629c155..99729d2 100644
+--- a/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/react/RNGestureHandlerRootHelper.kt
++++ b/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/react/RNGestureHandlerRootHelper.kt
+@@ -145,6 +145,8 @@ class RNGestureHandlerRootHelper(private val context: ReactContext, wrappedView:
+     orchestrator?.activateNativeHandlersForView(view)
+   }
+ 
++  fun isAnyNativeViewHandlerActive() = orchestrator?.isAnyNativeViewHandlerActive() == true
++
+   companion object {
+     private const val MIN_ALPHA_FOR_TOUCH = 0.1f
+     private fun findRootViewTag(viewGroup: ViewGroup): ViewGroup {
+diff --git a/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/react/RNGestureHandlerRootView.kt b/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/react/RNGestureHandlerRootView.kt
+index 2801b8a..6a78c39 100644
+--- a/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/react/RNGestureHandlerRootView.kt
++++ b/node_modules/react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler/react/RNGestureHandlerRootView.kt
+@@ -15,6 +15,7 @@ class RNGestureHandlerRootView(context: Context?) : ReactViewGroup(context) {
+   private var rootViewEnabled = false
+   private var unstableForceActive = false
+   private var rootHelper: RNGestureHandlerRootHelper? = null // TODO: resettable lateinit
++  private var nativeTouchCancelled = false
+ 
+   override fun onAttachedToWindow() {
+     super.onAttachedToWindow()
+@@ -34,10 +35,29 @@ class RNGestureHandlerRootView(context: Context?) : ReactViewGroup(context) {
+     rootHelper?.tearDown()
+   }
+ 
+-  override fun dispatchTouchEvent(event: MotionEvent) = if (rootViewEnabled && rootHelper!!.dispatchTouchEvent(event)) {
+-    true
+-  } else {
+-    super.dispatchTouchEvent(event)
++  override fun dispatchTouchEvent(event: MotionEvent): Boolean {
++    if (!rootViewEnabled) {
++      return super.dispatchTouchEvent(event)
++    }
++    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
++      nativeTouchCancelled = false
++    }
++    if (!rootHelper!!.dispatchTouchEvent(event)) {
++      return super.dispatchTouchEvent(event)
++    }
++    // A gesture handler took over the touch. Unlike a ViewGroup intercepting, the root stops dispatching without
++    // telling the native views that already saw the touch start, so they wait for an end that never comes: a
++    // selectable TextView's pending long press fires and selects a word. Cancel them once, as Android would,
++    // unless a native view handler drives its view (it gets the rest of the touch from the orchestrator).
++    if (!nativeTouchCancelled) {
++      nativeTouchCancelled = true
++      if (!rootHelper!!.isAnyNativeViewHandlerActive()) {
++        val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
++        super.dispatchTouchEvent(cancel)
++        cancel.recycle()
++      }
++    }
++    return true
+   }
+ 
+   override fun dispatchGenericMotionEvent(ev: MotionEvent) =
