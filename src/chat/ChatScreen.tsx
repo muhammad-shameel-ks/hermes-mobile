@@ -13,7 +13,7 @@
 
 import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Keyboard, Pressable, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardPaddedView } from '../ui/KeyboardPaddedView.tsx';
 import Svg, { Path } from 'react-native-svg';
 import { BotAvatar } from '../bots/BotAvatar.tsx';
 import { faceMood } from '../bots/face.ts';
@@ -134,9 +134,7 @@ function ChatScreen({ controller, bot, profileLabel, onOpenDrawer, onProfile }: 
   );
 
   return (
-    // the shell pads the status bar above this view, so its onLayout y is 0 while the window y is insets.top;
-    // automaticOffset measures the true window position or the padding falls short by the status bar height
-    <KeyboardAvoidingView automaticOffset behavior="padding" style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground }]}>
+    <KeyboardPaddedView style={[styles.root, { backgroundColor: t.uiChatSurfaceBackground }]}>
       <View style={styles.root}>
         <AppBar t={t} title={title} subtitle={subtitle} avatar={avatar} onOpenDrawer={onOpenDrawer} onNewChat={newChat} />
         <LinkBanner link={link} onRetry={retryLink} />
@@ -206,7 +204,7 @@ function ChatScreen({ controller, bot, profileLabel, onOpenDrawer, onProfile }: 
           onClose={backendMenu.close}
         />
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardPaddedView>
   );
 }
 
