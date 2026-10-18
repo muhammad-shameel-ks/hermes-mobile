@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.30] - 2026-10-18
+
+- Stop the sidebar swipe from selecting reply text on Android (#39) ([40690b0](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/40690b0))
+
 ## [0.1.29] - 2026-10-18
 
 - Keep the chat background near black in dark mode (#38) ([a88049b](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/a88049b))
