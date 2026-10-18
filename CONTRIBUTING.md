@@ -54,6 +54,7 @@ Do not edit `CHANGELOG.md`, the version in `app.json` or `package.json`, or `and
 - **Do not edit generated folders.** `android/` and `ios/` are produced by `expo prebuild`. Change `app.json` or add a config plugin under `plugins/` instead.
 - **Do not edit `vendor/hermes-shared/` by hand.** It is a pinned copy of the Hermes monorepo's shared package. Refresh it with `node scripts/sync-hermes.mjs` (see [ADR 0002](docs/adr/0002-standalone-repo-vendored-shared.md)); `node scripts/sync-hermes.mjs --check` verifies it matches its manifest.
 - **Add dependencies deliberately.** Prefer Expo SDK packages, use the version `npx expo install` picks, and explain new dependencies in the PR.
+- **Patch a dependency only as a last resort.** Patches live in `patches/` and are applied by `patch-package` on every install. Make the change in `node_modules/<package>`, then run `npx patch-package <package> --exclude '^package\.json$|/\.cxx/|/build/|/\.gradle/'` so native build output stays out of the patch. Explain the bug and the upstream status in the PR, and drop the patch once a release fixes it. A patch is pinned to its package version, so bumping that package means regenerating or deleting the patch.
 - **Record decisions.** A change that is hard to reverse or surprising without context deserves an ADR in `docs/adr/`.
 
 ## Tests

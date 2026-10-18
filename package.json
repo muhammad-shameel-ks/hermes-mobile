@@ -19,7 +19,8 @@
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit",
     "perf": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/perf-bench.mjs",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'tests/**/*.test.ts'"
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test 'tests/**/*.test.ts'",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@assistant-ui/react-native": "^0.1.47",
@@ -65,6 +66,8 @@
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/react": "~19.2.2",
+    "marked": "18.0.14",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   }
 }
