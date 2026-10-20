@@ -10,6 +10,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { errorText } from '../gateway/http.ts';
 import { Codicon } from '../ui/Codicon.tsx';
 import { copyText } from '../ui/clipboard.ts';
 import { ActionSheet } from '../ui/Sheet.tsx';
@@ -17,6 +18,8 @@ import { useTokens } from '../ui/tokens.ts';
 import { fullResponseText, userReaction } from './actionBar.ts';
 import { openEntry } from './chatSlices.ts';
 import type { ChatController } from './controller.ts';
+import type { ReadAloudOptions } from './readAloud.ts';
+import { speakTimeoutMs } from './speechText.ts';
 import type { Message } from './transcript.ts';
 import { ReactionSheet } from './ReactionSheet.tsx';
 import { planRewind, promptText, RESTORE_COPY } from './rewind.ts';
@@ -32,6 +35,8 @@ export type MessageActions = {
   react: (messageId: string) => void;
   stop: () => void;
   notify: (text: string) => void;
+  /** how read aloud voices a reply right now: the open chat's profile TTS while the gateway is up */
+  voice: () => ReadAloudOptions;
 };
 
 const noop = () => undefined;
@@ -46,6 +51,7 @@ const MessageActionsContext = createContext<MessageActions>({
   react: noop,
   stop: noop,
   notify: noop,
+  voice: () => ({}),
 });
 
 export const MessageActionsProvider = MessageActionsContext.Provider;
@@ -142,6 +148,19 @@ export function useMessageChrome(controller: ChatController, sessionKey: string,
       },
       react: (messageId) => setPicking(messageId),
       stop: () => void controller.stop(),
+      voice: () => {
+        const snapshot = controller.getSnapshot();
+        if (snapshot.link.kind !== 'open') return {};
+        const profile = openEntry(snapshot).profile;
+        return {
+          synthesize: async (text) => {
+            const result = await controller.api.post<{ data_url?: string; mime_type?: string }>('/api/audio/speak', { text }, { profile }, { timeoutMs: speakTimeoutMs(text) });
+            if (!result?.data_url) throw new Error('The gateway sent no audio.');
+            return { dataUrl: result.data_url, mimeType: result.mime_type ?? 'audio/mpeg' };
+          },
+          onFallback: (error) => controller.notify(`Read aloud used the phone voice. ${errorText(error)}`),
+        };
+      },
     }),
     [controller, parts, reactionsEnabled, messagesNow],
   );

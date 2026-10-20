@@ -70,3 +70,18 @@ export function noticeForError(code: string, message: string): DictationNotice |
 }
 
 export const noticeText = ({ title, message }: DictationNotice) => (message ? `${title}. ${message}` : title);
+
+/** the recorder's metering is dBFS (-160..0); speech sits in the top 50 dB, which the bars take as 0..1 */
+export const levelFromDecibels = (db: number | undefined) => (typeof db === 'number' && Number.isFinite(db) ? Math.max(0, Math.min((db + 50) / 50, 1)) : 0);
+
+/**
+ * desktop api/system.ts `audioTranscribeRequestTimeoutMs`: transcription blocks
+ * until the provider answers, so the budget scales with the data URL's length
+ * from a 180 s floor to a 600 s cap.
+ */
+export function transcribeTimeoutMs(dataUrl: string): number {
+  return Math.min(600_000, Math.max(180_000, Math.ceil(dataUrl.length * 0.1)));
+}
+
+/** the take's transcript placed after the composer's text, as the desktop's `onTranscript` inserts it */
+export const withTranscript = (base: string, transcript: string) => joinSpeech(base, transcript.trim());

@@ -224,3 +224,12 @@ export function splitForSpeech(text: string, max: number): string[] {
   if (rest) pieces.push(rest);
   return pieces.filter(Boolean);
 }
+
+/**
+ * desktop api/system.ts `audioSpeakRequestTimeoutMs`: synthesis blocks until the
+ * provider answers (a local engine may load a model first), so the budget scales
+ * at 35 ms a character from a 180 s floor to a 600 s cap.
+ */
+export function speakTimeoutMs(text: string): number {
+  return Math.min(600_000, Math.max(180_000, Math.ceil(text.length * 35)));
+}

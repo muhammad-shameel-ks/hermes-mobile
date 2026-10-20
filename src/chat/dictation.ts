@@ -1,17 +1,26 @@
 /**
- * Dictation on the device recogniser (issue "Transcript and composer parity on
- * touch"): the mic toggles a take, interim speech streams into the composer's
- * text as it is recognised, and nothing is ever submitted. The desktop's states
- * carry over - idle, recording, then transcribing from stop until the recogniser
- * settles - with its cap on recording length.
+ * Dictation (issue "Transcript and composer parity on touch"): the mic toggles a
+ * take and nothing is ever submitted. The desktop's states carry over - idle,
+ * recording, then transcribing from stop until the text settles - with its cap
+ * on recording length. Two engines sit behind the one surface:
+ *
+ * - `gateway`, the desktop's own path (use-voice-recorder.ts): the phone records
+ *   a clip and `POST /api/audio/transcribe` decodes it with the profile's
+ *   `stt.provider`, so each profile dictates with its own provider and model.
+ * - `device`, the platform recogniser: interim speech streams into the
+ *   composer's text as it is recognised. A profile with `stt.enabled` off keeps it.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, type RecordingOptions } from 'expo-audio';
+import { File } from 'expo-file-system';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 
+import type { DictationEngine } from '../settings/voice.ts';
 import {
   applyResult,
   heardSomething,
+  levelFromDecibels,
   levelFromVolume,
   noticeForError,
   noticeText,
@@ -19,6 +28,8 @@ import {
   recordingCapSeconds,
   startTake,
   takeText,
+  transcribeTimeoutMs,
+  withTranscript,
   type Take,
 } from './dictationText.ts';
 
@@ -38,12 +49,15 @@ export type Dictation = {
   cancel: () => void;
 };
 
+/** uploads one clip as the desktop's `transcribeAudio` does, for the profile that was active when the mic opened */
+export type Transcribe = (dataUrl: string, mimeType: string, timeoutMs: number) => Promise<string>;
+
 type Options = {
   getText: () => string;
   setText: (text: string) => void;
   onNotice: (text: string) => void;
   /** `voice.max_recording_seconds` */
-  maxSeconds?: number;
+  maxSeconds?: number | null;
 };
 
 const ELAPSED_TICK_MS = 250;
@@ -51,7 +65,7 @@ const LEVEL_TICK_MS = 100;
 
 const deviceLocale = () => Intl.DateTimeFormat().resolvedOptions().locale || 'en-US';
 
-export function useDictation({ getText, setText, onNotice, maxSeconds }: Options): Dictation {
+function useDeviceDictation({ getText, setText, onNotice, maxSeconds }: Options): Dictation {
   const [status, setStatus] = useState<DictationStatus>('idle');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [level, setLevel] = useState(0);
@@ -175,4 +189,162 @@ export function useDictation({ getText, setText, onNotice, maxSeconds }: Options
   );
 
   return { status, elapsedSeconds, level, partial, available, toggle, cancel };
+}
+
+/** mono AAC at speech quality: an m4a every provider accepts, a fraction of the upload of the stereo HIGH_QUALITY preset */
+const SPEECH_RECORDING: RecordingOptions = {
+  ...RecordingPresets.HIGH_QUALITY,
+  sampleRate: 16000,
+  numberOfChannels: 1,
+  bitRate: 48000,
+  isMeteringEnabled: true,
+};
+const SPEECH_MIME = 'audio/m4a';
+
+function discard(uri: string | null) {
+  if (!uri) return;
+  try {
+    new File(uri).delete();
+  } catch {}
+}
+
+function useGatewayDictation({ getText, setText, onNotice, maxSeconds, transcribe }: Options & { transcribe: Transcribe }): Dictation {
+  const recorder = useAudioRecorder(SPEECH_RECORDING);
+  const [status, setStatus] = useState<DictationStatus>('idle');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [level, setLevel] = useState(0);
+  const live = useRef<DictationStatus>('idle');
+  const starting = useRef(false);
+  /** bumps on every new take and on cancel, so a transcript settling for a dropped take is ignored */
+  const takeId = useRef(0);
+  /** the take's upload, fixed at mic-open so a profile switch mid-take cannot re-route it */
+  const upload = useRef<Transcribe>(transcribe);
+  const startedAt = useRef(0);
+  const ticker = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cap = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef({ getText, setText, onNotice, transcribe });
+  latest.current = { getText, setText, onNotice, transcribe };
+
+  const move = useCallback((next: DictationStatus) => {
+    live.current = next;
+    setStatus(next);
+  }, []);
+
+  const clearTimers = useCallback(() => {
+    if (ticker.current) clearInterval(ticker.current);
+    if (cap.current) clearTimeout(cap.current);
+    ticker.current = null;
+    cap.current = null;
+  }, []);
+
+  const release = useCallback(() => {
+    void setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+  }, []);
+
+  const finish = useCallback(() => {
+    clearTimers();
+    setLevel(0);
+    move('idle');
+  }, [clearTimers, move]);
+
+  const stop = useCallback(async () => {
+    if (live.current !== 'recording') return;
+    const id = takeId.current;
+    clearTimers();
+    setLevel(0);
+    move('transcribing');
+    let uri: string | null = null;
+    try {
+      await recorder.stop();
+      release();
+      uri = recorder.uri;
+      if (!uri) throw new Error('The recording was not saved.');
+      const audio = await new File(uri).base64();
+      if (id !== takeId.current) return;
+      const dataUrl = `data:${SPEECH_MIME};base64,${audio}`;
+      const transcript = (await upload.current(dataUrl, SPEECH_MIME, transcribeTimeoutMs(dataUrl))).trim();
+      if (id !== takeId.current) return;
+      if (transcript === '') latest.current.onNotice(noticeText(NO_SPEECH));
+      else latest.current.setText(withTranscript(latest.current.getText(), transcript));
+    } catch (error) {
+      if (id === takeId.current) {
+        latest.current.onNotice(noticeText({ title: 'Voice transcription failed', message: error instanceof Error ? error.message : String(error) }));
+      }
+    } finally {
+      discard(uri);
+      if (id === takeId.current) finish();
+    }
+  }, [clearTimers, finish, move, recorder, release]);
+
+  const start = useCallback(async () => {
+    if (live.current !== 'idle' || starting.current) return;
+    starting.current = true;
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        latest.current.onNotice(noticeText({ title: 'Voice unavailable', message: 'Microphone permission was denied.' }));
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      takeId.current += 1;
+      upload.current = latest.current.transcribe;
+      startedAt.current = Date.now();
+      setElapsedSeconds(0);
+      move('recording');
+      ticker.current = setInterval(() => {
+        setElapsedSeconds((Date.now() - startedAt.current) / 1000);
+        setLevel(levelFromDecibels(recorder.getStatus().metering));
+      }, ELAPSED_TICK_MS);
+      cap.current = setTimeout(() => void stop(), recordingCapSeconds(maxSeconds) * 1000);
+    } catch (error) {
+      release();
+      latest.current.onNotice(noticeText({ title: 'Voice recording failed', message: error instanceof Error ? error.message : String(error) }));
+    } finally {
+      starting.current = false;
+    }
+  }, [maxSeconds, move, recorder, release, stop]);
+
+  const toggle = useCallback(() => {
+    if (live.current === 'recording') void stop();
+    else if (live.current === 'idle') void start();
+  }, [start, stop]);
+
+  const cancel = useCallback(() => {
+    if (live.current === 'idle') return;
+    const wasRecording = live.current === 'recording';
+    takeId.current += 1;
+    finish();
+    if (wasRecording) {
+      void recorder
+        .stop()
+        .then(() => discard(recorder.uri))
+        .catch(() => {})
+        .finally(release);
+    }
+  }, [finish, recorder, release]);
+
+  useEffect(
+    () => () => {
+      takeId.current += 1;
+      clearTimers();
+      if (live.current === 'recording') void recorder.stop().catch(() => {}).finally(release);
+    },
+    [clearTimers, recorder, release],
+  );
+
+  return { status, elapsedSeconds, level, partial: '', available: true, toggle, cancel };
+}
+
+/**
+ * The composer's dictation: `engine` picks the profile's provider or the phone's
+ * recogniser for the next take; a take in flight keeps the engine it started on.
+ */
+export function useDictation(options: Options & { engine: DictationEngine; transcribe: Transcribe }): Dictation {
+  const device = useDeviceDictation(options);
+  const gateway = useGatewayDictation(options);
+  if (device.status !== 'idle') return device;
+  if (gateway.status !== 'idle') return gateway;
+  return options.engine === 'gateway' ? gateway : device;
 }
