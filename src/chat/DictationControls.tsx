@@ -1,16 +1,20 @@
 /**
- * The composer's dictation surface: the mic in the controls row (desktop
- * voice-fan.tsx hub) and the activity row above the composer while a take runs
- * (voice-activity.tsx `VoiceActivity`).
+ * The composer's voice surface: the mic in the controls row (desktop
+ * voice-fan.tsx hub), the activity row above the composer while a take runs
+ * (voice-activity.tsx `VoiceActivity`), and the same row while a reply is read
+ * aloud (`VoicePlaybackActivity`).
  */
 
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import Animated, { useAnimatedStyle, useReducedMotion, type SharedValue } from 'react-native-reanimated';
 
+import { useLoop } from '../ui/clock.ts';
 import { Codicon } from '../ui/Codicon.tsx';
 import { mixPct } from '../ui/color.ts';
 import { MONO, useTokens } from '../ui/tokens.ts';
 import type { Dictation } from './dictation.ts';
 import { formatClock } from './media.ts';
+import { stopReadAloud, useReadAloud } from './readAloud.ts';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 
 const BAR_WEIGHTS = [0.5, 0.78, 1, 0.78, 0.5];
@@ -83,6 +87,74 @@ export function DictationActivity({ dictation }: { dictation: Dictation }) {
   );
 }
 
+const WAVE_MS = 1100;
+const WAVE_HEIGHT = 16;
+
+/** one bar of the playback waveform: a height that swells and falls a step behind its neighbour, as a transform only */
+function WaveBar({ loop, index, color }: { loop: SharedValue<number> | null; index: number; color: string }) {
+  const style = useAnimatedStyle(() => {
+    if (!loop) return { transform: [{ scaleY: 0.5 }] };
+    const swell = Math.abs(Math.sin((loop.value + index * 0.17) * Math.PI * 2));
+    return { transform: [{ scaleY: 0.3 + 0.7 * swell }] };
+  });
+  return <Animated.View style={[styles.waveBar, { backgroundColor: color }, style]} />;
+}
+
+/**
+ * The read-aloud row above the composer (desktop `VoicePlaybackActivity`):
+ * "Preparing audio" with a spinner while the provider synthesizes, then
+ * "Reading aloud" with a moving waveform, and Stop either way. It subscribes to
+ * the playback itself, so the composer does not re-render with it.
+ */
+export function PlaybackActivity({ style }: { style?: StyleProp<ViewStyle> }) {
+  const t = useTokens();
+  const { status } = useReadAloud();
+  const reduced = useReducedMotion();
+  const speaking = status === 'speaking';
+  const loop = useLoop({ durationMs: WAVE_MS }, speaking && !reduced);
+  if (status === 'idle') return null;
+  const primary = t.dtPrimarySolid;
+  return (
+    <View style={style}>
+      <View
+        accessibilityRole="summary"
+        accessibilityLiveRegion="polite"
+        style={[styles.activity, { borderRadius: t.radius.xl, borderColor: mixPct(primary, 0.2, 'transparent'), backgroundColor: mixPct(primary, 0.08, t.uiBgSecondary) }]}
+      >
+        <View style={[styles.badge, { backgroundColor: mixPct(primary, 0.15, 'transparent') }]}>
+          {speaking ? (
+            <Codicon name="unmute" size={12} color={primary} />
+          ) : (
+            <GlyphSpinner size={14} color={primary} style={styles.badgeSpinner} label="Preparing audio" />
+          )}
+        </View>
+        <View style={styles.activityText}>
+          <Text numberOfLines={1} style={[styles.title, { color: t.uiTextPrimary }]}>
+            {speaking ? 'Reading aloud' : 'Preparing audio…'}
+          </Text>
+          {speaking ? (
+            <View accessible={false} style={styles.wave}>
+              {BAR_WEIGHTS.map((_, index) => (
+                <WaveBar key={index} loop={reduced ? null : loop} index={index} color={primary} />
+              ))}
+            </View>
+          ) : null}
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Stop reading aloud"
+          onPress={stopReadAloud}
+          hitSlop={8}
+          style={({ pressed }) => [styles.stop, { borderRadius: t.radius.full }, pressed && { backgroundColor: t.uiControlHoverBackground }]}
+        >
+          <Codicon name="mute" size={12} color={t.uiTextSecondary} />
+          <Text style={{ color: t.uiTextSecondary, fontSize: 12, fontWeight: '500' }}>Stop</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   mic: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   stopGlyph: { width: 12, height: 12, borderRadius: 3 },
@@ -96,4 +168,7 @@ const styles = StyleSheet.create({
   clock: { fontSize: 13 },
   bars: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 16 },
   bar: { width: 2, borderRadius: 1 },
+  wave: { flexDirection: 'row', alignItems: 'center', gap: 2, height: WAVE_HEIGHT },
+  waveBar: { width: 2, height: WAVE_HEIGHT, borderRadius: 1, opacity: 0.8 },
+  stop: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 26, paddingHorizontal: 8 },
 });
