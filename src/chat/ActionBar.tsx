@@ -140,7 +140,7 @@ function ActionBarImpl({ message, plan }: { message: Message; plan: BarPlan }) {
               onPress={() => {
                 tick();
                 if (reading) stopReadAloud();
-                else readAloud(text(), message.id).catch(() => actions.notify('Read aloud failed'));
+                else readAloud(text(), message.id, actions.voice()).catch(() => actions.notify('Read aloud failed'));
               }}
             />
           ) : null}

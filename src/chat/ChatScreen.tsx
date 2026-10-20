@@ -18,6 +18,7 @@ import Svg, { Path } from 'react-native-svg';
 import { BotAvatar } from '../bots/BotAvatar.tsx';
 import { faceMood } from '../bots/face.ts';
 import type { Bot } from '../bots/roster.ts';
+import type { GatewayApi } from '../gateway/api.ts';
 import type { LinkState } from '../gateway/link.ts';
 import type { DraftStore } from '../store/drafts.ts';
 import { Codicon } from '../ui/Codicon.tsx';
@@ -28,6 +29,7 @@ import { BackendPopover, useBackendMenu } from './BackendPopover.tsx';
 import { ChatBackdrop } from './ChatBackdrop.tsx';
 import { ChatStatusRow } from './ChatStatusRow.tsx';
 import { ATTACH_WHILE_RUNNING, type ComposerAttachment } from './attachments.ts';
+import { useAutoSpeakReplies } from './autoSpeak.ts';
 import { chatEnv, chatMeta, sameModel } from './chatSlices.ts';
 import { DRAFT_KEY, type ChatController } from './controller.ts';
 import { ComposerSheets } from './ComposerSheets.tsx';
@@ -49,6 +51,7 @@ import { useComposerTriggers, type ComposerSheet } from './useComposerTriggers.t
 import { useImeBack } from './useImeBack.ts';
 import { useChatSelector } from './useChatSelector.ts';
 import { useGatewayHealth } from './useGatewayHealth.ts';
+import { useSttSettings } from './useSttSettings.ts';
 
 /** the composer dock's top padding: the picker sits on the surface, not the dock */
 const COMPOSER_DOCK_TOP = 6;
@@ -98,6 +101,8 @@ function ChatScreen({ controller, bot, profileLabel, onOpenDrawer, onProfile }: 
   );
   const notify = useCallback((text: string) => controller.notify(text), [controller]);
   const chrome = useMessageChrome(controller, meta.key, reactionsEnabled);
+  const autoSpeakFailed = useCallback(() => controller.notify('Read aloud failed'), [controller]);
+  useAutoSpeakReplies(controller, chrome.actions.voice, autoSpeakFailed);
   const newChat = useCallback(() => controller.newChat(), [controller]);
   const retryLink = useCallback(() => controller.retryLink(), [controller]);
   const onDockLayout = useCallback((e: LayoutChangeEvent) => {
@@ -151,6 +156,7 @@ function ChatScreen({ controller, bot, profileLabel, onOpenDrawer, onProfile }: 
           <Composer
             t={t}
             drafts={controller.drafts}
+            api={controller.api}
             profile={meta.profile}
             session={meta.key}
             running={running}
@@ -305,6 +311,7 @@ const LinkBanner = memo(function LinkBanner({ link, onRetry }: { link: LinkState
 const Composer = memo(function Composer({
   t,
   drafts,
+  api,
   profile,
   session,
   running,
@@ -324,6 +331,7 @@ const Composer = memo(function Composer({
 }: {
   t: Tokens;
   drafts: DraftStore;
+  api: GatewayApi;
   profile: string;
   session: string;
   running: boolean;
@@ -348,7 +356,8 @@ const Composer = memo(function Composer({
   useEditingText(edit, text, setText, () => inputRef.current?.focus());
   const [attachOpen, setAttachOpen] = useState(false);
   const attachments = useAttachments(onNotice);
-  const dictation = useDictation({ getText: () => text, setText, onNotice });
+  const stt = useSttSettings(api, profile);
+  const dictation = useDictation({ getText: () => text, setText, onNotice, ...stt });
   const [focused, setFocused] = useState(false);
   const [seed] = useState(() => Math.floor(Math.random() * 100000));
   const hasPayload = text.trim() !== '' || attachments.items.length > 0;
