@@ -34,7 +34,7 @@ import { chatEnv, chatMeta, sameModel } from './chatSlices.ts';
 import { DRAFT_KEY, type ChatController } from './controller.ts';
 import { ComposerSheets } from './ComposerSheets.tsx';
 import { useDictation } from './dictation.ts';
-import { DictationActivity, MicButton } from './DictationControls.tsx';
+import { DictationActivity, MicButton, PlaybackActivity } from './DictationControls.tsx';
 import { FOLLOW_UP_PLACEHOLDERS, NEW_SESSION_PLACEHOLDERS } from './intro.ts';
 import { EditBanner, MessageActionsProvider, useEditingText, useMessageChrome, type MessageEdit } from './messageChrome.tsx';
 import { ModelPicker, type ModelPickerView } from './ModelPicker.tsx';
@@ -399,7 +399,9 @@ const Composer = memo(function Composer({
         <View style={styles.dictationRow}>
           <DictationActivity dictation={dictation} />
         </View>
-      ) : null}
+      ) : (
+        <PlaybackActivity style={styles.dictationRow} />
+      )}
       <View
         style={[styles.composer, { backgroundColor: t.uiBgEditor, borderColor: focused ? t.dtComposerRing : t.uiComposerBorder, borderRadius: t.radius['2xl'] }]}
       >

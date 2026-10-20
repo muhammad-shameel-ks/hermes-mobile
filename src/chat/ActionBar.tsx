@@ -16,6 +16,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { press, tick } from '../ui/haptics.ts';
+import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
 import { useTokens } from '../ui/tokens.ts';
 import { COPIED_RESET_MS, formatElapsed, formatStamp, messageText, sameBar, type BarPlan } from './actionBar.ts';
 import { useMessageActions } from './messageChrome.tsx';
@@ -133,16 +134,29 @@ function ActionBarImpl({ message, plan }: { message: Message; plan: BarPlan }) {
           <CopyButton label="Copy" name="copy" color={t.uiTextTertiary} text={text} />
           {plan.fullAvailable ? <CopyButton label="Copy full response" name="clone" color={t.uiTextTertiary} text={full} /> : null}
           {speech.available ? (
-            <GlyphButton
-              label={reading ? 'Stop reading' : 'Read aloud'}
-              name={reading ? 'mute' : 'unmute'}
-              color={t.uiTextTertiary}
-              onPress={() => {
-                tick();
-                if (reading) stopReadAloud();
-                else readAloud(text(), message.id, actions.voice()).catch(() => actions.notify('Read aloud failed'));
-              }}
-            />
+            speech.status === 'preparing' && reading ? (
+              // desktop `Loader2Icon animate-spin` while the provider synthesizes; a tap gives up waiting
+              <BarButton
+                label="Preparing audio, tap to cancel"
+                onPress={() => {
+                  tick();
+                  stopReadAloud();
+                }}
+              >
+                <GlyphSpinner size={16} color={t.uiTextTertiary} label="Preparing audio" />
+              </BarButton>
+            ) : (
+              <GlyphButton
+                label={reading ? 'Stop reading' : 'Read aloud'}
+                name={reading ? 'mute' : 'unmute'}
+                color={t.uiTextTertiary}
+                onPress={() => {
+                  tick();
+                  if (reading) stopReadAloud();
+                  else readAloud(text(), message.id, actions.voice()).catch(() => actions.notify('Read aloud failed'));
+                }}
+              />
+            )
           ) : null}
           <GlyphButton
             label="Refresh"
