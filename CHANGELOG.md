@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.32] - 2026-10-20
+
+- Show when a reply is being prepared and read aloud (#41) ([4105a28](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/4105a28))
+
 ## [0.1.31] - 2026-10-20
 
 - Dictate and read aloud with each profile's voice providers (#40) ([fbf5f4b](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/fbf5f4b))
