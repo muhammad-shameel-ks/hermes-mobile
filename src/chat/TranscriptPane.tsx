@@ -98,6 +98,8 @@ export const TranscriptPane = memo(function TranscriptPane({ controller, meta, b
   const runtime = useExternalStoreRuntime(adapter);
   const jump = useJumpToBottom(meta.key, messages);
   const tail = useTailStore(messages, running, wait);
+  const { anchorMinHeight } = jump;
+  const listContent = useMemo(() => (anchorMinHeight === null ? styles.listContent : [styles.listContent, { minHeight: anchorMinHeight }]), [anchorMinHeight]);
 
   const { key, historyMore, loadingEarlier, loading } = meta;
   const showEarlier = useCallback(() => void controller.showEarlier(key), [controller, key]);
@@ -141,7 +143,7 @@ export const TranscriptPane = memo(function TranscriptPane({ controller, meta, b
                   <ThreadPrimitive.MessagesFlatList
                     ref={jump.listRef}
                     style={styles.list}
-                    contentContainerStyle={styles.listContent}
+                    contentContainerStyle={listContent}
                     keyboardDismissMode="interactive"
                     keyboardShouldPersistTaps="handled"
                     CellRendererComponent={jump.Cell}
@@ -155,8 +157,10 @@ export const TranscriptPane = memo(function TranscriptPane({ controller, meta, b
                     onMomentumScrollEnd={jump.onFlingEnd}
                     onContentSizeChange={jump.onContentSize}
                     onLayout={jump.onLayout}
-                    // following a streaming reply is useJumpToBottom's; assistant-ui's own follow can yank a reader mid-drag
+                    // following a streaming reply is useJumpToBottom's; assistant-ui's own follow can yank a reader mid-drag,
+                    // and a send lifts the reader's message to the top instead of jumping to the bottom when the run starts
                     autoScroll={false}
+                    scrollToBottomOnRunStart={false}
                     ListHeaderComponent={header}
                     ListFooterComponent={footer}
                     refreshControl={pull.refreshControl}

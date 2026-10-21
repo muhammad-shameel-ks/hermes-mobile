@@ -27,12 +27,12 @@ import { setCardEnv } from '../chat/cards/env.ts';
 import { CardEnvBridge } from '../chat/cards/CardEnvBridge.tsx';
 import ChatScreen from '../chat/ChatScreen.tsx';
 import { shellSlice } from '../chat/chatSlices.ts';
-import { ChatController } from '../chat/controller.ts';
+import { ChatController, type SessionInfo } from '../chat/controller.ts';
 import { createMediaResolver } from '../chat/mediaResolver.ts';
 import { shallowEqual } from '../chat/selector.ts';
 import { useChatSelector } from '../chat/useChatSelector.ts';
 import Drawer, { type DrawerTab, type SessionsListApi } from '../drawer/Drawer.tsx';
-import { useDrawerOpenGesture } from '../drawer/useDrawerGestures.ts';
+import { DRAWER_DURATION, useDrawerOpenGesture } from '../drawer/useDrawerGestures.ts';
 import { useSectionActions } from '../drawer/useSectionActions.tsx';
 import { useSessionActions } from '../drawer/useSessionActions.tsx';
 import { bindGateway } from '../files/gateway.ts';
@@ -42,6 +42,7 @@ import { createPersistence } from '../store/index.ts';
 import { createGroupsApi } from '../groups/api.ts';
 import { GroupLauncher, type GroupLaunch } from '../groups/GroupLauncher.tsx';
 import { GroupsModel } from '../groups/model.ts';
+import type { GroupRoom } from '../groups/rooms.ts';
 import { useGroupActions } from '../groups/useGroupActions.tsx';
 import ColdBootOverlay from '../screens/ColdBootOverlay.tsx';
 import { SettingsProvider } from '../settings/context.tsx';
@@ -91,7 +92,7 @@ export default function SignedInApp(props: Props) {
   const t = useTokens();
   const insets = useSafeAreaInsets();
   const controller = useController(props);
-  const { roster, profile, link, notice, openBot: openBotName } = useChatSelector(controller, shellSlice, shallowEqual);
+  const { visibleBots, hiddenBots, profile, link, notice, openBot: openBotName } = useChatSelector(controller, shellSlice, shallowEqual);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerProgress = useSharedValue(0);
   const [tab, setTab] = useState<DrawerTab>('sessions');
@@ -145,7 +146,7 @@ export default function SignedInApp(props: Props) {
     };
   }, [controller, attention]);
 
-  const allBots = useMemo(() => [...roster.visible, ...roster.hidden], [roster]);
+  const allBots = useMemo(() => [...visibleBots, ...hiddenBots], [visibleBots, hiddenBots]);
   const openBot = openBotName ? (allBots.find((b) => b.name === openBotName) ?? null) : null;
   const profileBot = allBots.find((b) => b.name === profile);
   const profileLabel = profileBot ? profileBot.label : botLabel({ name: profile });
@@ -164,16 +165,45 @@ export default function SignedInApp(props: Props) {
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   const openDrawer = useCallback(() => {
     setDrawerOpen(true);
-    // refresh on drawer open instead of the desktop's 5 s roster poll (recorded parity deviation);
-    // after this tap's render, because refreshRoster notifies every subscriber synchronously
+    // refresh on drawer open instead of the desktop's 5 s roster poll (recorded parity deviation); once
+    // the slide has settled, so the replies' re-renders and the roster's refresh spinner do not land mid-slide
     setTimeout(() => {
       void controller.refreshSessions();
       void controller.refreshRoster();
       void groups.refresh();
-    }, 0);
+    }, DRAWER_DURATION);
   }, [controller, groups]);
   const openDrawerGesture = useDrawerOpenGesture(drawerProgress, !drawerOpen, openDrawer);
   const openProfileSheet = useCallback(() => setProfileSheet(true), []);
+
+  // the drawer and its panes are memoised and stay mounted (hidden) while closed, so every callback
+  // they take keeps its identity; the latest hooks' values are read through this ref
+  const latest = useRef({ sessionActions, groupActions });
+  latest.current = { sessionActions, groupActions };
+  const drawerActions = useMemo(() => {
+    // the drawer's close commits (and its slide starts on the UI thread) before the chat it opened mounts,
+    // so the slide is not queued behind the new transcript's commit
+    const closeThen = (open: () => void) => {
+      closeDrawer();
+      requestAnimationFrame(open);
+    };
+    return {
+      newSession: () => closeThen(() => controller.newChat()),
+      openSession: (session: SessionInfo) =>
+        closeThen(() => {
+          controller.openSession(session);
+          // opening reads it: the backend's watermark moves so the unread dot does not return
+          if (session.unread) void latest.current.sessionActions.markRead(session);
+        }),
+      sessionActions: (session: SessionInfo) => latest.current.sessionActions.open(session),
+      openBot: (bot: Bot) => closeThen(() => void controller.openBot(bot)),
+      openGroup: (room: GroupRoom) => openGroup.current?.openRoom(room),
+      groupActions: (room: GroupRoom) => latest.current.groupActions.open(room),
+      add: () => setAddSheet(true),
+      retryRoster: () => void controller.refreshRoster(),
+      refreshRoster: () => Promise.all([controller.refreshRoster(), controller.refreshSessions(), groups.refresh()]).then(() => undefined),
+    };
+  }, [controller, closeDrawer, groups]);
 
   const confirmDelete = (bot: Bot) => {
     Alert.alert(`Delete ${bot.label}?`, 'This removes the profile, its memory, skills and every session. It cannot be undone.', [
@@ -238,29 +268,18 @@ export default function SignedInApp(props: Props) {
           profileLabel={profileLabel}
           tab={tab}
           onTab={setTab}
-          onNewSession={() => {
-            closeDrawer();
-            controller.newChat();
-          }}
-          onOpenSession={(session) => {
-            closeDrawer();
-            controller.openSession(session);
-            // opening reads it: the backend's watermark moves so the unread dot does not return
-            if (session.unread) void sessionActions.markRead(session);
-          }}
-          onSessionActions={sessionActions.open}
-          onOpenBot={(bot) => {
-            closeDrawer();
-            void controller.openBot(bot);
-          }}
+          onNewSession={drawerActions.newSession}
+          onOpenSession={drawerActions.openSession}
+          onSessionActions={drawerActions.sessionActions}
+          onOpenBot={drawerActions.openBot}
           onBotActions={setActionsFor}
           onSectionActions={sectionActions.open}
           groups={groups}
-          onOpenGroup={(room) => openGroup.current?.openRoom(room)}
-          onGroupActions={groupActions.open}
-          onAdd={() => setAddSheet(true)}
-          onRetryRoster={() => void controller.refreshRoster()}
-          onRefreshRoster={() => Promise.all([controller.refreshRoster(), controller.refreshSessions(), groups.refresh()]).then(() => undefined)}
+          onOpenGroup={drawerActions.openGroup}
+          onGroupActions={drawerActions.groupActions}
+          onAdd={drawerActions.add}
+          onRetryRoster={drawerActions.retryRoster}
+          onRefreshRoster={drawerActions.refreshRoster}
           onProfileChip={openProfileSheet}
           loadImage={controller.avatarDataFn}
         />

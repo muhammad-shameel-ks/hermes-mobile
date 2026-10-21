@@ -1,30 +1,43 @@
 /**
- * The transcript's FlatList scroll behaviour: following a streaming reply, and
- * the jump-to-bottom pill. assistant-ui still places the list on the bottom when
- * a thread opens, a run starts or the thread switches; following growing content
- * is ours (`TailFollow`), because assistant-ui's follow reads a pinned flag that
- * only a scroll echo refreshes, so a token landing as the reader starts to drag
- * pulls them back down. The pill shows once the reader scrolls up past the
- * threshold, counts rows below the fold from the cells' own layouts, and on a
- * tap chases the tail until the list re-pins.
+ * The transcript's FlatList scroll behaviour: following a streaming reply, lifting
+ * a sent message to the top, and the jump-to-bottom pill. assistant-ui still
+ * places the list on the bottom when a thread opens or switches; following
+ * growing content is ours (`TailFollow`), because assistant-ui's follow reads a
+ * pinned flag that only a scroll echo refreshes, so a token landing as the
+ * reader starts to drag pulls them back down.
+ *
+ * A send lifts the reader's message to the top of the viewport and the reply
+ * streams into the space under it (`anchorMinHeight` pads the content so the
+ * offset exists); nothing follows the reply until the reader scrolls. The pill
+ * shows once the reader is away from the bottom, counts rows below the fold
+ * from the cells' own layouts, and on a tap chases the tail until the list
+ * re-pins.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, type CellRendererProps, type FlatList, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import type { ThreadMessage } from '@assistant-ui/react-native';
 
-import { distanceFromBottom, JUMP_SHOW_DISTANCE, messagesBelow, PINNED_DISTANCE, TailFollow, type RowFrame } from './scroll.ts';
+import { distanceFromBottom, JUMP_SHOW_DISTANCE, messagesBelow, PINNED_DISTANCE, sentMessage, TailFollow, type RowFrame } from './scroll.ts';
 import type { Message } from './transcript.ts';
 
 type ScrollEvent = NativeSyntheticEvent<NativeScrollEvent>;
 
 const distanceOf = ({ nativeEvent: { contentOffset, layoutMeasurement, contentSize } }: ScrollEvent) =>
   distanceFromBottom(contentOffset.y, layoutMeasurement.height, contentSize.height);
+const offsetOf = (event: ScrollEvent) => event.nativeEvent.contentOffset.y;
+
+/** the room left above the reader's own message when a send lifts it to the top */
+const ANCHOR_GAP = 12;
+
+type Anchor = { id: string; top: number | null; lifted: boolean };
 
 export function useJumpToBottom(sessionKey: string, messages: readonly Message[]) {
   const listRef = useRef<FlatList<ThreadMessage>>(null);
   const frames = useRef(new Map<string, RowFrame>());
   const metrics = useRef({ scrollY: 0, viewport: 0, content: 0 });
+  // the offset of the last scroll echo; `metrics.scrollY` may already hold a commanded offset ahead of it
+  const echoY = useRef(0);
   const follow = useRef(new TailFollow());
   // the ids are only read while the pill shows, so a streamed token never maps the whole thread
   const latest = useRef({ messages, ids: null as string[] | null });
@@ -34,6 +47,10 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
   const frame = useRef(0);
   const [visible, setVisible] = useState(false);
   const [count, setCount] = useState(0);
+  // the message a send lifted to the top, and the content offset it is lifted to
+  const anchor = useRef<Anchor | null>(null);
+  const [anchorMinHeight, setAnchorMinHeight] = useState<number | null>(null);
+  const tail = useRef(messages.at(-1)?.id ?? null);
 
   const show = useCallback((next: boolean) => {
     if (visibleRef.current === next) return;
@@ -65,22 +82,72 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
     follow.current.reset();
     show(false);
     setCount(0);
+    // a draft's first send moves its transcript to the new session's key: the lifted message stays lifted
+    const kept = anchor.current;
+    if (kept && latest.current.messages.at(-1)?.id === kept.id) follow.current.anchor();
+    else {
+      anchor.current = null;
+      setAnchorMinHeight(null);
+    }
   }, [sessionKey, show]);
 
   useEffect(schedule, [messages, schedule]);
+
+  // a message the reader just sent lands at the tail, appended to the thread already on screen
+  useEffect(() => {
+    const previous = tail.current;
+    tail.current = messages.at(-1)?.id ?? null;
+    const sent = sentMessage(messages, previous);
+    if (sent === null) return;
+    anchor.current = { id: sent, top: null, lifted: false };
+    chasing.current = false;
+    follow.current.anchor();
+    show(false);
+  }, [messages, show]);
+
+  // scrolls the lifted message to the top once the padded content is tall enough to hold the offset
+  const lift = useCallback(() => {
+    const target = anchor.current;
+    if (!target || target.top === null || target.lifted) return;
+    const { viewport, content } = metrics.current;
+    if (viewport === 0 || content < target.top + viewport - 1) return;
+    target.lifted = true;
+    follow.current.commanded();
+    listRef.current?.scrollToOffset({ offset: target.top, animated: true });
+  }, []);
+
+  // the sent message's cell measured: pad the content so its top can reach the viewport's top
+  const place = useCallback(
+    (id: string, y: number) => {
+      const target = anchor.current;
+      if (!target || target.id !== id || target.top !== null) return;
+      target.top = Math.max(0, y - ANCHOR_GAP);
+      const { viewport } = metrics.current;
+      if (viewport > 0) setAnchorMinHeight(target.top + viewport);
+      lift();
+    },
+    [lift],
+  );
 
   // commands the bottom of the last measured content; nothing until the viewport is measured
   const stickToBottom = useCallback((animated: boolean) => {
     const { viewport, content } = metrics.current;
     if (viewport === 0) return;
+    const offset = Math.max(0, content - viewport);
     follow.current.commanded();
-    listRef.current?.scrollToOffset({ offset: Math.max(0, content - viewport), animated });
+    // a plain step lands where it was told: record it now, because the scroll echo trails the next
+    // streamed step, and a stale offset would read as "away" and turn every later step into a glide
+    // that restarts each beat (the list visibly chasing the reply)
+    if (!animated) metrics.current.scrollY = offset;
+    listRef.current?.scrollToOffset({ offset, animated });
   }, []);
 
   const onScroll = useCallback(
     (event: ScrollEvent) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      const upward = contentOffset.y < metrics.current.scrollY;
+      // against the previous echo, not a commanded offset the list has not reached yet
+      const upward = contentOffset.y < echoY.current;
+      echoY.current = contentOffset.y;
       metrics.current.scrollY = contentOffset.y;
       metrics.current.viewport = layoutMeasurement.height;
       metrics.current.content = contentSize.height;
@@ -95,13 +162,13 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
     [schedule, show],
   );
 
-  const onDragStart = useCallback(() => {
+  const onDragStart = useCallback((event: ScrollEvent) => {
     chasing.current = false;
-    follow.current.dragStart();
+    follow.current.dragStart(offsetOf(event));
   }, []);
-  const onDragEnd = useCallback((event: ScrollEvent) => follow.current.dragEnd(distanceOf(event)), []);
+  const onDragEnd = useCallback((event: ScrollEvent) => follow.current.dragEnd(distanceOf(event), offsetOf(event)), []);
   const onFlingStart = useCallback(() => follow.current.flingStart(), []);
-  const onFlingEnd = useCallback((event: ScrollEvent) => follow.current.flingEnd(distanceOf(event)), []);
+  const onFlingEnd = useCallback((event: ScrollEvent) => follow.current.flingEnd(distanceOf(event), offsetOf(event)), []);
 
   const onContentSize = useCallback(
     (_width: number, height: number) => {
@@ -110,9 +177,12 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
       const away = chasing.current || distanceFromBottom(scrollY, viewport, content) > PINNED_DISTANCE;
       metrics.current.content = height;
       if (follow.current.follows) stickToBottom(away);
+      else if (anchor.current && !anchor.current.lifted) lift();
+      // a reader who stopped to read sees the reply grow away below them: the pill offers the way back
+      else if (!chasing.current && distanceFromBottom(scrollY, viewport, height) > JUMP_SHOW_DISTANCE) show(true);
       schedule();
     },
-    [schedule, stickToBottom],
+    [lift, schedule, show, stickToBottom],
   );
 
   // a keyboard opening or closing resizes the viewport with no content-size event to follow it
@@ -121,9 +191,15 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
       const { height } = event.nativeEvent.layout;
       const previous = metrics.current.viewport;
       metrics.current.viewport = height;
-      if (previous > 0 && height !== previous && follow.current.follows) stickToBottom(false);
+      if (height === previous) return;
+      const top = anchor.current?.top ?? null;
+      if (top !== null) {
+        // the lifted message keeps its room under a resized viewport
+        setAnchorMinHeight(top + height);
+        lift();
+      } else if (previous > 0 && follow.current.follows) stickToBottom(false);
     },
-    [stickToBottom],
+    [lift, stickToBottom],
   );
 
   const toBottom = useCallback(() => {
@@ -142,6 +218,7 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
           const { y, height } = event.nativeEvent.layout;
           frames.current.set(item.id, { y, height });
           onLayout?.(event);
+          place(item.id, y);
           schedule();
         };
         // VirtualizedList's own cell hands View this untyped prop to track the focused cell.
@@ -152,8 +229,8 @@ export function useJumpToBottom(sessionKey: string, messages: readonly Message[]
           </View>
         );
       },
-    [schedule],
+    [place, schedule],
   );
 
-  return { listRef, Cell, visible, count, onScroll, onDragStart, onDragEnd, onFlingStart, onFlingEnd, onContentSize, onLayout, toBottom };
+  return { listRef, Cell, visible, count, anchorMinHeight, onScroll, onDragStart, onDragEnd, onFlingStart, onFlingEnd, onContentSize, onLayout, toBottom };
 }

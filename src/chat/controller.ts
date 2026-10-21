@@ -31,6 +31,7 @@ import {
   buildRoster,
   isBotChatRow,
   readBotMeta,
+  reuseRoster,
   slugifyProfileName,
   type Bot,
   type BotMeta,
@@ -625,8 +626,8 @@ export class ChatController {
     this.set({ roster: { ...this.snapshot.roster, loading: true } });
     try {
       const result = await this.rpc('profiles.list', {});
-      const roster = buildRoster(result.profiles ?? [], Math.floor(Date.now() / 1000));
-      this.set({ roster: { ...roster, loaded: true, loading: false, error: null } });
+      const { visible, hidden } = reuseRoster(this.snapshot.roster, buildRoster(result.profiles ?? [], Math.floor(Date.now() / 1000)));
+      this.set({ roster: { visible, hidden, loaded: true, loading: false, error: null } });
     } catch (error) {
       this.set({ roster: { ...this.snapshot.roster, loading: false, error: errorText(error) } });
     }

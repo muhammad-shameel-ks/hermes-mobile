@@ -6,16 +6,19 @@
  * screen rather than every loaded session.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 
 import { useOverlay } from '../app/overlay.tsx';
-import type { ChatSnapshot, SessionInfo } from '../chat/controller.ts';
+import type { ChatController, SessionInfo } from '../chat/controller.ts';
+import { shallowEqual } from '../chat/selector.ts';
+import { useChatSelector } from '../chat/useChatSelector.ts';
 import { openFiles } from '../files/open.tsx';
 import { openKanban } from '../kanban/open.tsx';
 import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { NavRow, SearchField } from './chrome.tsx';
-import { NO_ACTIVITIES, rowDotState, stableActivities } from './dotStates.ts';
+import { rowDotState } from './dotStates.ts';
+import { createSessionsSlice } from './drawerSlices.ts';
 import { getDrawerFolds, toggleIn, updateFolds, useDrawerFolds } from './drawerState.ts';
 import { SIDEBAR_INSET } from './rowGeometry.ts';
 import { sessionTime, toSessionRows, groupEntriesByRecency, hideCollapsedGroupRows } from './sessionDates.ts';
@@ -36,11 +39,8 @@ export type SessionsListApi = {
   search: (query: string) => Promise<SessionSearchResult[]>;
 };
 
-/** the slices the list reads; a narrower object than the whole snapshot works as well */
-export type SessionsPaneSnapshot = Pick<ChatSnapshot, 'sessions' | 'entries' | 'openKey' | 'finishedAway' | 'profile'>;
-
 type Props = {
-  snapshot: SessionsPaneSnapshot;
+  controller: ChatController;
   list: SessionsListApi;
   onClose: () => void;
   onNewSession: () => void;
@@ -52,7 +52,13 @@ const byRecency = (a: SessionInfo, b: SessionInfo) => sessionTime(b) - sessionTi
 const NO_SESSIONS: SessionInfo[] = [];
 const keyOf = (item: ListItem) => item.key;
 
-export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSession, onSessionActions }: Props) {
+/**
+ * The pane subscribes to the sessions itself, so while the drawer shows the Bots tab (this pane hidden in
+ * its `<Activity>`) it holds no subscription and re-renders for nothing.
+ */
+export const SessionsPane = memo(function SessionsPane({ controller, list, onClose, onNewSession, onOpenSession, onSessionActions }: Props) {
+  const slice = useMemo(createSessionsSlice, []);
+  const snapshot = useChatSelector(controller, slice, shallowEqual);
   const overlay = useOverlay();
   // callers rebuild their callbacks freely; everything memoised below reads the latest through this
   const latest = useRef({ overlay, list, onClose, onNewSession, onOpenSession, onSessionActions });
@@ -66,7 +72,7 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
   const { matches, pending } = useSessionSearch(trimmed, list.search);
 
   const { items, messaging, loading, loaded, loadingMore, error, hasMore, hasMoreMessaging, corrupt } = snapshot.sessions;
-  const { openKey, finishedAway, profile } = snapshot;
+  const { openKey, finishedAway, profile, activities } = snapshot;
   const minute = Math.floor(Date.now() / 60_000) * 60;
   const [pulling, setPulling] = useState(false);
   const onPull = useCallback(() => {
@@ -74,10 +80,6 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
     void latest.current.list.refresh().finally(() => setPulling(false));
   }, []);
   const pull = usePullRefresh({ refreshing: pulling || (loading && loaded), onRefresh: onPull });
-
-  const activitiesRef = useRef(NO_ACTIVITIES);
-  const activities = stableActivities(activitiesRef.current, snapshot.entries);
-  activitiesRef.current = activities;
 
   const split = useMemo(() => splitPinned(items, messaging), [items, messaging]);
   const platforms = useMemo(() => messagingGroups(split.messaging, hasMoreMessaging), [split.messaging, hasMoreMessaging]);
@@ -221,7 +223,7 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
       windowSize={9}
     />
   );
-}
+});
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },

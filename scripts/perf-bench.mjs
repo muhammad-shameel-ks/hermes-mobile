@@ -98,6 +98,9 @@ await section('sessions', async (bench) => {
   const sorted = [...sessions].sort((a, b) => b.last_active - a.last_active);
   const byAnyId = index.buildSessionByAnyId(recents, messaging);
   bench('mergeSearchResults, one keystroke (client match)', () => index.mergeSearchResults(sorted, 'topic 12', [], byAnyId, true, 'default'));
+  const { reuseList } = await import('../src/chat/selector.ts');
+  const refetched = structuredClone(recents);
+  bench('reuseList, unchanged refetch (1.8k)', () => reuseList(recents, refetched, (s) => s.id));
 });
 
 // ─── colour: the resolved theme and the per-render derivations ───────────────

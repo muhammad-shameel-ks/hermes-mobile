@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { chatEnv, chatMeta, createDrawerSlice, openEntry, openTranscript, sameModel, settingsSlice, shellSlice } from '../src/chat/chatSlices.ts';
+import { chatEnv, chatMeta, openEntry, openTranscript, sameModel, settingsSlice, shellSlice } from '../src/chat/chatSlices.ts';
 import type { ChatEntry, ChatSnapshot } from '../src/chat/controller.ts';
 import { NO_HISTORY } from '../src/chat/history.ts';
 import { emptyRequests } from '../src/chat/requests.ts';
 import { createMemoSelect, shallowEqual } from '../src/chat/selector.ts';
 import { emptyStack } from '../src/chat/statusSync.ts';
 import { emptyTranscript, type Message } from '../src/chat/transcript.ts';
+import { createBotsSlice, createSessionsSlice } from '../src/drawer/drawerSlices.ts';
 import { chatActivity } from '../src/drawer/sessionStatus.ts';
 
 const message = (id: string, text: string, status: Message['status'] = 'complete'): Message => ({
@@ -104,36 +105,24 @@ test('the model compares by its fields and null-safely', () => {
   assert.ok(!sameModel(null, { model: 'm', provider: 'p', effort: null }));
 });
 
-test('the drawer slice holds still while the open chat streams', () => {
-  const slice = createDrawerSlice();
-  const memo = createMemoSelect<ChatSnapshot, ChatSnapshot>();
-  const start = base({ draft: entry('draft'), a: entry('a'), b: entry('b', { transcript: { ...emptyTranscript(), messages: [message('u1', 'hi')] } }) });
-  const first = memo(start, slice, shallowEqual);
-  // the first token flips running (the drawer's dot), every later one changes nothing it reads
-  const running = memo(stream(start, 't'), slice, shallowEqual);
-  assert.notEqual(running, first);
-  let snapshot = stream(start, 't');
-  for (let i = 0; i < 300; i += 1) {
-    snapshot = stream(snapshot, 't'.repeat(i + 2));
-    assert.equal(memo(snapshot, slice, shallowEqual), running);
+test('the drawer panes hold still while the open chat streams', () => {
+  const start = base({ draft: entry('draft'), a: entry('a', { isBotChat: true, bot: 'ada' }), b: entry('b', { transcript: { ...emptyTranscript(), messages: [message('u1', 'hi')] } }) });
+  for (const create of [createSessionsSlice, createBotsSlice]) {
+    const slice = create() as (snapshot: ChatSnapshot) => object;
+    const memo = createMemoSelect<ChatSnapshot, object>();
+    const first = memo(start, slice, shallowEqual);
+    // the first token flips running (the row's dot), every later one changes nothing a pane reads
+    let snapshot = stream(start, 't');
+    const running = memo(snapshot, slice, shallowEqual);
+    assert.notEqual(running, first);
+    for (let i = 0; i < 300; i += 1) {
+      snapshot = stream(snapshot, 't'.repeat(i + 2));
+      assert.equal(memo(snapshot, slice, shallowEqual), running);
+    }
   }
 });
 
-test('the drawer slice keeps unchanged entries by identity and never carries a message list', () => {
-  const slice = createDrawerSlice();
-  const start = base({ draft: entry('draft'), a: entry('a', { transcript: { ...emptyTranscript(), messages: [message('u1', 'secret')] } }), b: entry('b') });
-  const one = slice(start);
-  assert.equal(one.entries.a.transcript.messages.length, 0);
-  const two = slice(stream(start, 'x'));
-  assert.equal(two.entries.b, one.entries.b);
-  assert.equal(two.entries.draft, one.entries.draft);
-  assert.notEqual(two.entries.a, one.entries.a);
-  const three = slice(stream(stream(start, 'x'), 'xy'));
-  assert.equal(three.entries, two.entries);
-});
-
-test('the drawer reads the same activity off a thin entry as off the real one', () => {
-  const slice = createDrawerSlice();
+test('the panes read each chat activity, and the bots pane the open bot and whether it thinks', () => {
   const requests = { ...emptyRequests(), approvals: [{ requestId: 'r' }] } as never;
   const cases: ChatEntry[] = [
     entry('a'),
@@ -142,17 +131,23 @@ test('the drawer reads the same activity off a thin entry as off the real one', 
     entry('a', { stack: { ...emptyStack(), status: { ...emptyStack().status, background: [{ state: 'running' }] as never } } }),
   ];
   for (const real of cases) {
-    const thin = slice(base({ draft: entry('draft'), a: real })).entries.a;
-    assert.deepEqual(chatActivity(thin), chatActivity(real));
-    assert.equal(thin.isBotChat, real.isBotChat);
-    assert.equal(thin.bot, real.bot);
+    const snapshot = base({ draft: entry('draft'), a: real });
+    assert.deepEqual(createSessionsSlice()(snapshot).activities.a, chatActivity(real));
+    assert.deepEqual(createBotsSlice()(snapshot).activities.a, chatActivity(real));
   }
+  const bots = createBotsSlice();
+  const idle = bots(base({ draft: entry('draft'), a: entry('a', { isBotChat: true, bot: 'ada' }) }));
+  assert.equal(idle.selected, 'ada');
+  assert.equal(idle.thinking, null);
+  const thinking = bots(stream(base({ draft: entry('draft'), a: entry('a', { isBotChat: true, bot: 'ada' }) }), 'x'));
+  assert.equal(thinking.thinking, 'ada');
+  assert.equal(bots(base({ draft: entry('draft'), a: entry('a') })).selected, null);
 });
 
-test('a reordered or dropped entry is a change', () => {
-  const slice = createDrawerSlice();
+test('a dropped chat drops its activity', () => {
+  const slice = createSessionsSlice();
   const one = slice(base({ draft: entry('draft'), a: entry('a') }));
   const two = slice(base({ draft: entry('draft') }));
-  assert.notEqual(two.entries, one.entries);
-  assert.equal(Object.keys(two.entries).length, 1);
+  assert.notEqual(two.activities, one.activities);
+  assert.deepEqual(Object.keys(two.activities), ['draft']);
 });

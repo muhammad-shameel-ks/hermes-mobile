@@ -6,7 +6,7 @@
  * and while the app is in the background.
  */
 
-import { useEffect } from 'react';
+import { memo, useEffect } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, { useAnimatedProps, useAnimatedStyle, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import Svg, { Circle, Ellipse, G, Path } from 'react-native-svg';
@@ -24,7 +24,8 @@ const FRAME_S = 1 / 15;
 /** the dots sit under the body in the 40x44 box */
 const DOT_Y = 41.2;
 
-export function AnimatedFace({ shape, color, mood, size }: { shape: string; color: string; mood: FaceMood; size: number }) {
+// memo: a re-render hands `useFrameCallback` a new worklet, which unregisters and re-registers it on the UI thread
+export const AnimatedFace = memo(function AnimatedFace({ shape, color, mood, size }: { shape: string; color: string; mood: FaceMood; size: number }) {
   const { eyeFill, highlightFill } = faceGeometry(shape, color);
   const working = mood !== 'idle';
   const rest = faceFrame(shape, facePose(mood, 0));
@@ -89,6 +90,6 @@ export function AnimatedFace({ shape, color, mood, size }: { shape: string; colo
       </Svg>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({ overflow: { overflow: 'visible' } });
