@@ -10,6 +10,8 @@
  * repeat has no seam. Bottom and left are top and right mirrored, so one style drives each axis.
  * The slide reads the app's shared loop (ui/clock.ts), so every working row's arc is in step on one timeline.
  * Reduced motion paints nothing: the accent dot and the brighter title already say it.
+ * `color` and `durationMs` let the kanban card paint its lane's tone at the desktop card arc's pace
+ * (`kanban.css`: 2.2 s, a 6 s amber crawl once the heartbeat is gone).
  */
 
 import { memo, useState } from 'react';
@@ -33,11 +35,11 @@ const BAND = [0.125, 0.375, 0.5, 0.625] as const;
 /** the band twice over a layer two sides long (eight stops; the assertion only restores BAND's length) */
 const STOPS = [...BAND.map((u) => u / 2), ...BAND.map((u) => 0.5 + u / 2)] as [number, number, ...number[]];
 
-function RunningArcImpl() {
+function RunningArcImpl({ color, durationMs = ARC_MS }: { color?: string; durationMs?: number }) {
   const t = useTokens();
   const reduced = useReducedMotion();
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const progress = useLoop({ durationMs: ARC_MS }, !reduced);
+  const progress = useLoop({ durationMs }, !reduced);
 
   const { width, height } = size;
   // the layer is two periods long: sliding it from -side to 0 advances the band by exactly one period
@@ -51,7 +53,7 @@ function RunningArcImpl() {
 
   if (reduced) return null;
 
-  const spike = t.renderedMode === 'dark' ? t.dtForeground : t.dtMidground;
+  const spike = color ?? (t.renderedMode === 'dark' ? t.dtForeground : t.dtMidground);
   const band = [transparentOf(spike), mixPct(spike, 0.45, 'transparent'), spike, transparentOf(spike)] as const;
   const colors = [...band, ...band] as const;
   const ready = width > 0 && height > 0;

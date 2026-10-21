@@ -14,6 +14,7 @@ import type { ChatController, SessionInfo } from '../chat/controller.ts';
 import { shallowEqual } from '../chat/selector.ts';
 import { useChatSelector } from '../chat/useChatSelector.ts';
 import { openFiles } from '../files/open.tsx';
+import { openKanban } from '../kanban/open.tsx';
 import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { NavRow, SearchField } from './chrome.tsx';
 import { rowDotState } from './dotStates.ts';
@@ -181,6 +182,14 @@ export const SessionsPane = memo(function SessionsPane({ controller, list, onClo
             onPress={() => {
               latest.current.onClose();
               openFiles(latest.current.overlay);
+            }}
+          />
+          <NavRow
+            label="Kanban"
+            icon="project"
+            onPress={() => {
+              latest.current.onClose();
+              openKanban(latest.current.overlay);
             }}
           />
         </View>

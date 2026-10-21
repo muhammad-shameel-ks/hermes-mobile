@@ -1,14 +1,16 @@
 /**
  * The BOTS tab, the bot roster (apps/desktop/src/plugins/hermes-bots/roster-pane-toolbar.tsx,
- * roster-pane-content.tsx): the "Bots" heading with its add button, the search field, a "Group chats"
- * section when any gateway-hosted rooms exist, the bot rows, and the hidden bots behind a disclosure.
- * No filters menu, mute bell or user-section management in v1 (issues #12, #17).
+ * roster-pane-content.tsx, roster-pane-sections.tsx): the "Bots" heading with its add button, the search
+ * field, a "Group chats" section when any gateway-hosted rooms exist, the bot rows (under the user sections
+ * they are filed in, Unassigned last, once any exist), and the hidden bots behind a disclosure.
+ * No filters menu or mute bell in v1 (issues #12, #17).
  */
 
 import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { filterBots, type Bot } from '../bots/roster.ts';
+import { groupBySection, rosterSections, UNASSIGNED_SECTION_KEY, type BotSection } from '../bots/sections.ts';
 import type { ChatController } from '../chat/controller.ts';
 import { shallowEqual } from '../chat/selector.ts';
 import { useChatSelector } from '../chat/useChatSelector.ts';
@@ -26,7 +28,7 @@ import { GroupRow } from './GroupRow.tsx';
 import { SearchField } from './chrome.tsx';
 import type { Activities } from './dotStates.ts';
 import { createBotsSlice } from './drawerSlices.ts';
-import { updateFolds, useDrawerFolds } from './drawerState.ts';
+import { toggleIn, updateFolds, useDrawerFolds } from './drawerState.ts';
 import { SIDEBAR_INSET } from './rowGeometry.ts';
 import { IDLE_ACTIVITY, resolveDotState } from './sessionStatus.ts';
 
@@ -35,6 +37,7 @@ type Props = {
   groups: GroupsModel;
   onOpenBot: (bot: Bot) => void;
   onBotActions: (bot: Bot) => void;
+  onSectionActions: (section: BotSection) => void;
   onOpenGroup: (room: GroupRoom) => void;
   onGroupActions: (room: GroupRoom) => void;
   onAddPress: () => void;
@@ -73,16 +76,51 @@ function PanelEmpty({ icon, title, description, action }: { icon: CodiconName; t
   );
 }
 
+/** desktop `RosterSectionHeader` for a user section or Unassigned; a long press opens a section's actions */
+function RosterSectionHeader({ label, icon, count, open, onToggle, onActions }: { label: string; icon: CodiconName; count: number; open: boolean; onToggle: () => void; onActions?: () => void }) {
+  const t = useTokens();
+  return (
+    <Pressable
+      onPress={() => {
+        tick();
+        onToggle();
+      }}
+      onLongPress={
+        onActions
+          ? () => {
+              tick();
+              onActions();
+            }
+          : undefined
+      }
+      delayLongPress={350}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}, ${count}`}
+      accessibilityState={{ expanded: open }}
+      accessibilityHint={onActions ? 'Long press for more actions' : undefined}
+      hitSlop={{ top: 4, bottom: 4 }}
+      style={({ pressed }) => [styles.sectionHeader, { borderRadius: t.radius.md, backgroundColor: pressed ? t.uiControlHoverBackground : 'transparent' }]}
+    >
+      <DisclosureCaret open={open} size={14} color={t.uiTextQuaternary} />
+      <Codicon name={icon} size={14} color={t.uiTextQuaternary} />
+      <Text numberOfLines={1} style={[styles.groupLabel, styles.sectionLabel, { color: t.uiTextQuaternary }]}>
+        {label}
+      </Text>
+      <Text style={[styles.groupCount, { color: t.uiTextQuaternary }]}>{count}</Text>
+    </Pressable>
+  );
+}
+
 /**
  * The pane subscribes to the roster and the groups itself, so while the drawer shows the Sessions tab
  * (this pane hidden in its `<Activity>`) it holds no subscription and re-renders for nothing.
  */
-export const BotsPane = memo(function BotsPane({ controller, groups: model, onOpenBot, onBotActions, onOpenGroup, onGroupActions, onAddPress, onRetryRoster, onRefresh, loadImage }: Props) {
+export const BotsPane = memo(function BotsPane({ controller, groups: model, onOpenBot, onBotActions, onSectionActions, onOpenGroup, onGroupActions, onAddPress, onRetryRoster, onRefresh, loadImage }: Props) {
   const t = useTokens();
   const slice = useMemo(createBotsSlice, []);
   const snapshot = useChatSelector(controller, slice, shallowEqual);
   const groups = useGroups(model);
-  const { hiddenBotsOpen } = useDrawerFolds();
+  const { hiddenBotsOpen, closedBotGroups } = useDrawerFolds();
   const [query, setQuery] = useState('');
   const now = Math.floor(Date.now() / 60_000) * 60;
   const { visible, hidden, loaded, loading, error, openKey, openingBot, finishedAway, activities, selected, thinking } = snapshot;
@@ -94,8 +132,8 @@ export const BotsPane = memo(function BotsPane({ controller, groups: model, onOp
     void refreshRef.current().finally(() => setPulling(false));
   }, []);
   const pull = usePullRefresh({ refreshing: pulling || loading, onRefresh: onPull });
-  const latest = useRef({ onOpenBot, onBotActions, onOpenGroup, onGroupActions });
-  latest.current = { onOpenBot, onBotActions, onOpenGroup, onGroupActions };
+  const latest = useRef({ onOpenBot, onBotActions, onSectionActions, onOpenGroup, onGroupActions });
+  latest.current = { onOpenBot, onBotActions, onSectionActions, onOpenGroup, onGroupActions };
   const open = useCallback((bot: Bot) => latest.current.onOpenBot(bot), []);
   const actions = useCallback((bot: Bot) => latest.current.onBotActions(bot), []);
   const openGroup = useCallback((room: GroupRoom) => latest.current.onOpenGroup(room), []);
@@ -104,6 +142,11 @@ export const BotsPane = memo(function BotsPane({ controller, groups: model, onOp
   const queryLower = trimmed.toLowerCase();
   const shown = useMemo(() => filterBots(visible, query), [visible, query]);
   const shownHidden = useMemo(() => filterBots(hidden, query), [hidden, query]);
+  // from every bot, hidden ones included, so a section keeps its name while its shown members are filtered out
+  const sections = useMemo(() => rosterSections([...visible, ...hidden]), [visible, hidden]);
+  const blocks = useMemo(() => groupBySection(shown, sections), [shown, sections]);
+  // only Unassigned left (no sections, or none with a shown member): the plain list, as before sections
+  const sectioned = blocks.some((block) => block.id !== null);
   const botsByName = useMemo(() => {
     const map: Record<string, Bot> = {};
     for (const bot of visible) map[bot.name] = bot;
@@ -136,7 +179,7 @@ export const BotsPane = memo(function BotsPane({ controller, groups: model, onOp
     ),
     [now, selected, openingBot, thinking, activities, openKey, finishedAway, open, actions, loadImage],
   );
-  const shownRows = useMemo(() => shown.map(renderBot), [shown, renderBot]);
+  const shownRows = useMemo(() => (sectioned ? blocks.map((block) => block.bots.map(renderBot)) : [shown.map(renderBot)]), [sectioned, blocks, shown, renderBot]);
   const hiddenRows = useMemo(() => shownHidden.map(renderBot), [shownHidden, renderBot]);
 
   const renderGroup = useCallback(
@@ -235,7 +278,27 @@ export const BotsPane = memo(function BotsPane({ controller, groups: model, onOp
           />
         ) : null}
 
-        <View style={styles.rows}>{shownRows}</View>
+        {sectioned
+          ? blocks.map((block, index) => {
+              const key = block.id ? `user-section:${block.id}` : UNASSIGNED_SECTION_KEY;
+              // a search shows every match, folds included (desktop `rosterSectionCollapsed`)
+              const folded = !trimmed && closedBotGroups.includes(key);
+              const section = block.id ? { id: block.id, name: block.name } : null;
+              return (
+                <View key={key} style={styles.userSection}>
+                  <RosterSectionHeader
+                    label={section ? section.name : 'Unassigned'}
+                    icon={section ? 'folder' : 'inbox'}
+                    count={block.bots.length}
+                    open={!folded}
+                    onToggle={() => updateFolds({ closedBotGroups: toggleIn(closedBotGroups, key) })}
+                    onActions={section ? () => latest.current.onSectionActions(section) : undefined}
+                  />
+                  {folded ? null : <View style={styles.rows}>{shownRows[index]}</View>}
+                </View>
+              );
+            })
+          : <View style={styles.rows}>{shownRows[0]}</View>}
 
         {shownHidden.length > 0 && !showAllHidden ? (
           <View style={[styles.hidden, { borderTopColor: t.uiStrokeTertiary }]}>
@@ -281,6 +344,9 @@ const styles = StyleSheet.create({
   groupHeading: { flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingLeft: SIDEBAR_INSET - 6, paddingRight: 6, paddingTop: 6, paddingBottom: 4 },
   groupLabel: { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' },
   groupCount: { fontSize: 11, lineHeight: 14, fontWeight: '500' },
+  userSection: { marginTop: 2 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 32, paddingHorizontal: 10, marginBottom: 2 },
+  sectionLabel: { flex: 1, minWidth: 0 },
   empty: { alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingVertical: 40 },
   loading: { alignSelf: 'center', marginVertical: 24 },
   unavailable: { gap: 10, paddingHorizontal: 12, paddingVertical: 16 },

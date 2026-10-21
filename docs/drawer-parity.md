@@ -11,6 +11,7 @@ decisions in issues #12 (shell), #15 and #16 (what is deferred or dropped) and #
 | SESSIONS \| BOTS tab strip: sidebar surface, 2 px underline in the skin's primary, 11 px medium uppercase label | `components/ui/pane-tab.tsx` |
 | Row geometry: lead cell 14, gap 6, pad 8, label 13 / 1.35, age 10, `gap-px` stack (`rowGeometry.ts`) | `row-geometry.ts` |
 | Nav rows (robot, symbol-misc glyphs at 72%, 13 px medium) | `index.tsx` `SidebarMenuButton` |
+| Kanban nav row (project glyph), shown whether or not the gateway has the plugin on (see `kanban-parity.md`) | `plugins/kanban/plugin.tsx` `SIDEBAR_NAV_AREA` |
 | Borderless search field resting at 30% (roster: 50%), glyph, busy spinner, clear | `components/ui/search-field.tsx` |
 | Section header: 8 dp dither square, 10.24 px semibold uppercase at 0.16em in the skin's primary, caret | `app/shell/sidebar-label.tsx`, `sessions-section.tsx` |
 | Date dividers (Earlier today, Yesterday, Earlier this week, Last week, Earlier this month, month, month + year), the 4 AM day, the unlabelled recent head run, collapsible | `lib/time.ts`, `lib/session-date-groups.ts`, `chrome.tsx` |
@@ -25,6 +26,7 @@ decisions in issues #12 (shell), #15 and #16 (what is deferred or dropped) and #
 | Relative time (now, 5m, 3h, 2d) | `session-row.tsx` `formatAge` |
 | Unread: the backend's read watermark, a turn finished while away, cleared on open | `session-unread-remote.ts` `clearUnreadOnOpen` |
 | Bot roster: heading with add, 50% search, 34 dp face rows with the canonical chat's status dot, pinned and hidden marks, "Hidden N" disclosure, empty panels | `plugins/hermes-bots/bot-row.tsx`, `roster-pane-*.tsx` |
+| User sections: foldable folder headings with a count, Unassigned last, the plain list when none exist; filing through the bot's "Move to section…" (a section, New section…, Remove from section) and Rename / Delete on the heading, all through `sectionId` + `sectionName` on the bot's `ui_meta` | `plugins/hermes-bots/user-sections.ts`, `roster-pane-sections.tsx`, `user-sections-ui.tsx`, `bot-row.tsx` |
 | Footer chips: connection glyph per kind, profile glyph (home for the default, tinted initial otherwise), chevron | `connection-glyph.tsx`, `profile-dropdown-switcher.tsx`, `components/ui/profile-glyph.tsx` |
 
 ## Parity deviations
@@ -40,9 +42,13 @@ decisions in issues #12 (shell), #15 and #16 (what is deferred or dropped) and #
 - **Unread** has no persisted seen-count watermarks and no "mark all as read" or per-row "mark as unread"; the backend watermark and one
   in-memory "finished while away" mark carry it.
 - **Platform sections** use a monogram chip in the platform's colour, the desktop's own fallback where a brand has no glyph.
-- **Folds are in memory.** Pinned, Sessions, platform sections, date groups and Hidden reset when the app restarts; the desktop persists them.
+- **Folds are in memory.** Pinned, Sessions, platform sections, date groups, user sections and Hidden reset when the app restarts; the desktop persists them.
 - **No virtual list.** Sessions render in one scroll view; the window grows by 50 on request up to the route's 500.
-- **Roster.** No mute bell, filter menu, user sections or gateway headings (#17); search placeholder is "Search bots…", or "Search bots and group chats…" once a group exists.
+- **Roster.** No mute bell, filter menu or gateway headings (#17); search placeholder is "Search bots…", or "Search bots and group chats…" once a group exists.
+- **User sections** are rebuilt from their members, as on a second desktop: the desktop keeps the section records (order, empty sections)
+  in its own storage, so the phone sorts sections by name and has no empty ones, and therefore no toolbar "New section" or Move up / Move
+  down. No drag-and-drop; a section's actions are a long press on its heading; Delete is confirmed instead of offering Undo. Hidden bots and
+  group chats are not sectioned (a group chat's filing is local to the desktop that made it).
 - **Group chats** are the gateway's hosted rooms only (ADR 0003): a "Group chats" section above the bots, each row a 2x2 face cluster, name, age and the newest message. The desktop's legacy client-driven rooms, drag reorder, per-room pin and settings (hold detection, compress history) are not ported; the `+` button offers New bot or New group chat.
 
 ## Left out by decision

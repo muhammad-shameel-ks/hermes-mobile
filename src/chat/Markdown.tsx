@@ -23,6 +23,7 @@ import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
 import { MediaAttachment } from './cards/MediaAttachment.tsx';
 import { splitMarkdownBlocks, type BlockState, type Lex } from './markdownBlocks.ts';
 import { TranscriptRenderer } from './MarkdownRenderer.tsx';
+import { OwnSwipe } from './OwnSwipe.tsx';
 import { splitMediaTags } from './media.ts';
 import { fadeSpans, fadeTail, growTrail, type FadePainter, type FadeTrail } from './streamFade.ts';
 
@@ -97,9 +98,10 @@ function markdownTheme(t: Tokens) {
 const inkStyles = new Map<string, TextStyle>();
 
 const FADE_PAINTER: FadePainter = {
-  // host text and the views a block nests it in; react-native-marked's list keeps its items in `li`
+  // host text and the views a block nests it in (OwnSwipe wraps a code block's scroll view);
+  // react-native-marked's list keeps its items in `li`
   slot: (element) => {
-    if (element.type === Text || element.type === View || element.type === ScrollView) return 'children';
+    if (element.type === Text || element.type === View || element.type === ScrollView || element.type === OwnSwipe) return 'children';
     return Array.isArray(element.props.li) ? 'li' : null;
   },
   ink: (element) => {
@@ -223,15 +225,18 @@ const MarkdownChunk = memo(function MarkdownChunk({ text, streaming, blocks }: {
   return blocks ? <BlockChunk text={text} streaming={streaming} /> : <SettledChunk text={text} />;
 });
 
-/** the reply's markdown, with the files its `MEDIA:` tags deliver rendered between the text around them */
-function MarkdownImpl({ text, streaming = false }: { text: string; streaming?: boolean }) {
+/**
+ * the reply's markdown, with the files its `MEDIA:` tags deliver rendered between the text around them;
+ * `media={false}` for text that is not a session's (a kanban card's), whose paths must not resolve against the open chat
+ */
+function MarkdownImpl({ text, streaming = false, media = true }: { text: string; streaming?: boolean; media?: boolean }) {
   // a reply that has streamed keeps its blocks when it settles, so nothing remounts (a card keeps its state)
   const blocks = useRef(false);
   if (streaming) blocks.current = true;
   const deferred = useDeferredValue(text);
   const shown = streaming ? deferred : text;
-  const segments = useMemo(() => splitMediaTags(shown), [shown]);
-  if (segments.length === 1 && segments[0].kind === 'text') return <MarkdownChunk text={shown} streaming={streaming} blocks={blocks.current} />;
+  const segments = useMemo(() => (media ? splitMediaTags(shown) : null), [shown, media]);
+  if (!segments || (segments.length === 1 && segments[0].kind === 'text')) return <MarkdownChunk text={shown} streaming={streaming} blocks={blocks.current} />;
   return (
     <View>
       {segments.map((segment, index) =>

@@ -160,6 +160,10 @@ _Avoid_: side thread, sub-chat
 The drawer's BOTS tab: bot rows of avatar, name, last-message preview and time, with hidden bots behind a disclosure.
 _Avoid_: bots list, bot drawer
 
+**Section**:
+A named group of bots the reader makes on the bot roster. The filing lives on each bot's profile, carrying the section's id and name, so every client draws the same sections; bots in none sit under Unassigned, which is not a section.
+_Avoid_: folder, group, category
+
 ## Group chats
 
 **Group chat**:
@@ -203,6 +207,22 @@ _Avoid_: preview pane, preview tiles, right rail
 **Review surface**:
 The phone's read-only full-screen view of a working tree's changes: file list, scope and unified diffs.
 _Avoid_: diff pane, review pane, changes rail
+
+**Kanban board**:
+A gateway-side queue of tasks that agents, not the reader, run: a card placed in Ready with an assignee is picked up by the dispatcher. One gateway holds several boards; the phone shows the one selected for that gateway, a lane at a time.
+_Avoid_: task list, todo list, project board
+
+**Lane**:
+One status on a kanban board - Triage, Todo, Scheduled, Ready, Running, Blocked, Review, Done, Archived. Every card sits in exactly one. Running, Review and Scheduled are the dispatcher's lanes: a card can leave them but the reader cannot move one in.
+_Avoid_: column, status bucket, swimlane
+
+**Card**:
+One kanban task as its lane shows it: title, latest summary, and who is on it.
+_Avoid_: ticket, item, issue
+
+**Drop dock**:
+The grid of lanes laid over the board while the reader holds a card; letting go on a lane moves the card there, letting go in place opens the card's actions.
+_Avoid_: move menu, drop zone
 
 **Agent-process tail**:
 The read-only live output of an agent's background process - the desktop's read-only terminal tab; the phone's only terminal-family surface, deferred to a later phase.

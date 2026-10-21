@@ -1,9 +1,9 @@
 /**
  * The slide-over drawer (issue "App shell and navigation on a phone"): opened by the app-bar button or a
- * right swipe on the chat, closed by the scrim, back, a left swipe, or picking a row. A SESSIONS | BOTS
- * tab strip over the two lists and a footer of chips for the connection, the active profile, Settings
- * and signing out. The lists live in SessionsPane and BotsPane (the latter also showing group chats);
- * the desktop sidebar's geometry in rowGeometry.ts.
+ * right swipe on the chat, closed by the scrim, back, or picking a row; a swipe across it switches tab.
+ * A SESSIONS | BOTS tab strip over the two lists and a footer of chips for the connection, the active
+ * profile, Settings and signing out. The lists live in SessionsPane and BotsPane (the latter also
+ * showing group chats); the desktop sidebar's geometry in rowGeometry.ts.
  */
 
 import { Activity, memo, useEffect, useState } from 'react';
@@ -14,6 +14,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Bot } from '../bots/roster.ts';
+import type { BotSection } from '../bots/sections.ts';
 import type { ChatController, SessionInfo } from '../chat/controller.ts';
 import type { GroupsModel } from '../groups/model.ts';
 import type { GroupRoom } from '../groups/rooms.ts';
@@ -23,7 +24,7 @@ import { useTokens } from '../ui/tokens.ts';
 import { BotsPane } from './BotsPane.tsx';
 import { Footer } from './Footer.tsx';
 import { SessionsPane, type SessionsListApi } from './SessionsPane.tsx';
-import { settleDrawer, useDrawerCloseGesture, useDrawerWidth } from './useDrawerGestures.ts';
+import { settleDrawer, useDrawerTabGesture, useDrawerWidth } from './useDrawerGestures.ts';
 
 export type DrawerTab = 'sessions' | 'bots';
 export type { SessionsListApi };
@@ -46,6 +47,7 @@ type Props = {
   onSessionActions: (session: SessionInfo) => void;
   onOpenBot: (bot: Bot) => void;
   onBotActions: (bot: Bot) => void;
+  onSectionActions: (section: BotSection) => void;
   groups: GroupsModel;
   onOpenGroup: (room: GroupRoom) => void;
   onGroupActions: (room: GroupRoom) => void;
@@ -67,7 +69,7 @@ export default function Drawer(props: Props) {
   const insets = useSafeAreaInsets();
   const width = useDrawerWidth();
   const [mounted, setMounted] = useState(open);
-  const closeGesture = useDrawerCloseGesture(progress, open, onClose);
+  const tabGesture = useDrawerTabGesture(open, TABS, props.tab, props.onTab);
 
   useEffect(() => {
     if (open) setMounted(true);
@@ -106,7 +108,7 @@ export default function Drawer(props: Props) {
   const edge = mixPct(t.uiBase, t.renderedMode === 'dark' ? 0.12 : 0.075, 'transparent');
 
   return (
-    <GestureDetector gesture={closeGesture}>
+    <GestureDetector gesture={tabGesture}>
       <View style={StyleSheet.absoluteFill} pointerEvents={open ? 'auto' : 'none'}>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: t.scrim }, scrimStyle]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close drawer" />
@@ -154,6 +156,7 @@ const DrawerContent = memo(function DrawerContent(props: Props) {
           groups={props.groups}
           onOpenBot={props.onOpenBot}
           onBotActions={props.onBotActions}
+          onSectionActions={props.onSectionActions}
           onOpenGroup={props.onOpenGroup}
           onGroupActions={props.onGroupActions}
           onAddPress={props.onAdd}

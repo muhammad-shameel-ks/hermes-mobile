@@ -14,6 +14,7 @@ Hermes Mobile does not run an agent itself. It connects to a Hermes gateway you 
 - Bot Mode: your gateway's profiles shown as bots, each with its own sessions
 - Group chats: rooms of two to six bots hosted by the gateway, with @mentions, stop, approvals and retries
 - Files and Review surfaces for browsing what the agent produced and the changes it made
+- Kanban: the gateway's task boards, a lane per page with a pipeline ribbon; hold a card to drag it onto another lane, open a task to steer its worker, comment, reassign or unblock it
 - Model picker with thinking level, slash commands, and a message queue
 - Skins with light and dark appearances
 - In-app update prompt for Android release builds
@@ -78,6 +79,7 @@ CI runs both on every pull request, along with a check that the vendored code st
 | `src/bots/`, `src/drawer/` | Bot roster, avatars and the navigation drawer |
 | `src/groups/` | Group chats: the room protocol, live room store, creation and room screens |
 | `src/files/`, `src/review/` | Files and Review surfaces |
+| `src/kanban/` | Kanban: board polling, lanes, drag-to-move, task and new-task screens |
 | `src/settings/` | Settings screens and persisted preferences |
 | `src/updates/` | In-app update check for release builds |
 | `src/ui/` | Design tokens, skins and shared components |
