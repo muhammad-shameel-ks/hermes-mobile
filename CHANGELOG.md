@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.33] - 2026-10-21
+
+- Add the Kanban board (#42) ([d19c1ba](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/d19c1ba))
+
 ## [0.1.32] - 2026-10-20
 
 - Show when a reply is being prepared and read aloud (#41) ([4105a28](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/4105a28))
