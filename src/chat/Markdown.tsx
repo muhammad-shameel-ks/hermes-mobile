@@ -12,9 +12,11 @@
  */
 
 import { memo, useDeferredValue, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, type ColorSchemeName, type TextStyle } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { MarkedLexer, useMarkdown, type MarkedStyles } from 'react-native-marked';
+import Parser from 'react-native-marked/src/lib/Parser';
+import type { UserTheme } from 'react-native-marked/src/theme/types';
 
 import { mixPct } from '../ui/color.ts';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
@@ -26,6 +28,9 @@ import { fadeSpans, fadeTail, growTrail, type FadePainter, type FadeTrail } from
 
 // the same call useMarkdown makes, so a block lexes exactly as it would inside the whole reply
 const lex: Lex = (src) => MarkedLexer(src, { gfm: true }) as ReturnType<Lex>;
+
+// useMarkdown's own style merge; required, not imported, because its source does not pass this project's strict checks
+const getStyles: (styles?: MarkedStyles, colorScheme?: ColorSchemeName, theme?: UserTheme) => MarkedStyles = require('react-native-marked/src/theme/styles').default;
 
 function stylesFor(t: Tokens): MarkedStyles {
   const text = { color: t.uiTextPrimary, fontSize: t.type.text, lineHeight: t.type.lineHeight };
@@ -158,13 +163,46 @@ const MarkdownBlock = memo(function MarkdownBlock({ text, streaming, fades, live
   return <FadeIn elements={elements} length={text.length} live={live} ink={t.uiTextPrimary} />;
 });
 
-function WholeChunk({ text, streaming }: { text: string; streaming: boolean }) {
-  return (
-    <View>
-      <MarkdownBlock text={text} streaming={streaming} fades={false} live={false} />
-    </View>
-  );
+/** settled replies parsed under one theme: one parser, and the elements of the texts most recently shown */
+type Settled = { renderer: TranscriptRenderer; parser: Parser; elements: Map<string, ReactNode[]> };
+
+const settledCache = new WeakMap<Tokens, Settled>();
+/** about a dozen chats' visible replies (the controller keeps 12 chats warm) */
+const SETTLED_TEXTS = 300;
+
+/**
+ * A settled reply's elements, lexed and parsed once per text and theme. `useMarkdown` builds styles, a
+ * parser and the elements per mounted instance, so every chat opened again re-lexed every visible reply;
+ * from here a chat switched back to mounts the elements it already had. Element trees are immutable,
+ * so two rows with the same text can share one.
+ */
+function settledElements(t: Tokens, text: string): ReactNode[] {
+  let entry = settledCache.get(t);
+  if (!entry) {
+    const { styles, theme } = markdownTheme(t);
+    const renderer = new TranscriptRenderer({ streaming: false });
+    entry = { renderer, parser: new Parser({ styles: getStyles(styles, t.renderedMode, theme), renderer }), elements: new Map() };
+    settledCache.set(t, entry);
+  }
+  const hit = entry.elements.get(text);
+  if (hit) {
+    // most recently used last, so the oldest text is the one evicted
+    entry.elements.delete(text);
+    entry.elements.set(text, hit);
+    return hit;
+  }
+  entry.renderer.reset();
+  const elements = entry.parser.parse(lex(text));
+  if (entry.elements.size >= SETTLED_TEXTS) entry.elements.delete(entry.elements.keys().next().value!);
+  entry.elements.set(text, elements);
+  return elements;
 }
+
+/** a reply that was settled when it mounted (one seen streaming keeps its blocks instead) */
+const SettledChunk = memo(function SettledChunk({ text }: { text: string }) {
+  const t = useTokens();
+  return <View>{settledElements(t, text)}</View>;
+});
 
 function BlockChunk({ text, streaming }: { text: string; streaming: boolean }) {
   // a cache only: the blocks are a function of `text`, so a render React discards or repeats cannot change them
@@ -182,7 +220,7 @@ function BlockChunk({ text, streaming }: { text: string; streaming: boolean }) {
 }
 
 const MarkdownChunk = memo(function MarkdownChunk({ text, streaming, blocks }: { text: string; streaming: boolean; blocks: boolean }) {
-  return blocks ? <BlockChunk text={text} streaming={streaming} /> : <WholeChunk text={text} streaming={streaming} />;
+  return blocks ? <BlockChunk text={text} streaming={streaming} /> : <SettledChunk text={text} />;
 });
 
 /** the reply's markdown, with the files its `MEDIA:` tags deliver rendered between the text around them */

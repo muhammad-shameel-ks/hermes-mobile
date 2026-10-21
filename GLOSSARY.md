@@ -99,8 +99,12 @@ The running turn's user message, pinned at the top of the transcript while the r
 _Avoid_: sticky header, pinned message
 
 **Stick-to-bottom**:
-The transcript's follow-the-tail scroll: pinned to the newest row until the reader drags up, re-pinned when they return to the bottom.
+The transcript's follow-the-tail scroll: pinned to the newest row until the reader scrolls up (however little), re-pinned when they return to the bottom. A send suspends it in favour of the **Prompt lift**.
 _Avoid_: autoscroll, follow mode
+
+**Prompt lift**:
+What a send does to the transcript: the reader's new message scrolls to the top of the viewport and the reply streams into the space beneath it, without following, until the reader scrolls or taps the jump pill.
+_Avoid_: scroll to prompt, anchor
 
 **Receiver**:
 The one transcript that consumes a session's event stream on a phone; the desktop's per-pane mirrors have no mobile counterpart.

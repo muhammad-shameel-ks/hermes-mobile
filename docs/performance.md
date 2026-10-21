@@ -37,12 +37,15 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 ### Subscriptions (`useChatSelector`, `chatSlices.ts`)
 1. Never read the whole snapshot in a mounted component. No bare `useSyncExternalStore(controller.subscribe, controller.getSnapshot)`; use `useChatSelector(controller, selector, shallowEqual)` with a slice from `chatSlices.ts`.
 2. Slices are flat objects of references with constant-time (or O(entries)) selectors. Only `TranscriptPane` selects the transcript; chrome uses `chatMeta` (booleans and identities, never `messages`).
-3. Subscribe where you render. Heavy, rarely-shown regions (the Drawer content, settings screens via `useSettings`) subscribe inside a child that mounts only when visible. Context values carry no streaming state and are never inline objects.
+3. Subscribe where you render. Heavy, rarely-shown regions (settings screens via `useSettings`) subscribe inside a child that mounts only when visible. Regions that toggle often instead stay mounted and hide in `<Activity mode="hidden">`: the drawer's content once first opened, and each of its tabs (`Drawer.tsx`). A hidden Activity keeps rows and views but drops effects, so each pane subscribes itself (`drawerSlices.ts`) and a hidden one holds no subscription; it catches up when shown. Everything passed into a hidden subtree must keep its identity (`drawerActions` in `SignedInApp.tsx`), or the parent's renders re-render it at idle priority. Context values carry no streaming state and are never inline objects.
 4. Rows are `memo` components keyed by id reading from `TranscriptRows`. The FlatList render function is a module constant or a `useCallback` with stable deps. No providers inside a row.
 5. Per-token work is O(changed). Pair every incremental path with a test that counts touched messages (see `tests/transcript-rows.test.ts`).
 6. Give `useExternalStoreRuntime` one adapter object per `(messages, running)`.
 7. Guard `setState` in `onLayout` / `onScroll` / `onContentSizeChange`: compare first, don't allocate, rAF-throttle.
-8. Opening a drawer, sheet or overlay is one `setState`. Run data refreshes after that render, never inside the tap handler.
+8. Opening a drawer, sheet or overlay is one `setState`. Run data refreshes after that render, never inside the tap handler; the drawer's refreshes wait for its slide (`DRAWER_DURATION`).
+9. A tap that closes the drawer and opens a chat commits the close first and opens the chat on the next frame (`closeThen`), so the slide runs on the UI thread while the new transcript mounts instead of starting after it.
+10. A refetch keeps what did not change by identity: `reuseList` / `reuseRoster` (`selector.ts`, `roster.ts`) hand back the previous row objects and arrays, and stores skip a write that changes nothing (`sessionsFeed.ts`, `groups/model.ts`). Memoised rows then skip a refresh that brought nothing new. Slices read the lists, not their container, where a flag on it (`roster.loading`) flips each refresh.
+11. The scroll follow (`useJumpToBottom`, `TailFollow`) records a commanded plain step's offset at once; waiting for the echo made every streamed step look "away" and turned the follow into a glide restarted each beat.
 
 ### Message rendering (`MessageView.tsx`, `toolView.ts`, `ui/motion.tsx`)
 1. Every per-block / per-row component under `MessageView` is `memo`, with props that are part objects or primitives, never fresh arrays, objects or JSX.
@@ -63,6 +66,7 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 7. Components the parser creates (`InlineCode`, cards) are memoised by value, because the parser hands them fresh style objects.
 8. Keep `useDeferredValue` on streaming text and bypass it when `streaming` is false.
 9. The streamed-text fade (`streamFade.ts`) repaints only a streamed block's trailing characters, cloning just the elements on that path. Its repaint timer runs only while a chunk is still fading and nothing else re-renders the block.
+10. A reply settled when it mounts renders from `settledElements`: one parser per theme and the elements per text, kept for the most recent `SETTLED_TEXTS`. Switching back to a chat mounts elements it already parsed instead of lexing every visible reply again. Elements are immutable, so the cache is safe to share; keep anything per-instance (state, refs) in the components the renderer creates, never in the renderer.
 
 ### Animation (`ui/clock.ts`, `ui/loops.ts`, `ShimmerText.tsx`)
 1. Decorative loops use `useLoop` from `ui/clock.ts`: one shared timeline per spec, paused in the background, freezable with `holdLoops()`. No per-instance `withRepeat`, `setInterval` or `setTimeout` for decoration.
@@ -93,8 +97,8 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 
 - One very large open markdown block (a giant paragraph, loose list or fence) is still re-lexed whole per update: O(that block), not O(reply).
 - Expanding a Tool run with hundreds of calls mounts every row in one commit (each is now cheap). `DiffView` is still one `View` and `Text` per line when fully expanded.
-- `AnimatedFace` (15 Hz) and `Loader` (60 Hz) animate SVG props, which cost a shadow-tree commit per tick. The bot-chat face is the only one that runs during streaming.
-- assistant-ui's `ExternalStoreRuntimeCore` still does an O(messages) pass per update and per-row accessor evaluations; avoiding that means replacing `MessagesFlatList`. Following a streaming reply is already ours (`TailFollow` in `scroll.ts`, driven by `useJumpToBottom`), with assistant-ui's `autoScroll` off.
+- `AnimatedFace` (15 Hz) and `Loader` (60 Hz) animate SVG props, which cost a shadow-tree commit per tick. The bot-chat face is the only one that runs during streaming; the Bots tab's faces run while it is shown and stop while it is hidden or the drawer is closed (their frame callbacks are effects).
+- assistant-ui's `ExternalStoreRuntimeCore` still does an O(messages) pass per update and per-row accessor evaluations; avoiding that means replacing `MessagesFlatList`. Following a streaming reply is already ours (`TailFollow` in `scroll.ts`, driven by `useJumpToBottom`), with assistant-ui's `autoScroll` and `scrollToBottomOnRunStart` off (a send lifts the prompt instead).
 - Streamed text arrives in steps of up to 50 ms (`STREAM_NOTIFY_MS`) rather than per token; each step fades in over `FADE_MS`, so the open block repaints on a 50 ms timer for up to that long after the last step.
 - Eager native modules still on the launch path: `expo-audio`, `expo-media-library`, `expo-video`, `expo-speech` (chat cards) and `expo-speech-recognition` (`chat/dictation.ts`).
 - `@assistant-ui/*` is about 2 MB and Reanimated about 2.1 MB of the 12 MB dev bundle.

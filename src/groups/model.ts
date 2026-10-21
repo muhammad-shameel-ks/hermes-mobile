@@ -8,6 +8,7 @@
 
 import { JSON_RPC_METHOD_NOT_FOUND, JsonRpcGatewayError } from '../../vendor/hermes-shared/src/json-rpc-channel.ts';
 import type { Bot } from '../bots/roster.ts';
+import { dataEqual, shallowEqual, shallowEqualArray } from '../chat/selector.ts';
 import { errorText } from '../gateway/http.ts';
 import type { GroupsApi } from './api.ts';
 import { RoomStore, type Unsent } from './roomStore.ts';
@@ -62,15 +63,22 @@ export class GroupsModel {
 
   getSnapshot = () => this.state;
 
+  /** a write that changes nothing (a refresh of an unchanged list) wakes no one */
   private set(patch: Partial<GroupsState>) {
-    this.state = { ...this.state, ...patch };
+    const next = { ...this.state, ...patch };
+    if (shallowEqual(next, this.state)) return;
+    this.state = next;
     for (const listener of this.listeners) listener();
   }
 
-  /** a rooms list that keeps the previews it already has */
+  /** a rooms list that keeps the previews it already has, and every unchanged row by identity */
   private rowsFrom(rooms: GroupRoom[]): GroupRow[] {
-    const known = new Map(this.state.rows.map((row) => [row.room.id, row.preview]));
-    return rooms.map((room) => ({ room, preview: known.get(room.id) ?? '' }));
+    const known = new Map(this.state.rows.map((row) => [row.room.id, row]));
+    const rows = rooms.map((room) => {
+      const old = known.get(room.id);
+      return old && dataEqual(old.room, room) ? old : { room, preview: old?.preview ?? '' };
+    });
+    return shallowEqualArray(rows, this.state.rows) ? this.state.rows : rows;
   }
 
   refresh(): Promise<void> {

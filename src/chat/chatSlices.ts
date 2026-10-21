@@ -4,19 +4,24 @@
  * state moves and never because a token landed in the open transcript.
  */
 
+import type { Bot } from '../bots/roster.ts';
 import type { ModelSelection } from './models.ts';
 import { shallowEqual } from './selector.ts';
-import { emptyTranscript, type Transcript } from './transcript.ts';
+import type { Transcript } from './transcript.ts';
 import type { ChatEntry, ChatSnapshot } from './controller.ts';
 
 /** the open chat: the entry the app is showing, or the draft before one exists */
 export const openEntry = (snapshot: ChatSnapshot): ChatEntry => snapshot.entries[snapshot.openKey] ?? snapshot.entries.draft;
 
-/** what the app shell reads: the roster and profile for labels, the banner and the cold-boot overlay */
-export type ShellSlice = Pick<ChatSnapshot, 'roster' | 'profile' | 'link' | 'notice'> & { openBot: string | null };
+/**
+ * What the app shell reads: the bots and profile for labels, the banner and the cold-boot overlay. The
+ * roster's two lists, not the roster, so its `loading` flag flipping on each drawer open is not a shell render.
+ */
+export type ShellSlice = Pick<ChatSnapshot, 'profile' | 'link' | 'notice'> & { visibleBots: Bot[]; hiddenBots: Bot[]; openBot: string | null };
 
 export const shellSlice = (snapshot: ChatSnapshot): ShellSlice => ({
-  roster: snapshot.roster,
+  visibleBots: snapshot.roster.visible,
+  hiddenBots: snapshot.roster.hidden,
   profile: snapshot.profile,
   link: snapshot.link,
   notice: snapshot.notice,
@@ -81,50 +86,3 @@ export const settingsSlice = (snapshot: ChatSnapshot): SettingsSlice => ({
   models: snapshot.models,
   reactionsEnabled: snapshot.reactionsEnabled,
 });
-
-const THIN_TRANSCRIPTS: Record<'idle' | 'running', Transcript> = {
-  idle: emptyTranscript(),
-  running: { ...emptyTranscript(), running: true },
-};
-
-const entryFields = (entry: ChatEntry) => Object.keys(entry) as Array<keyof ChatEntry>;
-
-/** `entry` without its message list: the drawer reads whether a turn runs, never what it said */
-function thinEntry(previous: ChatEntry | undefined, entry: ChatEntry): ChatEntry {
-  const transcript = THIN_TRANSCRIPTS[entry.transcript.running ? 'running' : 'idle'];
-  if (previous && previous.transcript === transcript) {
-    let same = true;
-    for (const field of entryFields(entry)) {
-      if (field !== 'transcript' && !Object.is(previous[field], entry[field])) {
-        same = false;
-        break;
-      }
-    }
-    if (same) return previous;
-  }
-  return { ...entry, transcript };
-}
-
-/**
- * A snapshot for the drawer: the real one, but each chat's entry carries an empty transcript beside its
- * `running` flag, and unchanged entries (and the entries record) keep their identity. Streaming replaces
- * the open entry on every token; this projection is what keeps the drawer from re-rendering with it.
- * Stateful, so create one per subscriber.
- */
-export function createDrawerSlice() {
-  let previous: ChatSnapshot | null = null;
-  return (snapshot: ChatSnapshot): ChatSnapshot => {
-    const before = previous?.entries ?? {};
-    const keys = Object.keys(snapshot.entries);
-    let entries: Record<string, ChatEntry> = {};
-    let moved = keys.length !== Object.keys(before).length;
-    for (const key of keys) {
-      const thin = thinEntry(before[key], snapshot.entries[key]);
-      if (thin !== before[key]) moved = true;
-      entries[key] = thin;
-    }
-    if (!moved) entries = before;
-    previous = { ...snapshot, entries };
-    return previous;
-  };
-}

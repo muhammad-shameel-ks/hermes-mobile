@@ -10,6 +10,7 @@
  */
 
 import type { ProfileRow } from '../../vendor/hermes-shared/src/gateway-contract.generated.ts';
+import { reuseList } from '../chat/selector.ts';
 
 export const BOT_META_NAMESPACE = 'hermes-bots';
 /** The canonical chat's identity: a title on the bot's profile, never a stored pointer. */
@@ -133,6 +134,15 @@ export function buildRoster(rows: ProfileRow[], nowSeconds: number): Roster {
     .sort((a, b) => (a.pinned === b.pinned ? b.activity - a.activity : a.pinned ? -1 : 1));
   return { visible: bots.filter((bot) => !bot.hidden), hidden: bots.filter((bot) => bot.hidden) };
 }
+
+/** a rebuilt roster that keeps every unchanged bot, and each unchanged list, by identity (see `reuseList`) */
+export function reuseRoster(previous: Roster, next: Roster): Roster {
+  const visible = reuseList(previous.visible, next.visible, botName);
+  const hidden = reuseList(previous.hidden, next.hidden, botName);
+  return visible === previous.visible && hidden === previous.hidden ? previous : { visible, hidden };
+}
+
+const botName = (bot: Bot) => bot.name;
 
 /** search never re-ranks: it only filters the sorted roster */
 export function filterBots(bots: Bot[], query: string): Bot[] {

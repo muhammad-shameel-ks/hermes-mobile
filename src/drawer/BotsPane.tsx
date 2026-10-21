@@ -5,12 +5,15 @@
  * No filters menu, mute bell or user-section management in v1 (issues #12, #17).
  */
 
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { filterBots, type Bot } from '../bots/roster.ts';
-import type { ChatSnapshot } from '../chat/controller.ts';
-import type { GroupRow as GroupRowData, GroupsState } from '../groups/model.ts';
+import type { ChatController } from '../chat/controller.ts';
+import { shallowEqual } from '../chat/selector.ts';
+import { useChatSelector } from '../chat/useChatSelector.ts';
+import { useGroups } from '../groups/hooks.ts';
+import type { GroupRow as GroupRowData, GroupsModel } from '../groups/model.ts';
 import type { GroupRoom } from '../groups/rooms.ts';
 import { Codicon, type CodiconName } from '../ui/Codicon.tsx';
 import { GlyphSpinner } from '../ui/loaders/GlyphSpinner.tsx';
@@ -21,16 +24,15 @@ import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { BotRow } from './BotRow.tsx';
 import { GroupRow } from './GroupRow.tsx';
 import { SearchField } from './chrome.tsx';
+import type { Activities } from './dotStates.ts';
+import { createBotsSlice } from './drawerSlices.ts';
 import { updateFolds, useDrawerFolds } from './drawerState.ts';
 import { SIDEBAR_INSET } from './rowGeometry.ts';
-import { NO_ACTIVITIES, stableActivities, type Activities } from './dotStates.ts';
 import { IDLE_ACTIVITY, resolveDotState } from './sessionStatus.ts';
-/** the slices the roster reads; a narrower object than the whole snapshot works as well */
-export type BotsPaneSnapshot = Pick<ChatSnapshot, 'roster' | 'entries' | 'openKey' | 'openingBot' | 'finishedAway' | 'link'>;
 
 type Props = {
-  snapshot: BotsPaneSnapshot;
-  groups: GroupsState;
+  controller: ChatController;
+  groups: GroupsModel;
   onOpenBot: (bot: Bot) => void;
   onBotActions: (bot: Bot) => void;
   onOpenGroup: (room: GroupRoom) => void;
@@ -71,13 +73,19 @@ function PanelEmpty({ icon, title, description, action }: { icon: CodiconName; t
   );
 }
 
-export function BotsPane({ snapshot, groups, onOpenBot, onBotActions, onOpenGroup, onGroupActions, onAddPress, onRetryRoster, onRefresh, loadImage }: Props) {
+/**
+ * The pane subscribes to the roster and the groups itself, so while the drawer shows the Sessions tab
+ * (this pane hidden in its `<Activity>`) it holds no subscription and re-renders for nothing.
+ */
+export const BotsPane = memo(function BotsPane({ controller, groups: model, onOpenBot, onBotActions, onOpenGroup, onGroupActions, onAddPress, onRetryRoster, onRefresh, loadImage }: Props) {
   const t = useTokens();
+  const slice = useMemo(createBotsSlice, []);
+  const snapshot = useChatSelector(controller, slice, shallowEqual);
+  const groups = useGroups(model);
   const { hiddenBotsOpen } = useDrawerFolds();
   const [query, setQuery] = useState('');
   const now = Math.floor(Date.now() / 60_000) * 60;
-  const { visible, hidden, loaded, loading, error } = snapshot.roster;
-  const { openKey, openingBot, finishedAway, entries } = snapshot;
+  const { visible, hidden, loaded, loading, error, openKey, openingBot, finishedAway, activities, selected, thinking } = snapshot;
   const [pulling, setPulling] = useState(false);
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
@@ -86,9 +94,6 @@ export function BotsPane({ snapshot, groups, onOpenBot, onBotActions, onOpenGrou
     void refreshRef.current().finally(() => setPulling(false));
   }, []);
   const pull = usePullRefresh({ refreshing: pulling || loading, onRefresh: onPull });
-  const activitiesRef = useRef(NO_ACTIVITIES);
-  const activities = stableActivities(activitiesRef.current, entries);
-  activitiesRef.current = activities;
   const latest = useRef({ onOpenBot, onBotActions, onOpenGroup, onGroupActions });
   latest.current = { onOpenBot, onBotActions, onOpenGroup, onGroupActions };
   const open = useCallback((bot: Bot) => latest.current.onOpenBot(bot), []);
@@ -108,14 +113,12 @@ export function BotsPane({ snapshot, groups, onOpenBot, onBotActions, onOpenGrou
   const groupsExist = groups.rows.length > 0;
   const shownGroups = useMemo(() => (queryLower ? groups.rows.filter((row) => matchesGroup(row, queryLower)) : groups.rows), [groups.rows, queryLower]);
   const showGroupsSection = groupsExist && (queryLower === '' || shownGroups.length > 0);
-  const selected = entries[openKey]?.isBotChat ? entries[openKey]?.bot : null;
-  const thinking = selected && entries[openKey]?.transcript.running ? selected : null;
   const gatewayUp = snapshot.link.kind === 'open';
   const empty = visible.length === 0 && hidden.length === 0;
   // every bot hidden and the disclosure closed: the list says so, with the way back (desktop `allBotsHidden`)
   const showAllHidden = visible.length === 0 && hidden.length > 0 && !hiddenBotsOpen && !trimmed;
 
-  // the rows are elements memoised on what they paint: a streamed delta elsewhere re-renders this pane but reuses them whole
+  // the rows are elements memoised on what they paint: a chat's activity changing re-renders this pane but reuses them whole
   const renderBot = useCallback(
     (bot: Bot) => (
       <BotRow
@@ -263,7 +266,7 @@ export function BotsPane({ snapshot, groups, onOpenBot, onBotActions, onOpenGrou
       </ScrollView>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   pane: { flex: 1 },

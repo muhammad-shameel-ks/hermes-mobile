@@ -6,22 +6,25 @@
  * opens. Parity deviation (touch): 40dp tall.
  */
 
+import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { profileColor } from '../bots/face.ts';
-import type { LinkState } from '../gateway/link.ts';
+import type { ChatController } from '../chat/controller.ts';
+import { shallowEqual } from '../chat/selector.ts';
+import { useChatSelector } from '../chat/useChatSelector.ts';
 import { Codicon } from '../ui/Codicon.tsx';
 import { MONO, useTokens } from '../ui/tokens.ts';
 import { connectionGlyphName, connectionKind } from './connectionGlyph.ts';
+import { footerSlice } from './drawerSlices.ts';
 import { profileColorSoft, profileInitial } from './profileGlyph.ts';
 import { ROW_MIN_H } from './rowGeometry.ts';
 import { useDrawerRoutes } from './useDrawerRoutes.tsx';
 
 type Props = {
-  link: LinkState;
+  controller: ChatController;
   connectionLabel: string;
   connectionUrl: string;
-  profileName: string;
   profileLabel: string;
   /** desktop statusbar `profile-switcher`: shown only while the sessions list is, never in Bot Mode */
   showProfile: boolean;
@@ -49,8 +52,9 @@ function ProfileGlyph({ name, label }: { name: string; label: string }) {
   );
 }
 
-export function Footer({ link, connectionLabel, connectionUrl, profileName, profileLabel, showProfile, onProfileChip, onClose }: Props) {
+export const Footer = memo(function Footer({ controller, connectionLabel, connectionUrl, profileLabel, showProfile, onProfileChip, onClose }: Props) {
   const t = useTokens();
+  const { link, profile: profileName } = useChatSelector(controller, footerSlice, shallowEqual);
   const routes = useDrawerRoutes(onClose);
   const healthy = link.kind === 'open';
   const health = healthy ? t.uiSuccess : link.kind === 'connecting' ? t.uiTextTertiary : t.dtDestructive;
@@ -86,7 +90,7 @@ export function Footer({ link, connectionLabel, connectionUrl, profileName, prof
       </Pressable>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   footer: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', paddingHorizontal: 6, paddingTop: 4 },

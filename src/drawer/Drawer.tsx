@@ -6,7 +6,7 @@
  * the desktop sidebar's geometry in rowGeometry.ts.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { Activity, memo, useEffect, useState } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedReaction, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
@@ -14,11 +14,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Bot } from '../bots/roster.ts';
-import { createDrawerSlice } from '../chat/chatSlices.ts';
 import type { ChatController, SessionInfo } from '../chat/controller.ts';
-import { shallowEqual } from '../chat/selector.ts';
-import { useChatSelector } from '../chat/useChatSelector.ts';
-import { useGroups } from '../groups/hooks.ts';
 import type { GroupsModel } from '../groups/model.ts';
 import type { GroupRoom } from '../groups/rooms.ts';
 import { mixPct } from '../ui/color.ts';
@@ -86,6 +82,12 @@ export default function Drawer(props: Props) {
     },
   );
 
+  // the panel's content mounts on the first open and then stays: a closed drawer hides it in an
+  // `<Activity>`, which keeps every row's state and views but drops its effects (store subscriptions,
+  // animation mappers), so reopening reveals it instead of rebuilding the lists
+  const [kept, setKept] = useState(open);
+  if (mounted && !kept) setKept(true);
+
   useEffect(() => {
     if (!open) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -98,7 +100,7 @@ export default function Drawer(props: Props) {
   const scrimStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: (progress.value - 1) * width }] }));
 
-  if (!mounted) return null;
+  if (!kept) return null;
 
   // `--sidebar-edge-border`: the foreground at 7.5% (12% dark), the sidebar's one edge line
   const edge = mixPct(t.uiBase, t.renderedMode === 'dark' ? 0.12 : 0.075, 'transparent');
@@ -117,8 +119,10 @@ export default function Drawer(props: Props) {
           ]}
           accessibilityViewIsModal
         >
-          <TabStrip tab={props.tab} onTab={props.onTab} />
-          <DrawerContent {...props} />
+          <Activity mode={mounted ? 'visible' : 'hidden'}>
+            <TabStrip tab={props.tab} onTab={props.onTab} />
+            <DrawerContent {...props} />
+          </Activity>
         </Animated.View>
       </View>
     </GestureDetector>
@@ -126,30 +130,28 @@ export default function Drawer(props: Props) {
 }
 
 /**
- * The panes and footer, which read the chat snapshot. They mount with the drawer, so the subscription
- * exists only while it is on screen; a closed drawer costs the store nothing per streamed token, and an
- * open one re-renders when a session starts, ends or moves, not with the transcript.
+ * The panes and footer. Each pane sits in its own `<Activity>` and subscribes to the store itself, so
+ * the hidden tab keeps its rows (switching tabs reveals them instead of mounting a list) while holding
+ * no subscription, and a closed drawer subscribes to nothing. The hidden tab first renders at idle
+ * priority after the visible one, so the first switch is already warm.
  */
-function DrawerContent(props: Props) {
-  const slice = useMemo(createDrawerSlice, []);
-  const snapshot = useChatSelector(props.controller, slice, shallowEqual);
-  // the drawer mounts this only while open, so a closed drawer subscribes to neither store
-  const groups = useGroups(props.groups);
+const DrawerContent = memo(function DrawerContent(props: Props) {
   return (
     <>
-      {props.tab === 'sessions' ? (
+      <Activity mode={props.tab === 'sessions' ? 'visible' : 'hidden'}>
         <SessionsPane
-          snapshot={snapshot}
+          controller={props.controller}
           list={props.list}
           onClose={props.onClose}
           onNewSession={props.onNewSession}
           onOpenSession={props.onOpenSession}
           onSessionActions={props.onSessionActions}
         />
-      ) : (
+      </Activity>
+      <Activity mode={props.tab === 'bots' ? 'visible' : 'hidden'}>
         <BotsPane
-          snapshot={snapshot}
-          groups={groups}
+          controller={props.controller}
+          groups={props.groups}
           onOpenBot={props.onOpenBot}
           onBotActions={props.onBotActions}
           onOpenGroup={props.onOpenGroup}
@@ -159,12 +161,11 @@ function DrawerContent(props: Props) {
           onRefresh={props.onRefreshRoster}
           loadImage={props.loadImage}
         />
-      )}
+      </Activity>
       <Footer
-        link={snapshot.link}
+        controller={props.controller}
         connectionLabel={props.connectionLabel}
         connectionUrl={props.connectionUrl}
-        profileName={snapshot.profile}
         profileLabel={props.profileLabel}
         showProfile={props.tab === 'sessions'}
         onProfileChip={props.onProfileChip}
@@ -172,14 +173,14 @@ function DrawerContent(props: Props) {
       />
     </>
   );
-}
+});
 
 /**
  * The zone's tab strip (components/ui/pane-tab.tsx `PaneTabStrip`): tabs on the sidebar surface, the
  * active one in the foreground with a 2 px underline in the skin's primary, the label semibold uppercase
  * at the wide tracking. Parity deviation (touch): 48dp, not 28, with a 13pt label.
  */
-function TabStrip({ tab, onTab }: { tab: DrawerTab; onTab: (tab: DrawerTab) => void }) {
+const TabStrip = memo(function TabStrip({ tab, onTab }: { tab: DrawerTab; onTab: (tab: DrawerTab) => void }) {
   const t = useTokens();
   return (
     <View style={styles.strip} accessibilityRole="tablist">
@@ -207,7 +208,7 @@ function TabStrip({ tab, onTab }: { tab: DrawerTab; onTab: (tab: DrawerTab) => v
       })}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   panel: { position: 'absolute', top: 0, bottom: 0, left: 0, borderRightWidth: StyleSheet.hairlineWidth },

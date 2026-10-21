@@ -7,21 +7,21 @@
 import { memo, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Image, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
-import Svg, { Circle, Ellipse, Path, SvgXml } from 'react-native-svg';
+import Svg, { Circle, Ellipse, Path, parse, SvgAst, type JsxAST } from 'react-native-svg';
 import { blobatar } from 'blobatar/blob';
 
-// a row remounting (drawer open, list scroll) would otherwise regenerate the same SVG
-const blobCache = new Map<string, string>();
+// a row remounting (drawer open, list scroll) would otherwise regenerate and re-parse the same SVG
+const blobCache = new Map<string, JsxAST | null>();
 const BLOB_CACHE_MAX = 256;
 
-function blobXmlFor(seed: string, trait: number | undefined, size: number): string {
+function blobAstFor(seed: string, trait: number | undefined, size: number): JsxAST | null {
   const key = `${seed}|${trait ?? ''}|${size}`;
   const hit = blobCache.get(key);
   if (hit !== undefined) return hit;
-  const xml = blobatar(seed, { size, ...(trait !== undefined ? { traits: { shape: trait } } : {}) });
+  const ast = parse(blobatar(seed, { size, ...(trait !== undefined ? { traits: { shape: trait } } : {}) }));
   if (blobCache.size >= BLOB_CACHE_MAX) blobCache.delete(blobCache.keys().next().value!);
-  blobCache.set(key, xml);
-  return xml;
+  blobCache.set(key, ast);
+  return ast;
 }
 
 import { AnimatedFace } from './AnimatedFace.tsx';
@@ -96,10 +96,10 @@ function BotAvatarImpl({ name, meta, hasAvatar, size, loadImage, mood = 'idle', 
   const look = resolveLook(name, meta, false);
   const blobSeed = look.kind === 'blob' ? look.seed : null;
   const blobTrait = look.kind === 'blob' ? look.shapeTrait : undefined;
-  const blobXml = useMemo(() => (blobSeed === null ? null : blobXmlFor(blobSeed, blobTrait, size)), [blobSeed, blobTrait, size]);
+  const blobAst = useMemo(() => (blobSeed === null ? null : blobAstFor(blobSeed, blobTrait, size)), [blobSeed, blobTrait, size]);
 
   if (photo) return <Image source={{ uri: photo }} style={{ width: size, height: size, borderRadius: size * 0.22 }} />;
-  if (blobXml) return <SvgXml xml={blobXml} width={size} height={size} />;
+  if (blobAst) return <SvgAst ast={blobAst} override={{ width: size, height: size }} />;
   if (look.kind !== 'face') return <View style={{ width: size, height: size }} />;
   if (!reduced) return <AnimatedFace key={look.shape} shape={look.shape} color={look.color} mood={mood} size={size} />;
 

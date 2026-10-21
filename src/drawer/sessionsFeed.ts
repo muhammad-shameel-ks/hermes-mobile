@@ -5,6 +5,7 @@
  */
 
 import type { SessionInfo } from '../chat/controller.ts';
+import { reuseList, shallowEqual } from '../chat/selector.ts';
 import { errorText } from '../gateway/http.ts';
 import { createSessionLister, MESSAGING_WINDOW, SESSIONS_PAGE_SIZE, widened, type SessionListApi, type SessionLister } from './sessionList.ts';
 
@@ -72,9 +73,11 @@ export class SessionsFeed {
     try {
       const page = await this.lister.page(profile, this.limit, this.messagingLimit);
       if (id !== this.request || profile !== this.store.profile()) return;
-      this.store.set({
-        items: page.recents,
-        messaging: page.messaging,
+      // a refresh that brought nothing new keeps every row, the lists and the state by identity: nothing re-renders
+      const before = this.store.get();
+      const next: SessionsState = {
+        items: reuseList(before.items, page.recents, sessionKey),
+        messaging: reuseList(before.messaging, page.messaging, sessionKey),
         loading: false,
         loaded: true,
         loadingMore: false,
@@ -82,7 +85,8 @@ export class SessionsFeed {
         hasMore: page.recentsTruncated,
         hasMoreMessaging: page.messagingTruncated,
         corrupt: page.corrupt,
-      });
+      };
+      if (!shallowEqual(next, before)) this.store.set(next);
     } catch (error) {
       if (id !== this.request || profile !== this.store.profile()) return;
       this.store.set({ ...this.store.get(), loading: false, loadingMore: false, error: errorText(error) });
@@ -120,3 +124,5 @@ export class SessionsFeed {
     if (items !== state.items || messaging !== state.messaging) this.store.set({ ...state, items, messaging });
   }
 }
+
+const sessionKey = (session: SessionInfo) => session.id;
