@@ -234,6 +234,37 @@ test('editing a bot patches only what changed and clears a removed picture', asy
   controller.dispose();
 });
 
+test('filing bots into a section stamps id and name over their meta, writing only bots that change', async () => {
+  const { gateway, controller } = await setup();
+  const meta: Record<string, Record<string, unknown>> = {
+    nanox: { title: 'Nanox', pinned: true },
+    scout: { title: 'Scout', sectionId: 'sec-r', sectionName: 'Research' },
+  };
+  gateway.handlers['profiles.list'] = () => ({
+    profiles: Object.entries(meta).map(([name, ui]) => ({ name, path: `/p/${name}`, ui_meta: { 'hermes-bots': ui }, ui_meta_revisions: { 'hermes-bots': 1 } })),
+  });
+  gateway.handlers['profiles.configure'] = (p) => {
+    const params = p as { name: string; ui_meta: { 'hermes-bots': Record<string, unknown> } };
+    meta[params.name] = params.ui_meta['hermes-bots'];
+    return { applied: { ui_meta: true } };
+  };
+  await controller.refreshRoster();
+  const bots = () => controller.getSnapshot().roster.visible;
+
+  assert.equal(await controller.moveBotsToSection(bots(), { id: 'sec-r', name: 'Research' }), true);
+  assert.deepEqual(
+    gateway.called('profiles.configure').map((c) => c.params),
+    [{ name: 'nanox', ui_meta: { 'hermes-bots': { title: 'Nanox', pinned: true, sectionId: 'sec-r', sectionName: 'Research' } }, ui_meta_expected_revisions: { 'hermes-bots': 1 } }],
+  );
+
+  gateway.calls.length = 0;
+  await controller.moveBotsToSection(bots(), null);
+  assert.deepEqual(gateway.called('profiles.configure').map((c) => c.params.name), ['nanox', 'scout']);
+  assert.deepEqual(meta.scout, { title: 'Scout', sectionId: null, sectionName: null });
+  assert.ok(bots().every((bot) => bot.meta.sectionId === null), 'the roster refreshes after the writes');
+  controller.dispose();
+});
+
 test('/new in a Bot Chat compacts instead of resetting', async () => {
   const { gateway, controller, snap } = await setup();
   gateway.handlers['session.list'] = () => ({ sessions: [{ id: 'bc', title: 'Bot Chat' }] });

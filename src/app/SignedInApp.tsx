@@ -33,6 +33,7 @@ import { shallowEqual } from '../chat/selector.ts';
 import { useChatSelector } from '../chat/useChatSelector.ts';
 import Drawer, { type DrawerTab, type SessionsListApi } from '../drawer/Drawer.tsx';
 import { useDrawerOpenGesture } from '../drawer/useDrawerGestures.ts';
+import { useSectionActions } from '../drawer/useSectionActions.tsx';
 import { useSessionActions } from '../drawer/useSessionActions.tsx';
 import { bindGateway } from '../files/gateway.ts';
 import { createGatewayApi } from '../gateway/api.ts';
@@ -97,6 +98,7 @@ export default function SignedInApp(props: Props) {
   const [actionsFor, setActionsFor] = useState<Bot | null>(null);
   const [profileSheet, setProfileSheet] = useState(false);
   const sessionActions = useSessionActions(controller);
+  const sectionActions = useSectionActions(controller);
   useSeedActiveProfile(controller);
   const openForm = useRef<BotFormLaunch | null>(null);
   const openGroup = useRef<GroupLaunch | null>(null);
@@ -190,6 +192,7 @@ export default function SignedInApp(props: Props) {
     },
     { label: bot.pinned ? 'Unpin' : 'Pin', onPress: () => void controller.setBotFlag(bot, 'pinned', !bot.pinned) },
     { label: bot.hidden ? 'Unhide' : 'Hide', onPress: () => void controller.setBotFlag(bot, 'hidden', !bot.hidden) },
+    { label: 'Move to section…', onPress: () => sectionActions.file(bot) },
     {
       label: 'Edit',
       onPress: () => openForm.current?.(bot),
@@ -251,6 +254,7 @@ export default function SignedInApp(props: Props) {
             void controller.openBot(bot);
           }}
           onBotActions={setActionsFor}
+          onSectionActions={sectionActions.open}
           groups={groups}
           onOpenGroup={(room) => openGroup.current?.openRoom(room)}
           onGroupActions={groupActions.open}
@@ -287,6 +291,7 @@ export default function SignedInApp(props: Props) {
         <GroupLauncher controller={controller} model={groups} launchRef={openGroup} onNavigate={closeDrawer} />
         {groupActions.element}
         {sessionActions.element}
+        {sectionActions.element}
         <ColdBootOverlay link={link} onRetry={() => controller.retryLink()} onSignOut={props.onSignOut} />
       </View>
     </OverlayProvider>

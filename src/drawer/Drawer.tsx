@@ -14,6 +14,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { Bot } from '../bots/roster.ts';
+import type { BotSection } from '../bots/sections.ts';
 import { createDrawerSlice } from '../chat/chatSlices.ts';
 import type { ChatController, SessionInfo } from '../chat/controller.ts';
 import { shallowEqual } from '../chat/selector.ts';
@@ -50,6 +51,7 @@ type Props = {
   onSessionActions: (session: SessionInfo) => void;
   onOpenBot: (bot: Bot) => void;
   onBotActions: (bot: Bot) => void;
+  onSectionActions: (section: BotSection) => void;
   groups: GroupsModel;
   onOpenGroup: (room: GroupRoom) => void;
   onGroupActions: (room: GroupRoom) => void;
@@ -152,6 +154,7 @@ function DrawerContent(props: Props) {
           groups={groups}
           onOpenBot={props.onOpenBot}
           onBotActions={props.onBotActions}
+          onSectionActions={props.onSectionActions}
           onOpenGroup={props.onOpenGroup}
           onGroupActions={props.onGroupActions}
           onAddPress={props.onAdd}
