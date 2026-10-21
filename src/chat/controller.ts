@@ -37,6 +37,7 @@ import {
   type Roster,
 } from '../bots/roster.ts';
 import { metaOfLook, type LookPatch } from '../bots/look.ts';
+import { botSectionId, type BotSection } from '../bots/sections.ts';
 import { ApiError, type GatewayApi } from '../gateway/api.ts';
 import { errorText } from '../gateway/http.ts';
 import type { GatewayLink, LinkState } from '../gateway/link.ts';
@@ -1405,6 +1406,27 @@ export class ChatController {
     } catch (error) {
       this.notify(`Could not update ${bot.label}. ${errorText(error)}`);
     }
+  }
+
+  /**
+   * desktop `moveBotsToSection`: file bots into a section, `null` back to Unassigned. The section's name
+   * rides along (other clients rebuild the section from it), so a rename is the same call over its members.
+   * One write per bot whose filing changes, in sequence; the roster refreshes once, after them all.
+   */
+  async moveBotsToSection(bots: readonly Bot[], section: BotSection | null): Promise<boolean> {
+    const sectionId = section?.id ?? null;
+    const sectionName = section?.name ?? null;
+    const changing = bots.filter((bot) => botSectionId(bot) !== sectionId || (bot.meta.sectionName || null) !== sectionName);
+    if (changing.length === 0) return true;
+    let moved = true;
+    try {
+      for (const bot of changing) await this.patchBotMeta(bot.name, { sectionId, sectionName });
+    } catch (error) {
+      moved = false;
+      this.notify(`Could not update the section. ${errorText(error)}`);
+    }
+    await this.refreshRoster();
+    return moved;
   }
 
   /** single-flighted: a second Create while the first is under way joins it */

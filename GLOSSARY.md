@@ -156,6 +156,10 @@ _Avoid_: side thread, sub-chat
 The drawer's BOTS tab: bot rows of avatar, name, last-message preview and time, with hidden bots behind a disclosure.
 _Avoid_: bots list, bot drawer
 
+**Section**:
+A named group of bots the reader makes on the bot roster. The filing lives on each bot's profile, carrying the section's id and name, so every client draws the same sections; bots in none sit under Unassigned, which is not a section.
+_Avoid_: folder, group, category
+
 ## Group chats
 
 **Group chat**:

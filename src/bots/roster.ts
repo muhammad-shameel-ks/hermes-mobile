@@ -30,6 +30,10 @@ export type BotMeta = {
   pinned?: boolean;
   hidden?: boolean;
   description?: string;
+  /** the user section the bot is filed in (sections.ts); null once removed from it */
+  sectionId?: string | null;
+  /** the section's name, riding with the filing so every client can rebuild the section */
+  sectionName?: string | null;
 };
 
 export type Bot = {
