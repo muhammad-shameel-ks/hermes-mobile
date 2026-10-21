@@ -31,6 +31,7 @@ import { SvgBlock } from './cards/SvgBlock.tsx';
 import { VideoCard } from './cards/VideoCard.tsx';
 import { AudioCard } from './cards/AudioCard.tsx';
 import { InlineCode } from './InlineCode.tsx';
+import { OwnSwipe } from './OwnSwipe.tsx';
 import { parseListings } from './listing.ts';
 import { isFileMediaPath, mediaKind, mediaPathFromMarkdownHref } from './media.ts';
 
@@ -112,7 +113,11 @@ export class TranscriptRenderer extends Renderer {
         </CodeSlab>
       );
     }
-    return super.code(text, language, containerStyle, textStyle);
+    return <OwnSwipe key={key}>{super.code(text, language, containerStyle, textStyle)}</OwnSwipe>;
+  }
+
+  override table(header: ReactNode[][], rows: ReactNode[][][], tableStyle?: ViewStyle, rowStyle?: ViewStyle, cellStyle?: ViewStyle): ReactNode {
+    return <OwnSwipe key={this.getKey()}>{super.table(header, rows, tableStyle, rowStyle, cellStyle)}</OwnSwipe>;
   }
 
   override blockquote(children: ReactNode[], styles?: ViewStyle): ReactNode {

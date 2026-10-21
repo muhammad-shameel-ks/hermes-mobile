@@ -21,6 +21,7 @@ import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
 import { MediaAttachment } from './cards/MediaAttachment.tsx';
 import { splitMarkdownBlocks, type BlockState, type Lex } from './markdownBlocks.ts';
 import { TranscriptRenderer } from './MarkdownRenderer.tsx';
+import { OwnSwipe } from './OwnSwipe.tsx';
 import { splitMediaTags } from './media.ts';
 import { fadeSpans, fadeTail, growTrail, type FadePainter, type FadeTrail } from './streamFade.ts';
 
@@ -92,9 +93,10 @@ function markdownTheme(t: Tokens) {
 const inkStyles = new Map<string, TextStyle>();
 
 const FADE_PAINTER: FadePainter = {
-  // host text and the views a block nests it in; react-native-marked's list keeps its items in `li`
+  // host text and the views a block nests it in (OwnSwipe wraps a code block's scroll view);
+  // react-native-marked's list keeps its items in `li`
   slot: (element) => {
-    if (element.type === Text || element.type === View || element.type === ScrollView) return 'children';
+    if (element.type === Text || element.type === View || element.type === ScrollView || element.type === OwnSwipe) return 'children';
     return Array.isArray(element.props.li) ? 'li' : null;
   },
   ink: (element) => {

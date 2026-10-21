@@ -9,7 +9,8 @@
  */
 
 import { memo, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 
 import { Codicon } from '../../ui/Codicon.tsx';
 import { DisclosureCaret } from '../../ui/motion.tsx';
