@@ -12,6 +12,7 @@ import { FlatList, StyleSheet, View } from 'react-native';
 import { useOverlay } from '../app/overlay.tsx';
 import type { ChatSnapshot, SessionInfo } from '../chat/controller.ts';
 import { openFiles } from '../files/open.tsx';
+import { openKanban } from '../kanban/open.tsx';
 import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { NavRow, SearchField } from './chrome.tsx';
 import { NO_ACTIVITIES, rowDotState, stableActivities } from './dotStates.ts';
@@ -179,6 +180,14 @@ export function SessionsPane({ snapshot, list, onClose, onNewSession, onOpenSess
             onPress={() => {
               latest.current.onClose();
               openFiles(latest.current.overlay);
+            }}
+          />
+          <NavRow
+            label="Kanban"
+            icon="project"
+            onPress={() => {
+              latest.current.onClose();
+              openKanban(latest.current.overlay);
             }}
           />
         </View>

@@ -185,15 +185,18 @@ const MarkdownChunk = memo(function MarkdownChunk({ text, streaming, blocks }: {
   return blocks ? <BlockChunk text={text} streaming={streaming} /> : <WholeChunk text={text} streaming={streaming} />;
 });
 
-/** the reply's markdown, with the files its `MEDIA:` tags deliver rendered between the text around them */
-function MarkdownImpl({ text, streaming = false }: { text: string; streaming?: boolean }) {
+/**
+ * the reply's markdown, with the files its `MEDIA:` tags deliver rendered between the text around them;
+ * `media={false}` for text that is not a session's (a kanban card's), whose paths must not resolve against the open chat
+ */
+function MarkdownImpl({ text, streaming = false, media = true }: { text: string; streaming?: boolean; media?: boolean }) {
   // a reply that has streamed keeps its blocks when it settles, so nothing remounts (a card keeps its state)
   const blocks = useRef(false);
   if (streaming) blocks.current = true;
   const deferred = useDeferredValue(text);
   const shown = streaming ? deferred : text;
-  const segments = useMemo(() => splitMediaTags(shown), [shown]);
-  if (segments.length === 1 && segments[0].kind === 'text') return <MarkdownChunk text={shown} streaming={streaming} blocks={blocks.current} />;
+  const segments = useMemo(() => (media ? splitMediaTags(shown) : null), [shown, media]);
+  if (!segments || (segments.length === 1 && segments[0].kind === 'text')) return <MarkdownChunk text={shown} streaming={streaming} blocks={blocks.current} />;
   return (
     <View>
       {segments.map((segment, index) =>

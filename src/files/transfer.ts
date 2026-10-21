@@ -24,9 +24,13 @@ const safeName = (name: string) => baseName(name).replace(/[^\w.\- ]+/g, '_') ||
 
 /** Download one file into the app cache, replacing an earlier copy. */
 export async function downloadToCache(spec: DownloadSpec & { name?: string }): Promise<File> {
-  const { auth } = gateway();
-  const target = new File(cacheDirectory(), safeName(spec.name ?? spec.path));
-  return File.downloadFileAsync(downloadUrl(auth.baseUrl, spec), target, { headers: await bearer(), idempotent: true });
+  return downloadUrlToCache(downloadUrl(gateway().auth.baseUrl, spec), spec.name ?? spec.path);
+}
+
+/** Download any authenticated gateway URL into the app cache as `name`, replacing an earlier copy. */
+export async function downloadUrlToCache(url: string, name: string): Promise<File> {
+  const target = new File(cacheDirectory(), safeName(name));
+  return File.downloadFileAsync(url, target, { headers: await bearer(), idempotent: true });
 }
 
 /** Download into a folder the reader picks (Android's document tree). Resolves false when they cancel. */
@@ -46,14 +50,18 @@ export type UploadSource = { uri: string; name: string; mimeType?: string | null
 
 /** Stream one local file to `destination` (an absolute path under the files root), overwriting like the dashboard. */
 export async function uploadFile(source: UploadSource, destination: string): Promise<void> {
-  const { auth } = gateway();
-  const result = await new File(source.uri).upload(`${auth.baseUrl}/api/files/upload-stream`, {
+  await uploadMultipart(`${gateway().auth.baseUrl}/api/files/upload-stream`, source, { path: destination, overwrite: 'true' });
+}
+
+/** Stream one local file as the multipart field `file` to an authenticated gateway URL. */
+export async function uploadMultipart(url: string, source: UploadSource, parameters?: Record<string, string>): Promise<void> {
+  const result = await new File(source.uri).upload(url, {
     httpMethod: 'POST',
     uploadType: UploadType.MULTIPART,
     fieldName: 'file',
     mimeType: source.mimeType ?? undefined,
     headers: await bearer(),
-    parameters: { path: destination, overwrite: 'true' },
+    parameters,
   });
   if (result.status < 200 || result.status >= 300) {
     let detail = '';

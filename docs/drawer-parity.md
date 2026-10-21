@@ -11,6 +11,7 @@ decisions in issues #12 (shell), #15 and #16 (what is deferred or dropped) and #
 | SESSIONS \| BOTS tab strip: sidebar surface, 2 px underline in the skin's primary, 11 px medium uppercase label | `components/ui/pane-tab.tsx` |
 | Row geometry: lead cell 14, gap 6, pad 8, label 13 / 1.35, age 10, `gap-px` stack (`rowGeometry.ts`) | `row-geometry.ts` |
 | Nav rows (robot, symbol-misc glyphs at 72%, 13 px medium) | `index.tsx` `SidebarMenuButton` |
+| Kanban nav row (project glyph), shown whether or not the gateway has the plugin on (see `kanban-parity.md`) | `plugins/kanban/plugin.tsx` `SIDEBAR_NAV_AREA` |
 | Borderless search field resting at 30% (roster: 50%), glyph, busy spinner, clear | `components/ui/search-field.tsx` |
 | Section header: 8 dp dither square, 10.24 px semibold uppercase at 0.16em in the skin's primary, caret | `app/shell/sidebar-label.tsx`, `sessions-section.tsx` |
 | Date dividers (Earlier today, Yesterday, Earlier this week, Last week, Earlier this month, month, month + year), the 4 AM day, the unlabelled recent head run, collapsible | `lib/time.ts`, `lib/session-date-groups.ts`, `chrome.tsx` |
