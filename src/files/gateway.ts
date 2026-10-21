@@ -1,6 +1,6 @@
 /**
- * The signed-in session's REST reach for the Files and Review surfaces. Their
- * entry points (`openFiles`, `openPreview`, `openReview`) are called from the
+ * The signed-in session's REST reach for the Files, Review and Kanban surfaces. Their
+ * entry points (`openFiles`, `openPreview`, `openReview`, `openKanban`) are called from the
  * drawer and from transcript cards that hold no client, so SignedInApp binds the
  * session's client here once per sign-in and the screens read it back.
  */
@@ -22,6 +22,6 @@ export function bindGateway(binding: GatewayBinding): void {
 }
 
 export function gateway(): GatewayBinding {
-  if (!bound) throw new Error('The Files and Review surfaces need a signed-in gateway.');
+  if (!bound) throw new Error('The Files, Review and Kanban surfaces need a signed-in gateway.');
   return bound;
 }
