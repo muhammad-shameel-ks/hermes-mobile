@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.35] - 2026-10-21
+
+- Scroll tables sideways without opening the drawer, and swipe between its tabs (#44) ([673a1f6](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/673a1f6))
+
 ## [0.1.34] - 2026-10-21
 
 - No user-facing changes.
