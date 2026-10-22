@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.37] - 2026-10-22
+
+- Ask Hermes from any app as Android's digital assistant (#46) ([cde351a](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/cde351a))
+
 ## [0.1.36] - 2026-10-21
 
 - Speed up the sidebar, let a reader stop a streaming reply, and lift a sent message to the top (#45) ([115875b](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/115875b))
