@@ -8,13 +8,15 @@ Hermes Mobile does not run an agent itself. It connects to a Hermes gateway you 
 
 ## Features
 
-- Chat with streaming replies, reasoning and tool-call cards, attachments, dictation and read-aloud
+- Chat with streaming replies (stop one mid-stream), reasoning and tool-call cards, attachments, dictation and read-aloud
+- Voice: dictation and read-aloud use each profile's own speech-to-text and text-to-speech providers, set in Settings, with a cue while a reply is being prepared and spoken
 - Approvals and clarification prompts from the agent, answered on the phone
 - Attention: a request waiting in another chat drops in as a banner (approvals can be run or rejected right there), and while the app is in the background on Android a system notification opens the chat that needs you
-- Bot Mode: your gateway's profiles shown as bots, each with its own sessions
+- Bot Mode: your gateway's profiles shown as bots, grouped into the desktop's sections, each with its own sessions
 - Group chats: rooms of two to six bots hosted by the gateway, with @mentions, stop, approvals and retries
 - Files and Review surfaces for browsing what the agent produced and the changes it made
 - Kanban: the gateway's task boards, a lane per page with a pipeline ribbon; hold a card to drag it onto another lane, open a task to steer its worker, comment, reassign or unblock it
+- Drawer you can swipe open and closed from the chat, with swipeable tabs
 - Model picker with thinking level, slash commands, and a message queue
 - Skins with light and dark appearances
 - Android digital assistant: pick Hermes as the phone's assistant and long-press power (or swipe from a corner) to ask it from any app, in a card that listens straight away under a glowing screen edge
@@ -88,13 +90,13 @@ CI runs both on every pull request, along with a check that the vendored code st
 | `plugins/` | Expo config plugins for native tweaks |
 | `vendor/hermes-shared/` | Vendored `@hermes/shared` from the Hermes monorepo |
 | `tests/` | Unit tests |
-| `docs/` | Architecture decisions, release process and parity notes |
+| `docs/` | Architecture decisions, release process, performance rules and parity notes |
 
 The project's vocabulary is defined in [GLOSSARY.md](GLOSSARY.md). Read it before naming things. Design decisions are recorded in [docs/adr/](docs/adr/).
 
 ## Contributing
 
-Contributions are welcome. If you want to add a feature, or bring more of the Hermes desktop app's behaviour and look over to the mobile app, please feel free to open a pull request. [docs/drawer-parity.md](docs/drawer-parity.md) is an example of how a ported surface is documented against its desktop source, and [GLOSSARY.md](GLOSSARY.md) calls a deliberate difference from desktop a *parity deviation*. For a big change, open an issue first so we can agree on the approach.
+Contributions are welcome. If you want to add a feature, or bring more of the Hermes desktop app's behaviour and look over to the mobile app, please feel free to open a pull request. [docs/drawer-parity.md](docs/drawer-parity.md) and [docs/kanban-parity.md](docs/kanban-parity.md) are examples of how a ported surface is documented against its desktop source, and [GLOSSARY.md](GLOSSARY.md) calls a deliberate difference from desktop a *parity deviation*. Read [docs/performance.md](docs/performance.md) before touching the streaming path, the transcript, lists or animations. For a big change, open an issue first so we can agree on the approach.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) first. In short: fork, branch, open a pull request against `main`, and make sure `npm run typecheck` and `npm test` pass. Nobody pushes to `main` directly.
 
