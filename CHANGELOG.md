@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.38] - 2026-10-22
+
+- docs(readme): cover voice providers, bot sections, drawer swipe and parity docs (#47) ([d8b058c](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/d8b058c))
+
 ## [0.1.37] - 2026-10-22
 
 - Ask Hermes from any app as Android's digital assistant (#46) ([cde351a](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/cde351a))
