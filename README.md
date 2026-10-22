@@ -17,6 +17,7 @@ Hermes Mobile does not run an agent itself. It connects to a Hermes gateway you 
 - Kanban: the gateway's task boards, a lane per page with a pipeline ribbon; hold a card to drag it onto another lane, open a task to steer its worker, comment, reassign or unblock it
 - Model picker with thinking level, slash commands, and a message queue
 - Skins with light and dark appearances
+- Android digital assistant: pick Hermes as the phone's assistant and long-press power (or swipe from a corner) to ask it from any app, in a card that listens straight away under a glowing screen edge
 - In-app update prompt for Android release builds
 
 ## Install
@@ -82,6 +83,7 @@ CI runs both on every pull request, along with a check that the vendored code st
 | `src/kanban/` | Kanban: board polling, lanes, drag-to-move, task and new-task screens |
 | `src/settings/` | Settings screens and persisted preferences |
 | `src/updates/` | In-app update check for release builds |
+| `src/assistant/`, `modules/hermes-assistant/` | Android assistant card: the card UI, and the native assistant service, card window and edge glow |
 | `src/ui/` | Design tokens, skins and shared components |
 | `plugins/` | Expo config plugins for native tweaks |
 | `vendor/hermes-shared/` | Vendored `@hermes/shared` from the Hermes monorepo |

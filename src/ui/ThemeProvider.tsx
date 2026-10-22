@@ -70,7 +70,8 @@ function savePrefs(prefs: AppearancePrefs): void {
   }
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
+/** `paintsWindow={false}` for a root drawn over another app (the assistant card): its window stays transparent */
+export function ThemeProvider({ children, paintsWindow = true }: { children: ReactNode; paintsWindow?: boolean }) {
   const [prefs, setPrefs] = useState(loadPrefs);
   const systemDark = useColorScheme() === 'dark';
   const { fontScale } = useWindowDimensions();
@@ -94,8 +95,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [prefs.mode]);
 
   useEffect(() => {
-    void SystemUI.setBackgroundColorAsync(tokens.uiBgChrome).catch(() => {});
-  }, [tokens.uiBgChrome]);
+    if (paintsWindow) void SystemUI.setBackgroundColorAsync(tokens.uiBgChrome).catch(() => {});
+  }, [tokens.uiBgChrome, paintsWindow]);
 
   const update = useCallback((patch: Partial<AppearancePrefs>) => setPrefs((prev) => ({ ...prev, ...patch })), []);
 
