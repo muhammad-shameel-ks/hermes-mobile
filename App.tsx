@@ -6,44 +6,29 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono/400Regular';
-import { JetBrainsMono_400Regular_Italic } from '@expo-google-fonts/jetbrains-mono/400Regular_Italic';
-import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
-import { JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono/700Bold';
 import { useFonts } from 'expo-font';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { refreshCredentials } from './src/auth/native-flow.ts';
-import { clearCredentials, loadConnection, loadCredentials, saveCredentials, type SavedConnection } from './src/auth/store.ts';
-import { isStale, nowSeconds } from './src/auth/tokens.ts';
-import { probeGateway } from './src/gateway/status.ts';
-import { restoreSession, type AppState } from './src/app/boot-state.ts';
+import { clearCredentials, type SavedConnection } from './src/auth/store.ts';
+import type { AppState } from './src/app/boot-state.ts';
+import { endSignedIn, restore } from './src/app/signedIn.ts';
 import SignedInApp from './src/app/SignedInApp.tsx';
 import { ConnectingScreen, SignInAgainScreen, UnreachableScreen } from './src/screens/BootScreens.tsx';
 import { wipeConnection } from './src/store/index.ts';
 import UpdatePrompt from './src/updates/UpdatePrompt.tsx';
 import { lazyScreen, preloadLazyScreens } from './src/ui/lazy.tsx';
+import { APP_FONTS } from './src/ui/fonts.ts';
 import { ThemedSafeAreaView, ThemedStatusBar, ThemeProvider } from './src/ui/ThemeProvider.tsx';
 
 // the connect flow is off the launch path of a signed-in phone
 const ConnectScreen = lazyScreen(() => require('./src/screens/ConnectScreen.tsx') as typeof import('./src/screens/ConnectScreen.tsx'), { preload: false });
 
-const restore = () =>
-  restoreSession({ loadConnection, loadCredentials, saveCredentials, refreshCredentials, probeGateway, isStale, nowSeconds });
-
 function Root() {
   const [state, setState] = useState<AppState>({ kind: 'starting' });
   // fonts load in the background; text falls back to the platform faces until they arrive
-  useFonts({
-    JetBrainsMono_400Regular,
-    JetBrainsMono_500Medium,
-    JetBrainsMono_700Bold,
-    JetBrainsMono_400Regular_Italic,
-    'Collapse-Bold': require('./assets/fonts/Collapse-Bold.ttf'),
-    codicon: require('./assets/fonts/codicon.ttf'),
-  });
+  useFonts(APP_FONTS);
 
   useEffect(() => {
     let live = true;
@@ -60,6 +45,7 @@ function Root() {
   }, [state.kind]);
 
   const leave = useCallback((connection: SavedConnection, reason: string | null) => {
+    endSignedIn(connection.id);
     void (async () => {
       await clearCredentials(connection.id);
       setState(reason === null ? { kind: 'signed-out', connection } : { kind: 'reauth', connection, reason });

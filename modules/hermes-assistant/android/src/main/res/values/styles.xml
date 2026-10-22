@@ -1,0 +1,17 @@
+<resources>
+  <!--
+    The card's window: transparent and translucent, so the app it was summoned over stays on screen,
+    with no system enter or exit animation (the card animates itself). The app overrides this style
+    with the same items on top of AppTheme (plugins/with-android-assistant.js); this one is the
+    fallback for a build without that plugin.
+  -->
+  <style name="Theme.Hermes.Assistant" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <item name="android:windowIsTranslucent">true</item>
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:windowNoTitle">true</item>
+    <item name="android:backgroundDimEnabled">false</item>
+    <item name="android:windowAnimationStyle">@null</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+  </style>
+</resources>

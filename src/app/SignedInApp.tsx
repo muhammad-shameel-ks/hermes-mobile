@@ -1,9 +1,8 @@
 /**
- * The signed-in app: chat root plus the drawer. Builds the session's credential
- * holder, REST client, socket link and chat controller once per sign-in. The
- * socket follows the app into the background and back, unless a turn is still
- * streaming or waiting on the reader: then the attention center holds it open
- * so the reader hears when Hermes needs them.
+ * The signed-in app: chat root plus the drawer. Holds the session's stack (credential holder, REST
+ * client, socket link and chat controller; `signedIn.ts`), which the assistant card shares. The
+ * socket follows the app into the background and back, unless a turn is still streaming or waiting
+ * on the reader: then the attention center holds it open so the reader hears when Hermes needs them.
  */
 
 import * as Crypto from 'expo-crypto';
@@ -17,28 +16,21 @@ import { keepAlive } from '../../modules/hermes-keep-alive/index.ts';
 import { AttentionHost } from '../attention/AttentionBanner.tsx';
 import { AttentionCenter } from '../attention/center.ts';
 import { prepareNotifications, systemNotifier } from '../attention/notifier.ts';
-import { refreshCredentials } from '../auth/native-flow.ts';
-import { createAuthSession } from '../auth/session.ts';
-import { saveCredentials, type SavedConnection } from '../auth/store.ts';
+import type { SavedConnection } from '../auth/store.ts';
 import type { Credentials } from '../auth/tokens.ts';
 import { BotFormLauncher, type BotFormLaunch } from '../bots/BotFormLauncher.tsx';
 import { botLabel, type Bot } from '../bots/roster.ts';
-import { setCardEnv } from '../chat/cards/env.ts';
 import { CardEnvBridge } from '../chat/cards/CardEnvBridge.tsx';
 import ChatScreen from '../chat/ChatScreen.tsx';
 import { shellSlice } from '../chat/chatSlices.ts';
-import { ChatController, type SessionInfo } from '../chat/controller.ts';
-import { createMediaResolver } from '../chat/mediaResolver.ts';
+import type { SessionInfo } from '../chat/controller.ts';
 import { shallowEqual } from '../chat/selector.ts';
 import { useChatSelector } from '../chat/useChatSelector.ts';
 import Drawer, { type DrawerTab, type SessionsListApi } from '../drawer/Drawer.tsx';
 import { DRAWER_DURATION, useDrawerOpenGesture } from '../drawer/useDrawerGestures.ts';
 import { useSectionActions } from '../drawer/useSectionActions.tsx';
 import { useSessionActions } from '../drawer/useSessionActions.tsx';
-import { bindGateway } from '../files/gateway.ts';
-import { createGatewayApi } from '../gateway/api.ts';
-import { gatewaySocketUrl, GatewayLink } from '../gateway/link.ts';
-import { createPersistence } from '../store/index.ts';
+import { signedInStack } from './signedIn.ts';
 import { createGroupsApi } from '../groups/api.ts';
 import { GroupLauncher, type GroupLaunch } from '../groups/GroupLauncher.tsx';
 import { GroupsModel } from '../groups/model.ts';
@@ -59,28 +51,12 @@ type Props = {
 };
 
 function useController({ connection, credentials, onReauthRequired }: Props) {
-  // one controller per sign-in; credentials refresh inside the auth session afterwards
-  return useMemo(() => {
-    const auth = createAuthSession({
-      baseUrl: connection.baseUrl,
-      credentials,
-      refresh: refreshCredentials,
-      persist: (next) => saveCredentials(connection.id, next),
-      onReauthRequired,
-    });
-    const api = createGatewayApi(auth);
-    const link = new GatewayLink({
-      mintUrl: async () => {
-        const { ticket } = await api.post<{ ticket: string }>('/api/auth/ws-ticket');
-        return gatewaySocketUrl(connection.baseUrl, ticket);
-      },
-      onAuthRejected: onReauthRequired,
-    });
-    setCardEnv({ media: createMediaResolver(auth, api) });
-    const controller = new ChatController(link, api, undefined, createPersistence(connection.id));
-    bindGateway({ auth, api, profile: () => controller.getSnapshot().profile });
-    return controller;
-  }, [connection.id]);
+  // one stack per sign-in, shared with the assistant card; the effect below holds it
+  const hosted = useMemo(() => signedInStack(connection, credentials), [connection.id]);
+  const reauth = useRef(onReauthRequired);
+  reauth.current = onReauthRequired;
+  useEffect(() => hosted.hold((reason) => reauth.current(reason)), [hosted]);
+  return hosted.value;
 }
 
 /**

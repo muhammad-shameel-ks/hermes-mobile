@@ -1,0 +1,73 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+  <!-- the recognition service hands speech on to another installed recogniser -->
+  <queries>
+    <intent>
+      <action android:name="android.speech.RecognitionService" />
+    </intent>
+  </queries>
+
+  <application>
+    <!--
+      The card over the current app. Its own task (affinity) and out of recents, so summoning it
+      never brings the app's task forward; translucent, so the app it was summoned over stays
+      visible behind it. Theme.Hermes.Assistant is overridden by plugins/with-android-assistant.js
+      to inherit the app theme.
+    -->
+    <activity
+      android:name="dev.hermes.assistant.AssistantActivity"
+      android:exported="true"
+      android:theme="@style/Theme.Hermes.Assistant"
+      android:taskAffinity="${applicationId}.assistant"
+      android:launchMode="singleTask"
+      android:excludeFromRecents="true"
+      android:autoRemoveFromRecents="true"
+      android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize"
+      android:windowSoftInputMode="adjustResize">
+      <!-- the assist gesture where no voice interaction service is in charge, and the headset button -->
+      <intent-filter>
+        <action android:name="android.intent.action.ASSIST" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VOICE_COMMAND" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </activity>
+
+    <!-- what makes Hermes selectable as the digital assistant app (long-press power, corner swipe) -->
+    <service
+      android:name="dev.hermes.assistant.AssistantService"
+      android:exported="true"
+      android:permission="android.permission.BIND_VOICE_INTERACTION">
+      <meta-data
+        android:name="android.voice_interaction"
+        android:resource="@xml/hermes_voice_interaction" />
+      <intent-filter>
+        <action android:name="android.service.voice.VoiceInteractionService" />
+      </intent-filter>
+    </service>
+
+    <service
+      android:name="dev.hermes.assistant.AssistantSessionService"
+      android:exported="true"
+      android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
+    <!--
+      An assistant must name a recognition service, and choosing it makes that service the phone's
+      voice input for every app. This one forwards to the recogniser that was there before.
+    -->
+    <service
+      android:name="dev.hermes.assistant.AssistantRecognitionService"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.speech.RecognitionService" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+      <meta-data
+        android:name="android.speech"
+        android:resource="@xml/hermes_recognition_service" />
+    </service>
+  </application>
+</manifest>

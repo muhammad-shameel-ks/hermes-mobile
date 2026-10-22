@@ -6,8 +6,10 @@
 
 import { createElement, type ReactNode } from 'react';
 
+import { assistant } from '../../modules/hermes-assistant/index.ts';
 import type { CodiconName } from '../ui/Codicon.tsx';
 import AboutSection from './AboutSection.tsx';
+import AssistantSection from './AssistantSection.tsx';
 import { AppearanceSection } from './AppearanceSection.tsx';
 import ConnectionSection from './ConnectionSection.tsx';
 import ModelsSection from './ModelsSection.tsx';
@@ -29,6 +31,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionEntry[] = [
   { key: 'appearance', title: 'Appearance', detail: 'Skin, mode, accent and Chat Text Size', icon: 'symbol-color', render: () => createElement(AppearanceSection, { heading: false }) },
   { key: 'safety', title: 'Safety', detail: 'Approvals, privacy and checkpoints', icon: 'lock', render: () => createElement(SafetySection) },
   { key: 'voice', title: 'Voice', detail: "This profile's dictation and read-aloud providers", icon: 'mic', render: () => createElement(VoiceSection) },
+  // only where Hermes can be the phone's assistant (Android)
+  ...(assistant ? [{ key: 'assistant', title: 'Assistant', detail: 'Ask Hermes from any app with the power button', icon: 'sparkle', render: () => createElement(AssistantSection) } satisfies SettingsSectionEntry] : []),
   { key: 'connection', title: 'Connection', detail: 'Gateway, sign-in and sign out', icon: 'server', render: () => createElement(ConnectionSection) },
   { key: 'profiles', title: 'Profiles', detail: 'The active profile', icon: 'account', render: () => createElement(ProfilesSection) },
   { key: 'about', title: 'About', detail: 'Version, build and updates', icon: 'info', render: () => createElement(AboutSection) },

@@ -235,3 +235,11 @@ _Avoid_: git row, git status bar, coding rail
 **Memory graph**:
 The profile's learned skills and memory chunks, read on the phone as a list or timeline screen.
 _Avoid_: starmap, star map, memory map, constellation, learning
+
+**Assistant card**:
+The card Android raises from the bottom over whatever app is open when Hermes is the phone's digital assistant and the reader long-presses power or swipes from a corner. It listens as it arrives, starts a fresh chat with the first question, keeps follow-ups in that chat while it is up, and hands the chat to the app on request. Nothing is heard or sent from the lock screen until the phone is unlocked.
+_Avoid_: overlay, popup, Gemini card, assistant sheet
+
+**Edge glow**:
+The light around the screen's edge while the assistant card is up: it swells with the reader's voice while listening, sweeps while the reply is on its way and settles while it arrives.
+_Avoid_: shader, border animation, aura
