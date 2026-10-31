@@ -245,7 +245,24 @@ test('an unchanged or shrunk text is handled without stale state', () => {
   const edited = splitMarkdownBlocks('one\n\nTWO\n\nthree', lex, a);
   assert.deepEqual(edited.blocks, splitMarkdownBlocks('one\n\nTWO\n\nthree', lex).blocks);
   const shrunk = splitMarkdownBlocks('one', lex, a);
-  assert.deepEqual(shrunk.blocks, [{ text: 'one', fenced: false }]);
+  assert.deepEqual(shrunk.blocks, [{ text: 'one', fenced: false, tokens: [...lex('one')] }]);
+});
+
+test('the open block carries its own lex, so the renderer never lexes it again', () => {
+  for (const [n, text] of CORPUS.entries()) {
+    let state: BlockState | null = null;
+    for (let end = 1; end <= text.length; end += 3) {
+      state = splitMarkdownBlocks(text.slice(0, end), lex, state);
+      const open = state.blocks[state.blocks.length - 1];
+      if (state.whole) {
+        assert.equal(open?.tokens, undefined, `corpus ${n} @${end}: the whole-text fallback lexes itself`);
+        continue;
+      }
+      assert.deepEqual(open.tokens, [...lex(open.text)], `corpus ${n} @${end}: the carried tokens are the open block's own lex`);
+      // only the open block carries tokens: sealed blocks keep nothing alive
+      assert.ok(state.blocks.slice(0, -1).every((block) => block.tokens === undefined));
+    }
+  }
 });
 
 test('fenced is true only for blocks that can reach the streaming-sensitive code path', () => {

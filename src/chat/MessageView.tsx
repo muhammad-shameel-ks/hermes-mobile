@@ -48,11 +48,12 @@ function MessageViewImpl({ message, bar, latest = false }: { message: Message; b
         </View>
       </View>
     );
+    // a bubble the reader just sent takes the assistant rows' enter, once per id; history and warm-tail rows mount plain
     return (
-      <>
+      <EnterView enabled={message.sent === true} animationKey={`user-message:${message.id}`}>
         {bubble}
         {bar ? <ActionBar message={message} plan={bar} /> : null}
-      </>
+      </EnterView>
     );
   }
 

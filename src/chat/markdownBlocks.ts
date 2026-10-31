@@ -11,10 +11,13 @@
  * - an unclosed inline `<a>`, `<code>`, `<pre>`, `<kbd>` or `<script>` tag
  *   changes how the following blocks lex, so a block is never sealed while one
  *   is open.
+ * The open block carries the tokens the split already lexed for it, so the
+ * renderer parses those instead of lexing the block a second time.
  * Pure: the lexer is injected, so nothing here imports React Native.
  */
 
-export type MarkdownBlock = { text: string; fenced: boolean };
+/** `tokens`: the open block's own lex (only the open block has them; sealed blocks render once and lex themselves) */
+export type MarkdownBlock = { text: string; fenced: boolean; tokens?: LexResult };
 
 /** `committed` and `prefix` are the memo; the rest is derived from the text alone */
 export type BlockState = {
@@ -36,7 +39,7 @@ type LexToken = {
   inLink?: boolean;
   inRawBlock?: boolean;
 };
-type LexResult = LexToken[] & { links?: Record<string, unknown> };
+export type LexResult = LexToken[] & { links?: Record<string, unknown> };
 export type Lex = (src: string) => LexResult;
 
 const FENCE_HINT = /```|~~~/;
@@ -116,6 +119,8 @@ export function splitMarkdownBlocks(text: string, lex: Lex, prev?: BlockState | 
   const cuts: number[] = [];
   const state: InlineState = { inLink: false, inRawBlock: false };
   let offset = 0;
+  // the first token of the open block: the one after the last cut
+  let openFrom = 0;
   for (let index = 0; index < lastContent; index++) {
     const raw = tokens[index].raw;
     if (!tail.startsWith(raw, offset)) return wholeText(src, prefix, committed);
@@ -129,6 +134,7 @@ export function splitMarkdownBlocks(text: string, lex: Lex, prev?: BlockState | 
       followsBlankLine(tail, offset)
     ) {
       cuts.push(offset);
+      openFrom = index + 1;
     }
   }
 
@@ -145,6 +151,6 @@ export function splitMarkdownBlocks(text: string, lex: Lex, prev?: BlockState | 
   }
 
   const open = src.slice(prefix.length);
-  const blocks = open ? committed.concat({ text: open, fenced: FENCE_HINT.test(open) }) : committed;
+  const blocks = open ? committed.concat({ text: open, fenced: FENCE_HINT.test(open), tokens: tokens.slice(openFrom) }) : committed;
   return { src, prefix, committed, blocks, whole: false };
 }

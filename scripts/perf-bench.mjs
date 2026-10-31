@@ -53,6 +53,133 @@ await section('transcript', async (bench) => {
   bench(`applyEvent x ${events.length} (5k-delta turn)`, () => events.reduce(applyEvent, emptyTranscript()), events.length);
 });
 
+// ─── stream: the final answer after a tool-heavy turn, beat by beat ──────────
+
+/** a final answer the way agents write them after tool calls: a list with bold labels, a fence, a table, bullets, prose */
+function finalAnswer(repeat) {
+  let text = '## Summary\n\nI checked the **build pipeline**, the `metro.config.js` file and the CI logs. Here is what I found.\n\n';
+  for (let r = 0; r < repeat; r += 1) {
+    text += '1. **Metro cache**: the cache was stale after the `expo` upgrade, so `npx expo start -c` fixes it.\n';
+    text += '2. **Hermes flags**: the `jsEngine` key is set twice in `app.json`; the second one wins.\n';
+    text += '3. **CI timeout**: the iOS job runs `pod install` without a cache, which takes about *eleven minutes*.\n';
+    text += '4. **Lint**: three files fail `eslint --max-warnings 0`, see [the log](https://ci.example.com/run/123).\n\n';
+    text += 'The fix for the first two is small:\n\n```ts\n';
+    for (let i = 0; i < 20; i += 1) text += `const option${i} = resolveOption(config, 'key${i}', { fallback: ${i} });\n`;
+    text += '```\n\n| File | Problem | Fix |\n|---|---|---|\n';
+    for (let i = 0; i < 10; i += 1) text += `| \`src/file${i}.ts\` | **unused** import of \`thing${i}\` | remove line ${i * 3} |\n`;
+    text += '\n- First bullet with `code` and **bold** text that runs a while to wrap.\n- Second bullet, plain.\n- Third bullet with a [link](https://example.com).\n\n';
+    text += `${'After these changes the build passes locally. The remaining risk is the CI cache, which needs a secret. '.repeat(3)}\n\n`;
+  }
+  return text;
+}
+
+await section('stream', async (bench) => {
+  const { applyEvent, emptyTranscript, addUserMessage } = await import('../src/chat/transcript.ts');
+  const { TranscriptRows } = await import('../src/chat/transcriptRows.ts');
+  const { blocks } = await import('../src/chat/messageBlocks.ts');
+  const { deriveTail } = await import('../src/chat/turnActivity.ts');
+  const { splitMarkdownBlocks } = await import('../src/chat/markdownBlocks.ts');
+  const { splitMediaTags } = await import('../src/chat/media.ts');
+  const { StreamReveal } = await import('../src/chat/streamReveal.ts');
+  const { fadeTail } = await import('../src/chat/streamFade.ts');
+  const { BlockKeys } = await import('../src/chat/markdownKeys.ts');
+  const { counterKeys, markdownTree } = await import('../tests/support/markdownTree.ts');
+  const { lexer } = await import('marked');
+  const { createElement } = await import('react');
+  const lex = (src) => lexer(src, { gfm: true });
+
+  // reasoning, a line of text, six tool calls with 40 KB results, then the answer in 4-character deltas, three to a 50 ms beat
+  const answer = finalAnswer(3);
+  const before = [{ type: 'message.start' }];
+  const thought = 'Let me think about which files matter for this build failure. '.repeat(10);
+  for (let i = 0; i < thought.length; i += 4) before.push({ type: 'reasoning.delta', payload: { text: thought.slice(i, i + 4) } });
+  before.push({ type: 'message.delta', payload: { text: 'Let me look at the config and the CI logs.' } });
+  for (let t = 0; t < 6; t += 1) {
+    const name = t % 2 ? 'read_file' : 'terminal';
+    before.push({ type: 'tool.start', payload: { tool_id: `t${t}`, name, context: `step ${t}` } });
+    before.push({ type: 'tool.complete', payload: { tool_id: `t${t}`, name, summary: 'ok', result: { output: 'x'.repeat(40 * 1024) } } });
+  }
+  const beats = [];
+  for (let i = 0; i < answer.length; i += 12) beats.push([0, 4, 8].map((d) => ({ type: 'message.delta', payload: { text: answer.slice(i + d, i + d + 4) } })).filter((e) => e.payload.text));
+  const start = before.reduce(applyEvent, addUserMessage(emptyTranscript(), 'why does the build fail?'));
+
+  /** the per-beat work of the store and the transcript rows (urgent render inputs) */
+  const storeSide = () => {
+    const rows = new TranscriptRows();
+    let state = start;
+    for (const beat of beats) {
+      state = beat.reduce(applyEvent, state);
+      rows.sync(state.messages, state.running);
+      const live = state.messages[state.messages.length - 1];
+      blocks(live.parts);
+      deriveTail(state.messages, state.running, state.wait);
+    }
+    return state;
+  };
+  const texts = [];
+  {
+    let state = start;
+    for (const beat of beats) {
+      state = beat.reduce(applyEvent, state);
+      const content = blocks(state.messages[state.messages.length - 1].parts);
+      texts.push(content[content.length - 1].text);
+    }
+  }
+  bench(`store side per beat (reducer, rows, blocks, tail) x ${beats.length}`, storeSide, beats.length);
+
+  /** the deferred markdown pass: media split, block split, and a lex of the open block only when the split did not carry its tokens */
+  bench(`markdown per beat (split + open-block lex) x ${beats.length}`, () => {
+    let state = null;
+    for (const text of texts) {
+      splitMediaTags(text);
+      state = splitMarkdownBlocks(text, lex, state);
+      const open = state.blocks[state.blocks.length - 1];
+      if (!open.tokens) lex(open.text);
+    }
+  }, texts.length);
+
+  // the open block's top-level keys, beat to beat: a key that changes while the element keeps its type remounts it and every native view under it
+  const remounts = (keys) => {
+    let count = 0;
+    let state = null;
+    let last = { index: -1, types: '', keys: '' };
+    for (const text of texts) {
+      state = splitMarkdownBlocks(text, lex, state);
+      const index = state.blocks.length - 1;
+      const top = markdownTree(state.blocks[index].text, keys);
+      const now = { index, types: top.map((node) => String(node.type)).join(), keys: top.map((node) => node.key).join() };
+      if (now.index === last.index && now.types === last.types && now.keys !== last.keys) count += 1;
+      last = now;
+    }
+    return count;
+  };
+  const note = (label) => rows.push({ section: 'stream', label, median: NaN, min: NaN, per: null });
+  note(`open-block remounts over ${texts.length} beats: post-order counter ${remounts(counterKeys())}, BlockKeys ${remounts(new BlockKeys())}`);
+
+  // one reveal tick on the largest open block of the answer: the spans, then the repaint of its elements
+  const painter = {
+    slots: (element) => (Array.isArray(element.props.li) ? ['li'] : ['children']),
+    ink: () => undefined,
+    dim: (element) => element,
+    paint: (text, ink, alpha, key) => createElement('paint', { key, ink, alpha }, text),
+  };
+  let sample = texts[0];
+  let openText = '';
+  for (const text of texts) {
+    const split = splitMarkdownBlocks(text, lex);
+    const open = split.blocks[split.blocks.length - 1].text;
+    if (open.length > openText.length) [sample, openText] = [text, open];
+  }
+  const elements = markdownTree(openText, new BlockKeys());
+  const reveal = new StreamReveal();
+  reveal.arrive(sample.length - 40, 0);
+  reveal.arrive(sample.length, 1_000);
+  const from = sample.length - openText.length;
+  bench(`reveal tick (spans + fadeTail, ${openText.length}-char open block) x 100`, () => {
+    for (let i = 0; i < 100; i += 1) fadeTail(elements, reveal.spans(from, sample.length, 1_000 + (i % 50)), '#000', painter);
+  }, 100);
+});
+
 // ─── drawer lists: 2k sessions ───────────────────────────────────────────────
 
 await section('sessions', async (bench) => {

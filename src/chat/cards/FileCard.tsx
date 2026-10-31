@@ -94,7 +94,7 @@ export function FileCard({ path }: { path: string }) {
         <Action icon={web ? 'link-external' : 'eye'} label={web ? 'Open' : 'Open preview'} onPress={preview} />
         {web ? null : <Action icon="download" label={downloading ? 'Downloading…' : 'Download'} onPress={() => void download()} disabled={downloading} />}
         {status ? (
-          <Text numberOfLines={1} accessibilityLiveRegion="polite" style={[styles.status, { color: status.tone === 'error' ? t.dtDestructive : t.uiTextTertiary, fontSize: t.type.tool }]}>
+          <Text numberOfLines={status.tone === 'error' ? 3 : 1} accessibilityLiveRegion="polite" style={[styles.status, { color: status.tone === 'error' ? t.dtDestructive : t.uiTextTertiary, fontSize: t.type.tool }]}>
             {status.text}
           </Text>
         ) : null}

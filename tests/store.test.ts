@@ -51,6 +51,11 @@ test('half-streamed replies and live notices are not kept', () => {
   assert.equal(serializeTail([message('live-x', 'streaming', { status: 'streaming' })]), null);
 });
 
+test('a restored tail does not carry the reader’s send cue', () => {
+  const restored = parseTail(serializeTail([message('live-u', 'hi', { role: 'user', sent: true }), message('row-2', 'b')]) as string);
+  assert.deepEqual(restored?.map((m) => [m.id, m.sent]), [['live-u', undefined], ['row-2', undefined]]);
+});
+
 test('a heavy tail falls back to the last 8 messages, and an impossible one is not kept', () => {
   const heavy = (id: string, size: number) => message(id, 'x'.repeat(size));
   const fallback = serializeTail([...Array.from({ length: 32 }, (_, i) => heavy(`l${i}`, 5_000)), ...Array.from({ length: 8 }, (_, i) => heavy(`h${i}`, 20_000))]);

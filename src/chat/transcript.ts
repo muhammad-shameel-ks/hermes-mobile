@@ -53,6 +53,8 @@ export type Message = {
   reactions?: Reaction[];
   /** wall-clock seconds a live turn ran */
   durationS?: number;
+  /** the reader sent this from this device in this run of the app (the Prompt lift's cue); never persisted */
+  sent?: true;
 };
 
 export type Transcript = {
@@ -296,13 +298,15 @@ function turnDuration(state: Transcript): { durationS?: number } {
   return { durationS: Math.max(1, Math.round(Date.now() / 1000 - prompt.timestamp)) };
 }
 
-export function addUserMessage(state: Transcript, text: string): Transcript {
+/** a user message made on this device; `sent` unless it only replays a prompt (a turn already running when the chat opened) */
+export function addUserMessage(state: Transcript, text: string, { sent = true }: { sent?: boolean } = {}): Transcript {
   const message: Message = {
     id: nextLiveId(),
     role: 'user',
     parts: [{ kind: 'text', text }],
     status: 'complete',
     timestamp: Math.floor(Date.now() / 1000),
+    ...(sent ? { sent: true as const } : {}),
   };
   return { ...state, messages: [...state.messages, message], running: true, liveId: null, breakText: false };
 }

@@ -9,7 +9,7 @@
  * constant, so assistant-ui's per-index cells and RN's CellRenderer skip every row a token did not touch.
  */
 
-import { createContext, memo, useCallback, useContext, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { createContext, memo, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime, type AppendMessage, type ThreadMessageLike } from '@assistant-ui/react-native';
 
@@ -17,6 +17,7 @@ import { BotAvatar } from '../bots/BotAvatar.tsx';
 import { BOT_CHAT_EMPTY, type Bot } from '../bots/roster.ts';
 import { ThreadLoader } from '../ui/loaders/presets.tsx';
 import { useTokens } from '../ui/tokens.ts';
+import { Reveal, SwitchFade } from '../ui/motion.tsx';
 import { Wordmark } from '../ui/Wordmark.tsx';
 import { usePullRefresh } from '../ui/usePullRefresh.tsx';
 import { PendingApprovals } from './ApprovalCard.tsx';
@@ -27,6 +28,7 @@ import { MessageView } from './MessageView.tsx';
 import { RequestsProvider } from './RequestsProvider.tsx';
 import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
 import { ShowEarlier } from './ShowEarlier.tsx';
+import { nextSeen, type Seen } from './switchTransition.ts';
 import type { Message } from './transcript.ts';
 import { TranscriptRows } from './transcriptRows.ts';
 import { TurnActivity, TurnActivityContext, useTailStore } from './TurnActivity.tsx';
@@ -77,6 +79,20 @@ type Props = {
   personality: string;
 };
 
+/**
+ * How many times the reader has moved to another chat. It advances in the render that shows the new chat
+ * and is committed afterwards, so a discarded or doubled render computes the same value; it does not
+ * advance when a fresh chat's first send re-keys its draft to the session it created (`nextSeen`).
+ */
+function useSwitchEpoch(key: string, messages: readonly Message[]): number {
+  const seen = useRef<Seen>({ key, first: messages[0]?.id ?? null, epoch: 0 });
+  const next = nextSeen(seen.current, key, messages[0]?.id ?? null);
+  useLayoutEffect(() => {
+    seen.current = next;
+  });
+  return next.epoch;
+}
+
 export const TranscriptPane = memo(function TranscriptPane({ controller, meta, bot, opening, personality }: Props) {
   const transcript = useChatSelector(controller, openTranscript);
   const { messages, running, wait } = transcript;
@@ -96,7 +112,8 @@ export const TranscriptPane = memo(function TranscriptPane({ controller, meta, b
   // one adapter object per (messages, running): a re-render for any other reason leaves the runtime untouched
   const adapter = useMemo(() => ({ messages, isRunning: running, convertMessage, onNew }), [messages, running, onNew]);
   const runtime = useExternalStoreRuntime(adapter);
-  const jump = useJumpToBottom(meta.key, messages);
+  const jump = useJumpToBottom(meta.key, messages, running);
+  const epoch = useSwitchEpoch(meta.key, messages);
   const tail = useTailStore(messages, running, wait);
   const { anchorMinHeight } = jump;
   const listContent = useMemo(() => (anchorMinHeight === null ? styles.listContent : [styles.listContent, { minHeight: anchorMinHeight }]), [anchorMinHeight]);
@@ -134,11 +151,11 @@ export const TranscriptPane = memo(function TranscriptPane({ controller, meta, b
     <AssistantRuntimeProvider runtime={runtime}>
       <RequestsProvider controller={controller}>
         <TurnActivityContext.Provider value={tail}>
-          <View style={styles.body}>
+          <SwitchFade epoch={epoch} style={styles.body}>
             {messages.length === 0 ? (
               <EmptyState meta={meta} bot={bot} opening={opening} personality={personality} loadImage={controller.avatarDataFn} />
             ) : (
-              <View style={styles.list}>
+              <Reveal style={styles.list}>
                 <RowsContext.Provider value={rows}>
                   <ThreadPrimitive.MessagesFlatList
                     ref={jump.listRef}
@@ -170,9 +187,9 @@ export const TranscriptPane = memo(function TranscriptPane({ controller, meta, b
                   </ThreadPrimitive.MessagesFlatList>
                 </RowsContext.Provider>
                 <ScrollToBottomButton visible={jump.visible} count={jump.count} onPress={jump.toBottom} />
-              </View>
+              </Reveal>
             )}
-          </View>
+          </SwitchFade>
         </TurnActivityContext.Provider>
       </RequestsProvider>
     </AssistantRuntimeProvider>
@@ -194,25 +211,29 @@ function EmptyState({
 }) {
   const t = useTokens();
   const [seed] = useState(() => Math.floor(Math.random() * 100000));
+  // a lookup that builds the line each call: kept per (personality, seed) so a re-render does not pick again
+  const body = useMemo(() => introBody(personality, seed), [personality, seed]);
+  // each state is its own Reveal (keyed), so one handing over to the next - the loader to the intro, the intro to the
+  // transcript - crosses over instead of cutting
   if (opening || meta.loading) {
     return (
-      <View style={styles.empty}>
+      <Reveal key="loading" style={styles.empty} exit>
         <ThreadLoader />
-      </View>
+      </Reveal>
     );
   }
   if (meta.error) {
     return (
-      <View style={styles.empty}>
+      <Reveal key="error" style={styles.empty} rise exit>
         <Text style={{ color: t.dtDestructive, fontSize: 16, fontWeight: '500', textAlign: 'center' }}>Could not load this session.</Text>
         <Text style={{ color: t.uiTextTertiary, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 6 }}>{meta.error}</Text>
-      </View>
+      </Reveal>
     );
   }
   if (meta.isBotChat && bot) {
     // desktop chat-empty.tsx: the face, then the Wordmark carrying the bot's name over the prompt, lifted so the name sits on the centre line
     return (
-      <View style={styles.empty}>
+      <Reveal key="bot" style={styles.empty} rise exit>
         <View style={styles.botIntro}>
           <BotAvatar name={bot.name} meta={bot.meta} hasAvatar={bot.hasAvatar} size={BOT_FACE} loadImage={loadImage} />
           <View style={styles.botWordmark}>
@@ -220,15 +241,15 @@ function EmptyState({
           </View>
           <Text style={[styles.introBody, { color: t.uiTextTertiary }]}>{BOT_CHAT_EMPTY}</Text>
         </View>
-      </View>
+      </Reveal>
     );
   }
   // desktop components/chat/intro.tsx: the Wordmark over one rotating body line
   return (
-    <View style={[styles.empty, styles.intro]}>
+    <Reveal key="intro" style={[styles.empty, styles.intro]} rise exit>
       <Wordmark text={WORDMARK} style={styles.wordmark} />
-      <Text style={[styles.introBody, { color: t.uiTextTertiary }]}>{introBody(personality, seed)}</Text>
-    </View>
+      <Text style={[styles.introBody, { color: t.uiTextTertiary }]}>{body}</Text>
+    </Reveal>
   );
 }
 

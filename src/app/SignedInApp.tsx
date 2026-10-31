@@ -168,8 +168,9 @@ export default function SignedInApp(props: Props) {
       openSession: (session: SessionInfo) =>
         closeThen(() => {
           controller.openSession(session);
-          // opening reads it: the backend's watermark moves so the unread dot does not return
-          if (session.unread) void latest.current.sessionActions.markRead(session);
+          // opening reads it: the backend's watermark moves so the unread dot does not return. Its refresh re-renders
+          // the drawer's list, so it waits for the slide like the drawer's own refreshes (performance.md Subscriptions 8)
+          if (session.unread) setTimeout(() => void latest.current.sessionActions.markRead(session), DRAWER_DURATION);
         }),
       sessionActions: (session: SessionInfo) => latest.current.sessionActions.open(session),
       openBot: (bot: Bot) => closeThen(() => void controller.openBot(bot)),

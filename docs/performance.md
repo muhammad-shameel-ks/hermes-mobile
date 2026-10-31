@@ -14,11 +14,12 @@ The fix is a budget: **per-token work must be O(what changed), never O(thread), 
 gateway event
   -> ChatController.onEvent            (transcript.applyEvent: touches only the live message/part)
   -> set(patch, paced)                 (snapshot is updated immediately; getSnapshot() never lags)
-  -> NotifyThrottle                    (<= ~20 wake-ups/s, stretches to 3x the last render cost, <= 250 ms)
+  -> NotifyThrottle                    (<= ~20 wake-ups/s, stretches to 3x the last streamed render's cost, <= 250 ms)
   -> useChatSelector slices            (only TranscriptPane sees the transcript)
   -> TranscriptRows / ChatRow(id)      (only the live row re-renders)
   -> MessageView blocks (memo)         (only the live block re-renders)
-  -> Markdown (open block only)        (useDeferredValue so taps can interrupt it)
+  -> Markdown (open block only)        (useDeferredValue so taps can interrupt it; parses the split's tokens)
+  -> StreamReveal + FadeIn             (new text is laid out clear; a head sweeps it in at the arrival rate)
 ```
 
 Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors, sends, navigation, anything that changes `running`, `cwd`, the queue or `loading`) notify synchronously.
@@ -27,7 +28,7 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 
 ### Store and events (`controller.ts`, `transcript.ts`)
 1. High-frequency events go through the paced path: add the event type to `PACED_EVENTS` and make sure it changes only the transcript or status. Anything touching `running`, `cwd`, the queue or `loading` must notify synchronously.
-2. `getSnapshot()` is the source of truth and never lags; only the wake-up is paced. Do not rely on one notification per event, and do not add per-event side effects inside `set()`.
+2. `getSnapshot()` is the source of truth and never lags; only the wake-up is paced. Do not rely on one notification per event, and do not add per-event side effects inside `set()`. `NotifyThrottle` samples render cost only on paced beats. An edge's render (a tool row mounting) is one-off and would stretch the first beats of the text after it.
 3. Reducers return the same object when nothing changed; `updateTranscript` / `updateEntry` use identity to skip the write.
 4. Transcript reducers touch only the live message and the changed part. Find messages from the tail, never `map`/`some`/`[...arr].reverse().find` over the list. Never mutate a `Part` or `ToolPart` after it enters state - replace it (caches below key on identity).
 5. Derived values handed to React are memoised by input identity (see `currentModel()`).
@@ -46,6 +47,7 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 9. A tap that closes the drawer and opens a chat commits the close first and opens the chat on the next frame (`closeThen`), so the slide runs on the UI thread while the new transcript mounts instead of starting after it.
 10. A refetch keeps what did not change by identity: `reuseList` / `reuseRoster` (`selector.ts`, `roster.ts`) hand back the previous row objects and arrays, and stores skip a write that changes nothing (`sessionsFeed.ts`, `groups/model.ts`). Memoised rows then skip a refresh that brought nothing new. Slices read the lists, not their container, where a flag on it (`roster.loading`) flips each refresh.
 11. The scroll follow (`useJumpToBottom`, `TailFollow`) records a commanded plain step's offset at once; waiting for the echo made every streamed step look "away" and turned the follow into a glide restarted each beat.
+12. The follow commands nothing while the reader's gesture is live: finger down, the frame after it lifts (momentum, if any, has begun by then) and the fling. A step in that gap took the fling from the reader. Direction is measured from the furthest-down offset the gesture's echoes reached, so a step that landed under the finger before JS saw the drag still reads a pull back as upward. The Prompt lift's padding (`LiftPadding`) changes only when the list rests, a reply settles or the newest row's layout reaches it: never a `setState` per beat, and never above the viewport's bottom edge.
 
 ### Message rendering (`MessageView.tsx`, `toolView.ts`, `ui/motion.tsx`)
 1. Every per-block / per-row component under `MessageView` is `memo`, with props that are part objects or primitives, never fresh arrays, objects or JSX.
@@ -57,7 +59,7 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 7. UI hidden while streaming must not follow the message object (`sameBar`).
 
 ### Markdown (`Markdown.tsx`, `markdownBlocks.ts`)
-1. Never feed a growing string to `useMarkdown` or the lexer. Go through `<Markdown streaming>` so only the open block re-lexes and re-renders.
+1. Never feed a growing string to the lexer. Go through `<Markdown streaming>` so only the open block re-lexes and re-renders, and lexes once: `splitMarkdownBlocks` hands the open block the tokens it already lexed (`block.tokens`) and `MarkdownBlock` parses those.
 2. A renderer branch that depends on `streaming` must be reachable only from a fenced block (or widen `block.fenced`).
 3. No cross-block lexer state. Anything needing document-wide context (reference links, footnotes) must be covered by the whole-text fallback in `markdownBlocks.ts`, with a case added to the differential test.
 4. Changes to `splitMarkdownBlocks` keep `tests/markdownBlocks.test.ts` green and extend its corpus. Never seal a block before a blank line or when the next block starts on an unfinished line.
@@ -65,8 +67,9 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 6. Per-delta code in the markdown path is bounded by the open block, not the reply. Prefer exact early exits to caches.
 7. Components the parser creates (`InlineCode`, cards) are memoised by value, because the parser hands them fresh style objects.
 8. Keep `useDeferredValue` on streaming text and bypass it when `streaming` is false.
-9. The streamed-text fade (`streamFade.ts`) repaints only a streamed block's trailing characters, cloning just the elements on that path. Its repaint timer runs only while a chunk is still fading and nothing else re-renders the block.
+9. Streamed text shows through `StreamReveal` (`streamReveal.ts`): one per streamed reply, fed the source length in a layout effect when new text commits. Its head sweeps that text in by the time the next arrival is due (the recent gap between arrivals, `REVEAL_TICK_MS` to `REVEAL_MAX_MS`), waits at the known end when the stream stalls, and flushes when the reply settles. Characters it passed fade in over `FADE_MS`. `fadeTail` (`streamFade.ts`) paints a block's clear and fading tail, cloning only the elements on that path. It walks into lists and table cells. An element it cannot see into does not stop the walk: it counts its content's characters (`contentChars`, cached per element) and is dimmed whole to the newest alpha among them. Inline code takes an `alpha` prop, and a top-level card sits in a `Dimmed` box that stays for as long as the block shows. One shared timer (`revealClock`, every `REVEAL_TICK_MS`) repaints only the blocks still clear or fading, and skips a block that a render painted within half a tick. Never add a per-block timer.
 10. A reply settled when it mounts renders from `settledElements`: one parser per theme and the elements per text, kept for the most recent `SETTLED_TEXTS`. Switching back to a chat mounts elements it already parsed instead of lexing every visible reply again. Elements are immutable, so the cache is safe to share; keep anything per-instance (state, refs) in the components the renderer creates, never in the renderer.
+11. Element keys inside a block come from `BlockKeys` (`markdownKeys.ts`). An element made from children takes its first child's key and only leaves count, so appending text never changes a key. A post-order counter re-keyed (remounted) the open list or table on most beats. A renderer override that builds an element from children goes through `keys.around` (or `keys.lend`), and `tests/markdownKeys.test.ts` streams the cases.
 
 ### Animation (`ui/clock.ts`, `ui/loops.ts`, `ShimmerText.tsx`)
 1. Decorative loops use `useLoop` from `ui/clock.ts`: one shared timeline per spec, paused in the background, freezable with `holdLoops()`. No per-instance `withRepeat`, `setInterval` or `setTimeout` for decoration.
@@ -78,6 +81,8 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 7. Isolate fast ticks (1 Hz or faster `setState`) in the smallest component that paints them.
 8. Pause what can't be seen (`reduced`, background, `enabled`), and stop every animation on unmount.
 9. Add a pure, Node-testable test for new animation maths, as `shimmer.ts` does.
+10. Moving between chats is a state swap under one mounted `TranscriptPane`, so its motion is opacity on persistent containers, never a remount: `SwitchFade` (`ui/motion.tsx`) restarts its opacity when `useSwitchEpoch` advances (`chat/switchTransition.ts`: a key change is a switch, but a fresh chat's draft re-keyed to its new session on first send is not), `Reveal` fades an empty state or the list in at mount (the empty state also rises by `ENTER_OFFSET` and fades out when the transcript replaces it), and a just-sent bubble takes `EnterView` (`message.sent`, the same marker the Prompt lift reads, once per id; history, warm tails and a reconnect's replayed prompt mount plain). All use `ENTER_TIMING` and are plain views under reduced motion, chosen at mount. Anything that would replay on a stream beat or a reconnect is a bug: key it on the epoch, never on `messages`.
+11. The `Wordmark` remembers each word's reference width and last box width (`wordmarkFit.ts`, recorded only once Collapse Bold is loaded), so a remount sizes itself on its first render and skips the off-screen probe; without that the empty state laid out with a zero-height wordmark for two passes and jumped.
 
 ### Lists, theme, startup, persistence
 1. Never derive colour inline: use the memoised helpers in `ui/color.ts`. Tokens are one object per skin, mode, accent and scale; never spread or clone `useTokens()` results into context values.
@@ -89,7 +94,7 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 
 ## Measuring
 
-- `npm run perf` micro-benchmarks the pure hot paths (transcript reducer over a 5k-delta turn, session list build, colour derivation, tail serialisation). Compare before and after a change; Node numbers show ratios, not device milliseconds.
+- `npm run perf` micro-benchmarks the pure hot paths: the transcript reducer over a 5k-delta turn; a final answer streamed after six tool calls (`stream`: store-side work per beat, the markdown pass per beat, open-block remounts per key scheme, one reveal tick); the session list build; colour derivation; tail serialisation. Compare before and after a change; Node numbers show ratios, not device milliseconds.
 - Bundle impact: `npx expo export --platform ios --dev --no-minify --output-dir <tmp>` (never into the repo), then inspect the `__d(...)` module boundaries.
 - Device checks that tests cannot cover: stream a long reply with several tool calls, tap expand controls repeatedly, then open the drawer; watch the shimmer and spinner behaviour; try a long thread.
 
@@ -99,6 +104,6 @@ Edge events (`message.start`, `message.complete`, `tool.start/complete`, errors,
 - Expanding a Tool run with hundreds of calls mounts every row in one commit (each is now cheap). `DiffView` is still one `View` and `Text` per line when fully expanded.
 - `AnimatedFace` (15 Hz) and `Loader` (60 Hz) animate SVG props, which cost a shadow-tree commit per tick. The bot-chat face is the only one that runs during streaming; the Bots tab's faces run while it is shown and stop while it is hidden or the drawer is closed (their frame callbacks are effects).
 - assistant-ui's `ExternalStoreRuntimeCore` still does an O(messages) pass per update and per-row accessor evaluations; avoiding that means replacing `MessagesFlatList`. Following a streaming reply is already ours (`TailFollow` in `scroll.ts`, driven by `useJumpToBottom`), with assistant-ui's `autoScroll` and `scrollToBottomOnRunStart` off (a send lifts the prompt instead).
-- Streamed text arrives in steps of up to 50 ms (`STREAM_NOTIFY_MS`) rather than per token; each step fades in over `FADE_MS`, so the open block repaints on a 50 ms timer for up to that long after the last step.
+- Streamed text reaches the layout in steps of 50 ms (`STREAM_NOTIFY_MS`) or more. The reveal hides the steps, but the open block still lays out each step at once: a step that wraps to a new line grows the row at the beat, ahead of the text sweeping in. While a reply reveals or fades, the open block also repaints on the 50 ms reveal clock, in addition to its beat renders.
 - Eager native modules still on the launch path: `expo-audio`, `expo-media-library`, `expo-video`, `expo-speech` (chat cards) and `expo-speech-recognition` (`chat/dictation.ts`).
 - `@assistant-ui/*` is about 2 MB and Reanimated about 2.1 MB of the 12 MB dev bundle.
