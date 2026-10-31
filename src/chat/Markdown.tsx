@@ -5,30 +5,39 @@
  *
  * A reply that streams renders as top-level blocks (markdownBlocks.ts), each a
  * memoised `MarkdownBlock`: a delta re-lexes and re-renders the open block at
- * the tail and nothing before it. While `streaming`, the text also goes through
- * `useDeferredValue`, so a tap or drag is not queued behind a markdown render:
- * React renders the new text at low priority and yields to input. A streamed
- * block's newest text fades in (streamFade.ts).
+ * the tail and nothing before it, parsing the tokens the split already lexed.
+ * While `streaming`, the text also goes through `useDeferredValue`, so a tap or
+ * drag is not queued behind a markdown render: React renders the new text at
+ * low priority and yields to input. A streamed reply's new text is laid out at
+ * once but shows behind a reveal head that sweeps at the stream's pace and
+ * fades in (streamReveal.ts, streamFade.ts).
  */
 
-import { memo, useDeferredValue, useEffect, useMemo, useReducer, useRef, type ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text, View, type ColorSchemeName, type TextStyle } from 'react-native';
+import { cloneElement, isValidElement, memo, useDeferredValue, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { AppState, ScrollView, StyleSheet, Text, View, type ColorSchemeName, type TextStyle, type ViewStyle } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
-import { MarkedLexer, useMarkdown, type MarkedStyles } from 'react-native-marked';
+import { MarkedLexer, type MarkedStyles } from 'react-native-marked';
 import Parser from 'react-native-marked/src/lib/Parser';
 import type { UserTheme } from 'react-native-marked/src/theme/types';
 
 import { mixPct } from '../ui/color.ts';
 import { MONO, useTokens, type Tokens } from '../ui/tokens.ts';
+import { AlertBlock } from './cards/AlertBlock.tsx';
 import { MediaAttachment } from './cards/MediaAttachment.tsx';
-import { splitMarkdownBlocks, type BlockState, type Lex } from './markdownBlocks.ts';
+import { InlineCode } from './InlineCode.tsx';
+import { splitMarkdownBlocks, type BlockState, type Lex, type LexResult } from './markdownBlocks.ts';
 import { TranscriptRenderer } from './MarkdownRenderer.tsx';
 import { OwnSwipe } from './OwnSwipe.tsx';
 import { splitMediaTags } from './media.ts';
-import { fadeSpans, fadeTail, growTrail, type FadePainter, type FadeTrail } from './streamFade.ts';
+import { fadeTail, type FadePainter, type FadeProps, type FadeSlot } from './streamFade.ts';
+import { REVEAL_TICK_MS, revealClock, StreamReveal } from './streamReveal.ts';
 
 // the same call useMarkdown makes, so a block lexes exactly as it would inside the whole reply
-const lex: Lex = (src) => MarkedLexer(src, { gfm: true }) as ReturnType<Lex>;
+const lex: Lex = (src) => MarkedLexer(src, { gfm: true }) as LexResult;
+
+// the reveal's repaints stop in the background like the decorative loops (ui/clock.ts); only an explicit background pauses
+revealClock.setForeground(AppState.currentState !== 'background');
+AppState.addEventListener('change', (state) => revealClock.setForeground(state !== 'background'));
 
 // useMarkdown's own style merge; required, not imported, because its source does not pass this project's strict checks
 const getStyles: (styles?: MarkedStyles, colorScheme?: ColorSchemeName, theme?: UserTheme) => MarkedStyles = require('react-native-marked/src/theme/styles').default;
@@ -78,10 +87,10 @@ function stylesFor(t: Tokens): MarkedStyles {
 }
 
 function buildTheme(t: Tokens) {
-  return {
-    styles: stylesFor(t),
-    theme: { colors: { text: t.uiTextPrimary, link: t.uiAccent, code: t.uiWidgetSurfaceBackground, border: t.uiStrokeTertiary } },
-  };
+  const styles = stylesFor(t);
+  const theme = { colors: { text: t.uiTextPrimary, link: t.uiAccent, code: t.uiWidgetSurfaceBackground, border: t.uiStrokeTertiary } };
+  // what a parser takes: the library's defaults under ours, once per theme
+  return { parserStyles: getStyles(styles, t.renderedMode, theme) };
 }
 
 const themeCache = new WeakMap<Tokens, ReturnType<typeof buildTheme>>();
@@ -97,13 +106,36 @@ function markdownTheme(t: Tokens) {
 
 const inkStyles = new Map<string, TextStyle>();
 
+const CHILDREN: readonly FadeSlot[] = ['children'];
+const LIST: readonly FadeSlot[] = ['li'];
+const TABLE: readonly FadeSlot[] = ['header', 'rows'];
+
+const dimStyles = new Map<number, ViewStyle>();
+
+/**
+ * A card the fade cannot see into (an artifact, a diff, a listing), dimmed whole with the reveal. A
+ * streamed block keeps each top-level card in one for as long as it shows (`boxCards`), so the box
+ * never comes and goes and the card never remounts.
+ */
+const Dimmed = memo(function Dimmed({ alpha, children }: { alpha: number; children: ReactNode }) {
+  let style = dimStyles.get(alpha);
+  if (!style && alpha < 1) {
+    style = { opacity: alpha };
+    dimStyles.set(alpha, style);
+  }
+  return <View style={style}>{children}</View>;
+});
+
 const FADE_PAINTER: FadePainter = {
-  // host text and the views a block nests it in (OwnSwipe wraps a code block's scroll view);
-  // react-native-marked's list keeps its items in `li`
-  slot: (element) => {
-    if (element.type === Text || element.type === View || element.type === ScrollView || element.type === OwnSwipe) return 'children';
-    return Array.isArray(element.props.li) ? 'li' : null;
+  // host text, the views a block nests it in (OwnSwipe wraps a table's or a code block's scroll view) and a
+  // callout's body; react-native-marked's list keeps its items in `li` and its table its cells in `header` and `rows`
+  slots: (element) => {
+    if (element.type === Text || element.type === View || element.type === ScrollView || element.type === OwnSwipe || element.type === AlertBlock) return CHILDREN;
+    if (Array.isArray(element.props.li)) return LIST;
+    return Array.isArray(element.props.header) && Array.isArray(element.props.rows) ? TABLE : null;
   },
+  // inline code and a boxed card take the alpha whole; anything else opaque (an inline image) stays solid
+  dim: (element, alpha) => (element.type === InlineCode || element.type === Dimmed ? cloneElement(element, { alpha }) : element),
   ink: (element) => {
     const color = StyleSheet.flatten(element.props.style)?.color;
     return typeof color === 'string' ? color : undefined;
@@ -123,46 +155,80 @@ const FADE_PAINTER: FadePainter = {
   },
 };
 
-/** how soon a block whose tail is still fading repaints when no new text arrives to repaint it */
-const FADE_TICK_MS = 50;
-
 /**
- * A streamed block's elements with the newest text fading in. The trail grows while the block is
- * the open tail (`live`) and keeps ageing after it seals or the reply ends, so no chunk freezes
- * half-inked; repaints come from the stream's own renders, and from a short timer only while a
- * fade is still running with nothing else arriving.
+ * A streamed block's elements behind the reply's reveal: clear past the head, fading in behind it.
+ * Repaints come from the stream's own renders and, while anything in the block is still clear or
+ * fading, from the shared reveal clock (one timer for every block). A tick skips a block that a
+ * render painted less than half a tick ago.
  */
-function FadeIn({ elements, length, live, ink }: { elements: ReactNode[]; length: number; live: boolean; ink: string }) {
-  const reduced = useReducedMotion();
-  const trail = useRef<FadeTrail | null>(null);
+function FadeIn({ elements, start, length, reveal, ink }: { elements: ReactNode[]; start: number; length: number; reveal: StreamReveal; ink: string }) {
   const [, repaint] = useReducer((count: number) => count + 1, 0);
-  const now = performance.now();
-  // a cache over (length, clock): a render React discards or repeats records the same growth
-  if (reduced) trail.current = null;
-  else if (live) trail.current = growTrail(trail.current, length, now);
-  else if (trail.current && trail.current.length !== length) trail.current = null;
-  const spans = trail.current ? fadeSpans(trail.current, now) : [];
-  const fading = spans.length > 0;
-  useEffect(() => {
-    if (!fading) return;
-    const timer = setTimeout(repaint, FADE_TICK_MS);
-    return () => clearTimeout(timer);
+  const now = revealClock.now();
+  const spans = reveal.spans(start, start + length, now);
+  const animating = spans.length > 0;
+  const paintedAt = useRef(now);
+  useLayoutEffect(() => {
+    paintedAt.current = now;
   });
-  return <>{fading ? fadeTail(elements, spans, ink, FADE_PAINTER) : elements}</>;
+  useLayoutEffect(() => {
+    if (!animating) return;
+    return revealClock.subscribe((tick) => {
+      if (tick - paintedAt.current >= REVEAL_TICK_MS / 2) repaint();
+    });
+  }, [animating]);
+  const boxed = boxCards(elements);
+  return <>{animating ? fadeTail(boxed, spans, ink, FADE_PAINTER) : boxed}</>;
+}
+
+const boxedCache = new WeakMap<ReactNode[], ReactNode[]>();
+
+/** a streamed block's elements with each top-level card the fade cannot see into in a `Dimmed`; once per parse */
+function boxCards(elements: ReactNode[]): ReactNode[] {
+  let boxed = boxedCache.get(elements);
+  if (boxed) return boxed;
+  let out: ReactNode[] | null = null;
+  elements.forEach((element, index) => {
+    if (!isValidElement<FadeProps>(element) || FADE_PAINTER.slots(element) !== null) return;
+    out ??= elements.slice();
+    out[index] = (
+      <Dimmed key={element.key} alpha={1}>
+        {element}
+      </Dimmed>
+    );
+  });
+  boxed = out ?? elements;
+  boxedCache.set(elements, boxed);
+  return boxed;
 }
 
 /**
  * One top-level block, or the whole reply; renders into its parent's view, so blocks add no native
- * views. `fades` is fixed per call site: only a reply seen streaming fades its text in.
+ * views. `tokens` are the open block's lex from the split, so it is not lexed twice. `reveal` is the
+ * reply's (null under reduced motion) and `start` is where the block begins in the reply's source.
  */
-const MarkdownBlock = memo(function MarkdownBlock({ text, streaming, fades, live }: { text: string; streaming: boolean; fades: boolean; live: boolean }) {
+const MarkdownBlock = memo(function MarkdownBlock({
+  text,
+  tokens,
+  streaming,
+  reveal,
+  start,
+}: {
+  text: string;
+  tokens: LexResult | undefined;
+  streaming: boolean;
+  reveal: StreamReveal | null;
+  start: number;
+}) {
   const t = useTokens();
   const renderer = useMemo(() => new TranscriptRenderer({ streaming }), [streaming]);
-  renderer.reset();
-  const { styles, theme } = markdownTheme(t);
-  const elements = useMarkdown(text, { styles, theme, colorScheme: t.renderedMode, renderer });
-  if (!fades) return <>{elements}</>;
-  return <FadeIn elements={elements} length={text.length} live={live} ink={t.uiTextPrimary} />;
+  const { parserStyles } = markdownTheme(t);
+  const parser = useMemo(() => new Parser({ styles: parserStyles, renderer }), [parserStyles, renderer]);
+  const elements = useMemo(() => {
+    renderer.reset();
+    return parser.parse(tokens ?? lex(text));
+  }, [renderer, parser, tokens, text]);
+  if (!reveal) return <>{elements}</>;
+  return <FadeIn elements={elements} start={start} length={text.length} reveal={reveal} ink={t.uiTextPrimary} />;
 });
 
 /** settled replies parsed under one theme: one parser, and the elements of the texts most recently shown */
@@ -173,17 +239,16 @@ const settledCache = new WeakMap<Tokens, Settled>();
 const SETTLED_TEXTS = 300;
 
 /**
- * A settled reply's elements, lexed and parsed once per text and theme. `useMarkdown` builds styles, a
- * parser and the elements per mounted instance, so every chat opened again re-lexed every visible reply;
- * from here a chat switched back to mounts the elements it already had. Element trees are immutable,
- * so two rows with the same text can share one.
+ * A settled reply's elements, lexed and parsed once per text and theme. A streamed block builds a
+ * parser and its elements per mounted instance, so every chat opened again would re-lex every visible
+ * reply; from here a chat switched back to mounts the elements it already had. Element trees are
+ * immutable, so two rows with the same text can share one.
  */
 function settledElements(t: Tokens, text: string): ReactNode[] {
   let entry = settledCache.get(t);
   if (!entry) {
-    const { styles, theme } = markdownTheme(t);
     const renderer = new TranscriptRenderer({ streaming: false });
-    entry = { renderer, parser: new Parser({ styles: getStyles(styles, t.renderedMode, theme), renderer }), elements: new Map() };
+    entry = { renderer, parser: new Parser({ styles: markdownTheme(t).parserStyles, renderer }), elements: new Map() };
     settledCache.set(t, entry);
   }
   const hit = entry.elements.get(text);
@@ -211,12 +276,27 @@ function BlockChunk({ text, streaming }: { text: string; streaming: boolean }) {
   const previous = useRef<BlockState | null>(null);
   const state = splitMarkdownBlocks(text, lex, previous.current);
   previous.current = state;
+  const reduced = useReducedMotion();
+  const [reveal] = useState(() => new StreamReveal());
+  const length = state.src.length;
+  // a reply first seen streaming fades in whole from this render, so its first commit is not solid; a discarded
+  // first render discards this instance's state with it
+  if (streaming && !reveal.started) reveal.arrive(length, revealClock.now());
+  // later text is laid out from this commit: the head sweeps toward it from now, or flushes once the reply settled
+  useLayoutEffect(() => {
+    const now = revealClock.now();
+    if (streaming) reveal.arrive(length, now);
+    else reveal.settle(length, now);
+  }, [reveal, length, streaming]);
+  let start = 0;
   return (
     <View>
-      {state.blocks.map((block, index) => (
-        // `streaming` only changes how a fence renders and `live` only the open tail, so a sealed block without a fence does not re-render when the reply ends
-        <MarkdownBlock key={index} text={block.text} streaming={streaming && block.fenced} fades live={streaming && index === state.blocks.length - 1} />
-      ))}
+      {state.blocks.map((block, index) => {
+        const at = start;
+        start += block.text.length;
+        // `streaming` only changes how a fence renders, so a sealed block without a fence does not re-render when the reply ends
+        return <MarkdownBlock key={index} text={block.text} tokens={block.tokens} streaming={streaming && block.fenced} reveal={reduced ? null : reveal} start={at} />;
+      })}
     </View>
   );
 }

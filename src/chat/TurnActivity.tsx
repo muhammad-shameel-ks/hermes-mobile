@@ -6,7 +6,7 @@
  * turnActivity.ts.
  */
 
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { mixPct } from '../ui/color.ts';
@@ -71,14 +71,15 @@ function useTailSource(source: TailStore | Tail): TailStore {
 /**
  * Where the row mounts. As on the desktop it belongs to the tail reply, just under
  * its content (`message`); until a reply bubble exists it follows the prompt
- * from the list's footer (`footer`, with the rows' inset).
+ * from the list's footer (`footer`, with the rows' inset). Memoised: the live reply
+ * re-renders on every streamed beat, and the row follows its store, not the reply.
  */
-export function TurnActivity({ placement, inset = 0 }: { placement: 'message' | 'footer'; inset?: number }) {
+export const TurnActivity = memo(function TurnActivity({ placement, inset = 0 }: { placement: 'message' | 'footer'; inset?: number }) {
   const store = useTailSource(useContext(TurnActivityContext));
   const tail = useSyncExternalStore(store.subscribe, store.getRender);
   if (!tail.running || tail.tailIsReply !== (placement === 'message')) return null;
   return <TailActivity store={store} tail={tail} inset={inset} />;
-}
+});
 
 function TailActivity({ store, tail, inset }: { store: TailStore; tail: TailRender; inset: number }) {
   const { running, wait, narrating, placeholder } = tail;

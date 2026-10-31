@@ -101,25 +101,39 @@ test('a flush counts as a beat: the stream waits out the interval after it', () 
   assert.equal(heard, 2);
 });
 
-test('the interval stretches with what a render costs, up to a ceiling, and relaxes again', () => {
+test('the interval stretches with what a streamed render costs, up to a ceiling, and relaxes again', () => {
   const fake = fakeClock();
   const throttle = new NotifyThrottle(() => undefined, fake.clock);
   assert.equal(throttle.interval, STREAM_NOTIFY_MS);
+  /** one streamed beat whose render takes `ms` */
+  const beat = (ms: number) => {
+    fake.advance(throttle.interval);
+    throttle.request();
+    fake.render(ms);
+  };
 
-  throttle.flush();
-  fake.render(40);
+  beat(40);
   assert.equal(throttle.interval, 40 * COST_FACTOR, 'a 40 ms render owns a third of the thread at most');
 
-  throttle.flush();
-  fake.render(1_000);
+  beat(1_000);
   assert.equal(throttle.interval, STREAM_NOTIFY_MAX_MS);
 
   // cheap renders halve the remembered cost each time
-  for (let i = 0; i < 12; i += 1) {
-    throttle.flush();
-    fake.render(1);
-  }
+  for (let i = 0; i < 12; i += 1) beat(1);
   assert.equal(throttle.interval, STREAM_NOTIFY_MS);
+});
+
+test('an edge that renders slowly does not stretch the beats of the stream after it', () => {
+  const fake = fakeClock();
+  let heard = 0;
+  const throttle = new NotifyThrottle(() => (heard += 1), fake.clock);
+  // a tool finishing mounts its rows once: a slow render, but not one a streamed beat repeats
+  throttle.flush();
+  fake.render(100);
+  assert.equal(throttle.interval, STREAM_NOTIFY_MS);
+  // the render took longer than a beat: the first text after it is announced at once, not 250 ms after the edge
+  throttle.request();
+  assert.equal(heard, 2, 'the first text after it is announced at once');
 });
 
 test('cancel drops the pending notification', () => {

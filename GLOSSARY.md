@@ -99,11 +99,11 @@ The running turn's user message, pinned at the top of the transcript while the r
 _Avoid_: sticky header, pinned message
 
 **Stick-to-bottom**:
-The transcript's follow-the-tail scroll: pinned to the newest row until the reader scrolls up (however little), re-pinned when they return to the bottom. A send suspends it in favour of the **Prompt lift**.
+The transcript's follow-the-tail scroll: pinned to the newest row until the reader's own gesture last moves the list up (however little), re-pinned when a gesture of theirs comes to rest near the bottom or they tap the jump pill. Nothing the reader did not drive (content shrinking, a reload) pins or unpins it. A send suspends it in favour of the **Prompt lift**.
 _Avoid_: autoscroll, follow mode
 
 **Prompt lift**:
-What a send does to the transcript: the reader's new message scrolls to the top of the viewport and the reply streams into the space beneath it, without following, until the reader scrolls or taps the jump pill.
+What a send from this device does to the transcript: the reader's new message scrolls to the top of the viewport and the reply streams into the space beneath it, without following, until the reader scrolls, taps the jump pill, or the reply settles (a reader still resting on the lift then follows again). The blank space that holds the message up only ever shrinks: to where the reader comes to rest, and away once the rows fill it. A user message a reload or a running turn's replay brings in is never a send.
 _Avoid_: scroll to prompt, anchor
 
 **Receiver**:

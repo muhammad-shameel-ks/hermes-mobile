@@ -3,9 +3,9 @@
  * disclosure caret), ported to Reanimated. Every timing here is the desktop's.
  */
 
-import { memo, useEffect, useState, type ReactNode } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, FadeOut, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { Codicon } from './Codicon.tsx';
 
@@ -53,6 +53,85 @@ function AnimatedEnter({ animationKey, style, children }: Omit<EnterProps, 'enab
   }, [animationKey, offset]);
 
   const animated = useAnimatedStyle(() => ({ transform: [{ translateY: offset.value }] }));
+  return <Animated.View style={[style, animated]}>{children}</Animated.View>;
+}
+
+/** a view leaving under a new one (an empty state handing over to the transcript): the Notice's 180 ms */
+const EXIT_DURATION = 180;
+
+type RevealProps = {
+  style?: StyleProp<ViewStyle>;
+  /** rise by ENTER_OFFSET as it fades in, like a message enter; a transcript-sized view only fades */
+  rise?: boolean;
+  /** fade out over EXIT_DURATION when it unmounts, instead of vanishing */
+  exit?: boolean;
+  children: ReactNode;
+};
+
+/**
+ * Fades its children in when it mounts, over ENTER_TIMING (rising ENTER_OFFSET with `rise`). Opacity and
+ * transform only. As in EnterView the plain-versus-animated choice is made at mount: with reduced motion
+ * it is a plain View with no shared value, animated style or layout animation.
+ */
+export function Reveal({ style, rise = false, exit = false, children }: RevealProps) {
+  const reduced = useReducedMotion();
+  const [animate] = useState(() => !reduced);
+  if (animate) return <AnimatedReveal style={style} rise={rise} exit={exit}>{children}</AnimatedReveal>;
+  return <View style={style}>{children}</View>;
+}
+
+const EXITING = FadeOut.duration(EXIT_DURATION);
+
+function AnimatedReveal({ style, rise, exit, children }: RevealProps) {
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = withTiming(1, ENTER_TIMING);
+  }, [progress]);
+
+  const animated = useAnimatedStyle(() =>
+    rise ? { opacity: progress.value, transform: [{ translateY: (1 - progress.value) * ENTER_OFFSET }] } : { opacity: progress.value },
+  );
+  return (
+    <Animated.View style={[style, animated]} exiting={exit ? EXITING : undefined}>
+      {children}
+    </Animated.View>
+  );
+}
+
+type SwitchFadeProps = {
+  /** advances when the content became another one's; the view fades back in on each advance, never on mount */
+  epoch: number;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
+};
+
+/**
+ * One persistent container whose content is swapped under it: each time `epoch` advances its opacity
+ * restarts from 0 and eases to 1 over ENTER_TIMING, on the UI thread. It never remounts its children
+ * (a list keeps its scroll state and refs) and an unchanged epoch costs nothing, so a stream's re-renders
+ * and a reconnect do not replay it.
+ */
+export function SwitchFade({ epoch, style, children }: SwitchFadeProps) {
+  const reduced = useReducedMotion();
+  const [animate] = useState(() => !reduced);
+  if (animate) return <AnimatedSwitch epoch={epoch} style={style}>{children}</AnimatedSwitch>;
+  return <View style={style}>{children}</View>;
+}
+
+function AnimatedSwitch({ epoch, style, children }: SwitchFadeProps) {
+  const opacity = useSharedValue(1);
+  const shown = useRef(epoch);
+
+  // a layout effect, not a passive one: the restart is queued in the commit that brings the new content, not a frame later
+  useLayoutEffect(() => {
+    if (shown.current === epoch) return;
+    shown.current = epoch;
+    opacity.value = 0;
+    opacity.value = withTiming(1, ENTER_TIMING);
+  }, [epoch, opacity]);
+
+  const animated = useAnimatedStyle(() => ({ opacity: opacity.value }));
   return <Animated.View style={[style, animated]}>{children}</Animated.View>;
 }
 

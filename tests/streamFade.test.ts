@@ -1,52 +1,34 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createElement, isValidElement, type ReactNode } from 'react';
+import { cloneElement, createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 
-import { FADE_MS, fadeSpans, fadeTail, growTrail, type FadePainter, type FadeProps } from '../src/chat/streamFade.ts';
+import { contentChars, fadeTail, type FadePainter, type FadeProps, type FadeSlot } from '../src/chat/streamFade.ts';
 
-test('a block first seen streaming fades in whole, then each growth is its own chunk', () => {
-  let trail = growTrail(null, 10, 0);
-  assert.deepEqual(fadeSpans(trail, 0), [{ chars: 10, alpha: 0 }]);
-  trail = growTrail(trail, 16, 100);
-  const spans = fadeSpans(trail, 100);
-  assert.deepEqual(spans[0], { chars: 6, alpha: 0 });
-  assert.equal(spans[1].chars, 10);
-  assert.ok(spans[1].alpha > 0 && spans[1].alpha < 1);
-});
+const CHILDREN: readonly FadeSlot[] = ['children'];
 
-test('a chunk is solid once FADE_MS has passed, and solid chunks end the spans', () => {
-  let trail = growTrail(null, 10, 0);
-  trail = growTrail(trail, 20, FADE_MS / 2);
-  // the newer chunk is half way, eased: 1 - 0.5² = 0.75, painted in tenths
-  assert.deepEqual(fadeSpans(trail, FADE_MS), [{ chars: 10, alpha: 0.8 }]);
-  assert.deepEqual(fadeSpans(trail, FADE_MS * 2), []);
-});
-
-test('an unchanged length keeps the trail; a shrunk source paints solid', () => {
-  const trail = growTrail(null, 10, 0);
-  assert.equal(growTrail(trail, 10, 50), trail);
-  assert.deepEqual(fadeSpans(growTrail(trail, 4, 50), 50), []);
-});
-
-test('chunks that arrived together at the same alpha merge into one span', () => {
-  let trail = growTrail(null, 5, 0);
-  trail = growTrail(trail, 9, 0.001);
-  assert.deepEqual(fadeSpans(trail, 0.001), [{ chars: 9, alpha: 0 }]);
-});
-
+// `code` and `card` stand for inline code and a card: the fade cannot see into them, but can dim them whole
 const painter: FadePainter = {
-  slot: (element) => (element.type === 'text' || element.type === 'view' ? 'children' : Array.isArray(element.props.li) ? 'li' : null),
+  slots: (element) => {
+    if (element.type === 'text' || element.type === 'view') return CHILDREN;
+    if (Array.isArray(element.props.li)) return ['li'];
+    return element.props.header && element.props.rows ? ['header', 'rows'] : null;
+  },
   ink: (element) => (element.props.style && typeof element.props.style === 'object' && 'color' in element.props.style ? String(element.props.style.color) : undefined),
   paint: (text, ink, alpha, key) => createElement('paint', { key, ink, alpha }, text),
+  dim: (element, alpha) => (element.type === 'code' || element.type === 'card' ? cloneElement(element, { alpha }) : element),
 };
 
-/** the rendered text with each painted run marked as [text@alpha:ink] */
+type Shown = FadeProps & { ink?: string; text?: string };
+
+/** the rendered text with each painted run marked as [text@alpha:ink] and each dimmed element as {type text@alpha} */
 function show(node: ReactNode): string {
   if (typeof node === 'string') return node;
   if (Array.isArray(node)) return node.map(show).join('');
-  if (!isValidElement<FadeProps & { ink?: string; alpha?: number }>(node)) return '';
+  if (!isValidElement<Shown>(node)) return '';
   if (node.type === 'paint') return `[${show(node.props.children)}@${node.props.alpha}:${node.props.ink}]`;
-  return show(node.props.children) + (node.props.li ? node.props.li.map(show).join('|') : '');
+  if (node.type === 'code' || node.type === 'card') return `{${String(node.type)} ${node.props.text}${node.props.alpha === undefined ? '' : `@${node.props.alpha}`}}`;
+  const table = node.props.header && node.props.rows ? `${show(node.props.header)}/${show(node.props.rows)}` : '';
+  return show(node.props.children) + (node.props.li ? node.props.li.map(show).join('|') : '') + table;
 }
 
 test('the trailing characters are repainted across nested runs, in their own ink', () => {
@@ -66,12 +48,28 @@ test('elements off the tail keep their identity', () => {
   assert.equal(fadeTail(nodes, [], 'ink', painter), nodes);
 });
 
-test('an element the painter cannot see into ends the walk, leaving earlier text solid', () => {
-  const card = createElement('card', { key: 'c' });
+test('inline code past the head is clear like the text around it, and the text before it still reveals', () => {
+  const code: ReactElement = createElement('code', { key: 'c', text: 'npm test' });
+  const line = createElement('text', { key: 't', style: { color: 'ink' } }, ['Run ', code]);
+  // the newest 10 characters are clear: the 8 of the code and 2 before it; 20 more are half inked
+  const out = fadeTail([line], [{ chars: 10, alpha: 0 }, { chars: 20, alpha: 0.5 }], 'base', painter);
+  assert.equal(show(out), '[Ru@0.5:ink][n @0:ink]{code npm test@0}');
+});
+
+test('a card counts its content and dims whole to its newest alpha; the walk goes on before it', () => {
+  const card = createElement('card', { key: 'c', text: 'abcd' });
   const text = createElement('text', { key: 't' }, 'before');
-  const out = fadeTail([text, card], [{ chars: 4, alpha: 0 }], 'ink', painter);
-  assert.equal(out[0], text);
-  assert.equal(out[1], card);
+  // 2 clear characters fall inside the card, which then shows clear whole; 4 more at 0.5 cover its rest and 2 of the text
+  const out = fadeTail([text, card], [{ chars: 2, alpha: 0 }, { chars: 4, alpha: 0.5 }], 'ink', painter);
+  assert.equal(show(out), 'befo[re@0.5:ink]{card abcd@0}');
+  assert.equal(contentChars(card), 4);
+});
+
+test("a table's cells are reached newest first, rows before the header", () => {
+  const cell = (text: string) => [createElement('text', { key: text }, text)];
+  const table = createElement('table', { key: 'tb', header: [cell('Ah'), cell('Bh')], rows: [[cell('c1'), cell('d1')]] });
+  const out = fadeTail([table], [{ chars: 3, alpha: 0 }], 'ink', painter);
+  assert.equal(show(out), 'AhBh/c[1@0:ink][d1@0:ink]');
 });
 
 test('list items are reached through the list element', () => {

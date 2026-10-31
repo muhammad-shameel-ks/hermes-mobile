@@ -1557,7 +1557,7 @@ function withInflight(transcript: Transcript, resumed: SessionResumeResult): Tra
   let next = { ...transcript, running: true };
   const lastUser = findLast(next.messages, (m) => m.role === 'user');
   const lastUserText = lastUser?.parts[0]?.kind === 'text' ? lastUser.parts[0].text : '';
-  if (inflight?.user && inflight.user !== lastUserText) next = addUserMessage(next, inflight.user);
+  if (inflight?.user && inflight.user !== lastUserText) next = addUserMessage(next, inflight.user, { sent: false });
   next = applyEvent(next, { type: 'message.start', payload: {} });
   if (inflight?.assistant) next = applyEvent(next, { type: 'message.delta', payload: { text: inflight.assistant } });
   return next;

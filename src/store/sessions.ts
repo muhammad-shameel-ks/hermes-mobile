@@ -18,6 +18,13 @@ export function persistable(messages: readonly Message[]): Message[] {
   return messages.filter((m) => m.status !== 'streaming' && !(m.role === 'system' && m.id.startsWith('live-')));
 }
 
+/** a restored message is history: the "the reader just sent this" cue stays with the run that sent it */
+function unsent(message: Message): Message {
+  if (!message.sent) return message;
+  const { sent: _sent, ...rest } = message;
+  return rest;
+}
+
 /**
  * The serialized tail for `messages`, or null when there is nothing worth keeping or it is too heavy:
  * the newest WARM_TAIL_MESSAGES if they fit the byte cap, else the newest WARM_TAIL_FALLBACK_MESSAGES.
@@ -32,7 +39,7 @@ export function serializeTail(messages: readonly Message[]): string | null {
   let size = 1; // the brackets, less the one comma a joined list saves
   let fallback: { parts: string[]; size: number } | null = null;
   for (let i = newest.length - 1; i >= 0; i -= 1) {
-    const part = JSON.stringify(newest[i]);
+    const part = JSON.stringify(unsent(newest[i]));
     parts.push(part);
     size += part.length + 1;
     if (parts.length === WARM_TAIL_FALLBACK_MESSAGES) fallback = { parts: parts.slice(), size };

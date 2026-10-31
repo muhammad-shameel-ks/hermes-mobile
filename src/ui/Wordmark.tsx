@@ -3,39 +3,56 @@
  * the word fills its width (desktop `.wordmark.fit-text`, floor 2.75rem). The
  * desktop fits with container-query maths; here the word is measured once at a
  * reference size and scaled linearly, which is exact because tracking is in em.
+ * What a mount learns (the word's reference width, the box's width) is remembered
+ * per text (`wordmarkFit.ts`), so the next mount sizes itself on its first render.
  */
 
 import { useState } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { isLoaded } from 'expo-font';
+import { StyleSheet, Text, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useTokens, WORDMARK_FONT } from './tokens.ts';
+import { createFitMemo, fitSize, REFERENCE, TRACKING, type Fit } from './wordmarkFit.ts';
 
-const REFERENCE = 100;
-const FIT_MIN = 44;
-const TRACKING = 0.08;
+const memo = createFitMemo();
+
+type Laid = Fit & { text: string };
 
 export function Wordmark({ text, style }: { text: string; style?: StyleProp<ViewStyle> }) {
   const t = useTokens();
-  const [width, setWidth] = useState(0);
-  const [measured, setMeasured] = useState(0);
-  // a hair under the exact fit: line widths round differently across sizes, and a 1px overflow would ellipsize
-  const size = width && measured ? Math.max(FIT_MIN, (REFERENCE * width * 0.98) / measured) : 0;
   const upper = text.toUpperCase();
+  const [laid, setLaid] = useState<Laid>(() => ({ text: upper, ...memo.recall(upper) }));
+  // another word in the same box (a bot's label after another's) starts from what is known of it
+  if (laid.text !== upper) setLaid({ text: upper, ...memo.recall(upper) });
+  const { width, measured } = laid;
+  const size = fitSize(width, measured);
+  // a measure taken in the real face is final: the off-screen probe is laid out only until one exists
+  const probing = memo.recall(upper).measured === 0;
+
+  const onLayout = (e: LayoutChangeEvent) => {
+    const next = e.nativeEvent.layout.width;
+    memo.noteWidth(upper, next);
+    setLaid((prev) => (prev.text === upper && Math.abs(prev.width - next) <= 0.5 ? prev : { ...prev, text: upper, width: next }));
+  };
 
   return (
-    <View style={[styles.box, style]} onLayout={(e) => setWidth(e.nativeEvent.layout.width)} accessibilityRole="header" accessibilityLabel={text}>
-      <Text
-        style={[styles.word, styles.probe, { fontSize: REFERENCE, letterSpacing: REFERENCE * TRACKING }]}
-        allowFontScaling={false}
-        numberOfLines={1}
-        onTextLayout={(e) => {
-          const line = e.nativeEvent.lines[0];
-          if (line && Math.abs(line.width - measured) > 0.5) setMeasured(line.width);
-        }}
-        accessible={false}
-      >
-        {upper}
-      </Text>
+    <View style={[styles.box, style]} onLayout={onLayout} accessibilityRole="header" accessibilityLabel={text}>
+      {probing ? (
+        <Text
+          style={[styles.word, styles.probe, { fontSize: REFERENCE, letterSpacing: REFERENCE * TRACKING }]}
+          allowFontScaling={false}
+          numberOfLines={1}
+          onTextLayout={(e) => {
+            const line = e.nativeEvent.lines[0];
+            if (!line) return;
+            if (isLoaded(WORDMARK_FONT)) memo.noteMeasured(upper, line.width);
+            setLaid((prev) => (prev.text === upper && Math.abs(prev.measured - line.width) <= 0.5 ? prev : { ...prev, text: upper, measured: line.width }));
+          }}
+          accessible={false}
+        >
+          {upper}
+        </Text>
+      ) : null}
       {size ? (
         <Text
           style={[styles.word, { color: t.uiWordmark, fontSize: size, lineHeight: size * 0.9, letterSpacing: size * TRACKING, paddingTop: size * 0.06 }]}

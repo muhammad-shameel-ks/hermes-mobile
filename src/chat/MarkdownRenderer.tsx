@@ -6,12 +6,14 @@
  * degrades to copy-path. Mermaid, KaTeX and URL embeds are not here by
  * decision (no WebView): they stay a code block and a plain link.
  *
- * Keys come from a counter that `reset()` rewinds before every parse, so an
- * element keeps its key from one streaming delta to the next. The base
- * renderer's slugger never rewinds, which would remount the whole reply (and a
- * card's own state) on every token. Each streamed block (Markdown.tsx) owns its
- * renderer, so its keys are local to it and a block's key never depends on the
- * blocks around it.
+ * Keys come from `BlockKeys` (markdownKeys.ts), which `reset()` rewinds before
+ * every parse: a leaf's key counts the leaves before it and an element made
+ * from children takes its first child's, so an element keeps its key from one
+ * streaming delta to the next even while content is appended inside it. The
+ * base renderer's slugger never rewinds, which would remount the whole reply
+ * (and a card's own state) on every token. Each streamed block (Markdown.tsx)
+ * owns its renderer, so its keys are local to it and a block's key never
+ * depends on the blocks around it.
  */
 
 import type { ReactNode } from 'react';
@@ -31,6 +33,7 @@ import { SvgBlock } from './cards/SvgBlock.tsx';
 import { VideoCard } from './cards/VideoCard.tsx';
 import { AudioCard } from './cards/AudioCard.tsx';
 import { InlineCode } from './InlineCode.tsx';
+import { BlockKeys, firstKey } from './markdownKeys.ts';
 import { OwnSwipe } from './OwnSwipe.tsx';
 import { parseListings } from './listing.ts';
 import { isFileMediaPath, mediaKind, mediaPathFromMarkdownHref } from './media.ts';
@@ -41,7 +44,7 @@ function CodeSlab({ children }: { children: ReactNode }) {
 }
 
 export class TranscriptRenderer extends Renderer {
-  private counter = 0;
+  private readonly keys = new BlockKeys();
   private readonly streaming: boolean;
 
   constructor(options: { streaming?: boolean } = {}) {
@@ -50,12 +53,48 @@ export class TranscriptRenderer extends Renderer {
   }
 
   reset(): void {
-    this.counter = 0;
+    this.keys.reset();
   }
 
   override getKey(): string {
-    this.counter += 1;
-    return `md-${this.counter}`;
+    return this.keys.next();
+  }
+
+  // the elements made from children: each takes its first child's key (markdownKeys.ts)
+  override paragraph(children: ReactNode[], styles?: ViewStyle): ReactNode {
+    return this.keys.around(children, () => super.paragraph(children, styles));
+  }
+
+  override heading(text: string | ReactNode[], styles?: TextStyle): ReactNode {
+    return this.keys.around(text, () => super.heading(text, styles));
+  }
+
+  override listItem(children: ReactNode[], styles?: ViewStyle): ReactNode {
+    return this.keys.around(children, () => super.listItem(children, styles));
+  }
+
+  override list(ordered: boolean, li: ReactNode[], listStyle?: ViewStyle, textStyle?: TextStyle, startIndex?: number): ReactNode {
+    return this.keys.around(li, () => super.list(ordered, li, listStyle, textStyle, startIndex));
+  }
+
+  override strong(children: string | ReactNode[], styles?: TextStyle): ReactNode {
+    return this.keys.around(children, () => super.strong(children, styles));
+  }
+
+  override em(children: string | ReactNode[], styles?: TextStyle): ReactNode {
+    return this.keys.around(children, () => super.em(children, styles));
+  }
+
+  override del(children: string | ReactNode[], styles?: TextStyle): ReactNode {
+    return this.keys.around(children, () => super.del(children, styles));
+  }
+
+  override text(text: string | ReactNode[], styles?: TextStyle): ReactNode {
+    return this.keys.around(text, () => super.text(text, styles));
+  }
+
+  override html(text: string | ReactNode[], styles?: TextStyle): ReactNode {
+    return this.keys.around(text, () => super.html(text, styles));
   }
 
   override image(uri: string, alt?: string, _style?: ImageStyle, title?: string): ReactNode {
@@ -75,6 +114,10 @@ export class TranscriptRenderer extends Renderer {
   }
 
   override link(children: string | ReactNode[], href: string, styles?: TextStyle, title?: string): ReactNode {
+    return this.keys.around(children, () => this.linkElement(children, href, styles, title));
+  }
+
+  private linkElement(children: string | ReactNode[], href: string, styles?: TextStyle, title?: string): ReactNode {
     const path = mediaPathFromMarkdownHref(href) ?? (!href.startsWith('#') && isFileMediaPath(href) ? href : null);
     if (!path) return super.link(children, href, styles, title);
     // a media file is a block, not a run of text; anything else has no door until Files lands
@@ -117,12 +160,16 @@ export class TranscriptRenderer extends Renderer {
   }
 
   override table(header: ReactNode[][], rows: ReactNode[][][], tableStyle?: ViewStyle, rowStyle?: ViewStyle, cellStyle?: ViewStyle): ReactNode {
-    return <OwnSwipe key={this.getKey()}>{super.table(header, rows, tableStyle, rowStyle, cellStyle)}</OwnSwipe>;
+    // the swipe wrapper and the table inside it share the first cell's key
+    const key = firstKey([header, rows]) ?? this.getKey();
+    return <OwnSwipe key={key}>{this.keys.lend(key, () => super.table(header, rows, tableStyle, rowStyle, cellStyle))}</OwnSwipe>;
   }
 
   override blockquote(children: ReactNode[], styles?: ViewStyle): ReactNode {
-    const alert = extractAlert(children);
-    if (alert) return <AlertBlock key={this.getKey()} type={alert.type}>{alert.body}</AlertBlock>;
-    return super.blockquote(children, styles);
+    return this.keys.around(children, () => {
+      const alert = extractAlert(children);
+      if (alert) return <AlertBlock key={this.getKey()} type={alert.type}>{alert.body}</AlertBlock>;
+      return super.blockquote(children, styles);
+    });
   }
 }

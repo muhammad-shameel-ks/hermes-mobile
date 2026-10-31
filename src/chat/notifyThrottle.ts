@@ -7,10 +7,13 @@
  * is paced: the first change after a quiet spell notifies at once, the rest
  * share one trailing notification per interval.
  *
- * The interval stretches with what the last notification cost to render, so
+ * The interval stretches with what the last streamed notification cost to render, so
  * however heavy the tree gets the thread keeps most of its time free for input.
  * The cost is read from the microtask that follows the listeners: React flushes
- * a `useSyncExternalStore` update in a microtask queued from inside them.
+ * a `useSyncExternalStore` update in a microtask queued from inside them. Only
+ * paced notifications are sampled: an edge (a tool starting or finishing, a send)
+ * mounts rows once and says nothing about what the next streamed beat will cost,
+ * so it would only stretch the first beats of the text after it.
  */
 
 export type ThrottleClock = {
@@ -61,19 +64,19 @@ export class NotifyThrottle {
     if (this.cancelPending) return;
     const wait = this.lastAt + this.interval - this.clock.now();
     if (wait <= 0) {
-      this.fire();
+      this.fire(true);
       return;
     }
     this.cancelPending = this.clock.after(wait, () => {
       this.cancelPending = null;
-      this.fire();
+      this.fire(true);
     });
   }
 
   /** notify now, taking over any wait in progress */
   flush() {
     this.cancel();
-    this.fire();
+    this.fire(false);
   }
 
   cancel() {
@@ -81,10 +84,11 @@ export class NotifyThrottle {
     this.cancelPending = null;
   }
 
-  private fire() {
+  private fire(sample: boolean) {
     const start = this.clock.now();
     this.lastAt = start;
     this.notify();
+    if (!sample) return;
     // quick to notice a slow render, slow to forget it
     this.clock.microtask(() => {
       this.cost = Math.max(this.clock.now() - start, this.cost / 2);
