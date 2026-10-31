@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.39] - 2026-10-31
+
+- Smooth streaming replies and chat switches, let a reader stop the follow, and fix downloads (#48) ([cc3097d](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/cc3097d))
+
 ## [0.1.38] - 2026-10-22
 
 - docs(readme): cover voice providers, bot sections, drawer swipe and parity docs (#47) ([d8b058c](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/d8b058c))
