@@ -7,7 +7,8 @@
  */
 
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { FlatList } from 'react-native-gesture-handler';
 
 import { useOverlay } from '../app/overlay.tsx';
 import type { ChatController, SessionInfo } from '../chat/controller.ts';

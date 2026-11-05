@@ -15,7 +15,6 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { SIGN_IN_FAILURE_COPY } from '../app/boot-state.ts';
 import { signIn } from '../auth/native-flow.ts';
@@ -43,70 +42,23 @@ export const BOOT_COPY = {
   signedOutTitle: 'Signed out',
   signedOutDescription: (label: string) => `Sign in again to reconnect to ${label}. Your chats and settings are safe.`,
   signedOutHint: 'Signing out only forgets this phone’s tokens; the gateway keeps its token until it lapses.',
-  connectionLost: 'Hermes lost its connection',
-  connectionLostDetail: 'Still trying to reconnect. If this keeps up, reconnect now or sign out and check the gateway.',
-  reconnectNow: 'Reconnect now',
-  signOut: 'Sign out',
-  unsupportedTitle: 'This gateway is not supported yet',
-  unsupportedDetail: 'Sign out to connect to a different gateway.',
 };
 
 // ─── connecting ──────────────────────────────────────────────────────────────
 
-export type ConnectingPhase = 'live' | 'text-out' | 'overlay-out' | 'gone';
-
-/** desktop exit choreography (ms): text fades down and out, hold, then the overlay fades */
-export const TEXT_OUT_MS = 360;
-export const POST_TEXT_HOLD_MS = 300;
-export const OVERLAY_OUT_MS = 520;
-
-export function ConnectingView({ phase = 'live' }: { phase?: ConnectingPhase }) {
-  const t = useTokens();
-  const leaving = phase !== 'live';
-  const hidden = phase === 'overlay-out' || phase === 'gone';
-  const text = useSharedValue(leaving ? 1 : 0);
-  const overlay = useSharedValue(hidden ? 1 : 0);
-
-  useEffect(() => {
-    text.value = withTiming(leaving ? 1 : 0, { duration: 300, easing: Easing.out(Easing.cubic) });
-    overlay.value = withTiming(hidden ? 1 : 0, { duration: OVERLAY_OUT_MS, easing: Easing.out(Easing.cubic) });
-  }, [leaving, hidden, text, overlay]);
-
-  const overlayStyle = useAnimatedStyle(() => ({ opacity: 1 - overlay.value }));
-  const textStyle = useAnimatedStyle(() => ({ opacity: 1 - text.value, transform: [{ translateY: text.value * 8 }] }));
-
-  return (
-    <Animated.View style={[styles.fill, styles.center, { backgroundColor: t.uiChatSurfaceBackground }, overlayStyle]} pointerEvents={hidden ? 'none' : 'auto'} accessibilityViewIsModal>
-      <Animated.View style={textStyle}>
-        {/* `--theme-primary` on the desktop; the accent is the same hue in the shipped skin */}
-        <DecodeText text={BOOT_COPY.connecting} prefix={4} color={t.uiAccent} active={phase === 'live'} loop cursor />
-      </Animated.View>
-    </Animated.View>
-  );
-}
-
+/**
+ * The app's one blocking screen, and only for the credential read: a saved gateway's credentials are
+ * restored without touching the network, so this is gone in a frame or two. Everything after it - the
+ * socket dial, a reconnect, a gateway that is down - is the chat's inline banner, not a screen.
+ */
 export function ConnectingScreen() {
-  return <ConnectingView />;
-}
-
-/** the exit choreography around a connecting view that is dismissed when `connected` turns true */
-export function useConnectingPhase(connected: boolean): ConnectingPhase {
-  const reduced = useReducedMotion();
-  const [phase, setPhase] = useState<ConnectingPhase>('live');
-  useEffect(() => {
-    if (phase === 'live' && connected) setPhase(reduced ? 'gone' : 'text-out');
-  }, [phase, connected, reduced]);
-  useEffect(() => {
-    if (phase === 'text-out') {
-      const id = setTimeout(() => setPhase('overlay-out'), TEXT_OUT_MS + POST_TEXT_HOLD_MS);
-      return () => clearTimeout(id);
-    }
-    if (phase === 'overlay-out') {
-      const id = setTimeout(() => setPhase('gone'), OVERLAY_OUT_MS);
-      return () => clearTimeout(id);
-    }
-  }, [phase]);
-  return phase;
+  const t = useTokens();
+  return (
+    <View style={[styles.fill, styles.center, { backgroundColor: t.uiChatSurfaceBackground }]} accessibilityViewIsModal>
+      {/* `--theme-primary` on the desktop; the accent is the same hue in the shipped skin */}
+      <DecodeText text={BOOT_COPY.connecting} prefix={4} color={t.uiAccent} active loop cursor />
+    </View>
+  );
 }
 
 // ─── failure card ────────────────────────────────────────────────────────────

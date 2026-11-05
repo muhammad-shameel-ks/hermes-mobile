@@ -6,6 +6,7 @@
  */
 
 import type { Message } from './transcript.ts';
+import { FRESH_DRAFT_KEY } from '../store/drafts.ts';
 
 export type RowFrame = { y: number; height: number };
 
@@ -159,6 +160,25 @@ export class TailFollow {
     return this.pinned && !this.gesture;
   }
 
+  /**
+   * Whether a gesture is still in flight. A touch the shell's drawer swipe cancels never delivers
+   * `dragEnd`, so the hook watches for a release that never came and settles from where the list is.
+   */
+  get gesturing(): boolean {
+    return this.gesture;
+  }
+
+  /**
+   * No end event arrived for a gesture whose touch is gone (the drawer pan took it over): settle it
+   * from where the list now is, so following can never be left off for the rest of the session.
+   * False when there was no gesture to release.
+   */
+  release(distance: number, scrollY: number): boolean {
+    if (!this.gesture) return false;
+    this.settle(distance, scrollY);
+    return true;
+  }
+
   private reach(scrollY: number): void {
     if (scrollY > this.peakY) this.peakY = scrollY;
   }
@@ -207,9 +227,47 @@ export class LiftPadding {
   }
 }
 
+/**
+ * Whether the messages on screen grew by a send, rather than being replaced by another chat. The keys
+ * around the look and the tail id before it decide it, because the transcript's own shape cannot: a
+ * chat that was empty and one that holds a single live `sent` row look identical.
+ *
+ * A draft's first send re-keys the same transcript, but only after the reader's row was appended under
+ * the draft's own key, so the tail is already known when the key changes. A re-key with no known tail
+ * is therefore not a send - it is an empty draft being left for another chat, whose lone `sent` row
+ * belongs to that chat, not to this look.
+ */
+export function appendedSend(previousKey: string, sessionKey: string, previousTail: string | null): boolean {
+  if (previousKey === sessionKey) return true;
+  return previousKey === FRESH_DRAFT_KEY && previousTail !== null;
+}
+
 /** how far back from the tail a send is looked for: its reply (and a notice) may land in the same look */
 const SENT_LOOKBACK = 4;
 
+export type OpenStep = 'stop' | 'place' | 'hold';
+
+/**
+ * What a chat that just opened does about its position on this beat. The list lays out only its first
+ * window, so the bottom it reports after the first batch is a few rows into a long thread; the bottom
+ * has to be commanded again as each batch below arrives, until the newest row is measured under the
+ * viewport. `placed` is the content height the last command was computed from, so a beat that changed
+ * nothing does not re-command; the deadline stops a list that never reports its tail from holding the
+ * chat off the newest messages.
+ */
+export function openStep(state: {
+  tailMeasured: boolean;
+  onTail: boolean;
+  content: number;
+  placed: number;
+  now: number;
+  deadline: number;
+}): OpenStep {
+  if (state.now >= state.deadline) return 'stop';
+  if (state.tailMeasured && state.onTail) return 'stop';
+  if (state.tailMeasured || state.content !== state.placed) return 'place';
+  return 'hold';
+}
 /**
  * The reader's message a send just appended, or null. `previousTail` is the id the tail had at the
  * last look: the send is a user message this device sent (`sent`) among the messages after it, with

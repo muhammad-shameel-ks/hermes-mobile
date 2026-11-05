@@ -36,7 +36,6 @@ import { GroupLauncher, type GroupLaunch } from '../groups/GroupLauncher.tsx';
 import { GroupsModel } from '../groups/model.ts';
 import type { GroupRoom } from '../groups/rooms.ts';
 import { useGroupActions } from '../groups/useGroupActions.tsx';
-import ColdBootOverlay from '../screens/ColdBootOverlay.tsx';
 import { SettingsProvider } from '../settings/context.tsx';
 import { useSeedActiveProfile } from '../settings/useSeedActiveProfile.ts';
 import { ActionSheet, type SheetAction } from '../ui/Sheet.tsx';
@@ -288,7 +287,6 @@ export default function SignedInApp(props: Props) {
         {groupActions.element}
         {sessionActions.element}
         {sectionActions.element}
-        <ColdBootOverlay link={link} onRetry={() => controller.retryLink()} onSignOut={props.onSignOut} />
       </View>
     </OverlayProvider>
     </SettingsProvider>

@@ -25,6 +25,7 @@ import { openTranscript, type ChatMeta } from './chatSlices.ts';
 import type { ChatController } from './controller.ts';
 import { introBody } from './intro.ts';
 import { MessageView } from './MessageView.tsx';
+import { OwnSwipe } from './OwnSwipe.tsx';
 import { RequestsProvider } from './RequestsProvider.tsx';
 import { ScrollToBottomButton } from './ScrollToBottomButton.tsx';
 import { ShowEarlier } from './ShowEarlier.tsx';
@@ -157,34 +158,47 @@ export const TranscriptPane = memo(function TranscriptPane({ controller, meta, b
             ) : (
               <Reveal style={styles.list}>
                 <RowsContext.Provider value={rows}>
-                  <ThreadPrimitive.MessagesFlatList
-                    ref={jump.listRef}
-                    style={styles.list}
-                    contentContainerStyle={listContent}
-                    keyboardDismissMode="interactive"
-                    keyboardShouldPersistTaps="handled"
-                    CellRendererComponent={jump.Cell}
-                    onScroll={(event) => {
-                      pull.track(event);
-                      jump.onScroll(event);
-                    }}
-                    onScrollBeginDrag={jump.onDragStart}
-                    onScrollEndDrag={jump.onDragEnd}
-                    onMomentumScrollBegin={jump.onFlingStart}
-                    onMomentumScrollEnd={jump.onFlingEnd}
-                    onContentSizeChange={jump.onContentSize}
-                    onLayout={jump.onLayout}
-                    // following a streaming reply is useJumpToBottom's; assistant-ui's own follow can yank a reader mid-drag,
-                    // and a send lifts the reader's message to the top instead of jumping to the bottom when the run starts
-                    autoScroll={false}
-                    scrollToBottomOnRunStart={false}
-                    ListHeaderComponent={header}
-                    ListFooterComponent={footer}
-                    refreshControl={pull.refreshControl}
-                    scrollEventThrottle={16}
-                  >
-                    {renderRow}
-                  </ThreadPrimitive.MessagesFlatList>
+                  <OwnSwipe>
+                    <ThreadPrimitive.MessagesFlatList
+                      ref={jump.listRef}
+                      style={styles.list}
+                      contentContainerStyle={listContent}
+                      keyboardDismissMode="interactive"
+                      keyboardShouldPersistTaps="handled"
+                      CellRendererComponent={jump.Cell}
+                      onScroll={(event) => {
+                        pull.track(event);
+                        jump.onScroll(event);
+                      }}
+                      onScrollBeginDrag={jump.onDragStart}
+                      onScrollEndDrag={jump.onDragEnd}
+                      onMomentumScrollBegin={jump.onFlingStart}
+                      onMomentumScrollEnd={jump.onFlingEnd}
+                      onContentSizeChange={jump.onContentSize}
+                      onLayout={jump.onLayout}
+                      onTouchStart={jump.onTouchStart}
+                      onTouchEnd={jump.onTouchEnd}
+                      onTouchCancel={jump.onTouchEnd}
+                      // following a streaming reply is useJumpToBottom's; assistant-ui's own follow can yank a reader mid-drag,
+                      // and a send lifts the reader's message to the top instead of jumping to the bottom when the run starts.
+                      // Its initialize and thread-switch jumps are off too: they land on the bottom of the first rendered
+                      // batch, which is the middle of a long thread, and fight the placement the hook does.
+                      autoScroll={false}
+                      scrollToBottomOnRunStart={false}
+                      scrollToBottomOnInitialize={false}
+                      scrollToBottomOnThreadSwitch={false}
+                      ListHeaderComponent={header}
+                      ListFooterComponent={footer}
+                      refreshControl={pull.refreshControl}
+                      scrollEventThrottle={16}
+                      // a chat opens by placing the list on its newest message; the fewer, larger batches the list
+                      // lays out on the way there, the fewer visible steps it takes (see OPEN_PIN_MS)
+                      initialNumToRender={16}
+                      maxToRenderPerBatch={20}
+                    >
+                      {renderRow}
+                    </ThreadPrimitive.MessagesFlatList>
+                  </OwnSwipe>
                 </RowsContext.Provider>
                 <ScrollToBottomButton visible={jump.visible} count={jump.count} onPress={jump.toBottom} />
               </Reveal>

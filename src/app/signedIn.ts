@@ -14,7 +14,6 @@ import { createMediaResolver } from '../chat/mediaResolver.ts';
 import { bindGateway } from '../files/gateway.ts';
 import { createGatewayApi } from '../gateway/api.ts';
 import { gatewaySocketUrl, GatewayLink } from '../gateway/link.ts';
-import { probeGateway } from '../gateway/status.ts';
 import { createPersistence } from '../store/index.ts';
 import { restoreSession } from './boot-state.ts';
 import { createControllerHost, type Hosted } from './controllerHost.ts';
@@ -62,4 +61,4 @@ export const runningStack = (): Hosted<ChatController> | null => host.current();
 export const endSignedIn = (connectionId: string): void => host.end(connectionId);
 
 export const restore = () =>
-  restoreSession({ loadConnection, loadCredentials, saveCredentials, refreshCredentials, probeGateway, isStale, nowSeconds });
+  restoreSession({ loadConnection, loadCredentials });

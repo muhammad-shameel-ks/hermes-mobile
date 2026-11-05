@@ -1,8 +1,9 @@
 /**
- * Enrols a scroll view that react-native-marked renders (a table, a plain code block) in the gesture
- * system, so a sideways swipe that scrolls it stays its own. Left out, the chat's drawer swipe takes
- * the touch over 16 dp in and opens the drawer mid-scroll. The child's root view must be the scroll
- * view. Scroll views the app renders itself import gesture-handler's `ScrollView`, which does the same.
+ * Enrols a scroll view the app does not render itself in the gesture system: the ones react-native-marked
+ * renders (a table, a plain code block) and the transcript's assistant-ui list. Left out, the shell's
+ * drawer swipe takes the touch over 16 dp in and opens the drawer mid-scroll. The child's root view must
+ * be the scroll view. Scroll views the app renders itself import gesture-handler's `ScrollView`, which
+ * does the same.
  */
 
 import { useMemo, type ReactNode } from 'react';
