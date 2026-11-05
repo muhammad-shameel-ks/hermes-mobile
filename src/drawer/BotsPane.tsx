@@ -6,10 +6,12 @@
  * No filters menu or mute bell in v1 (issues #12, #17).
  */
 
-import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 
 import { filterBots, type Bot } from '../bots/roster.ts';
+import { setFacesPaused } from '../bots/faceClock.ts';
 import { groupBySection, rosterSections, UNASSIGNED_SECTION_KEY, type BotSection } from '../bots/sections.ts';
 import type { ChatController } from '../chat/controller.ts';
 import { shallowEqual } from '../chat/selector.ts';
@@ -132,6 +134,20 @@ export const BotsPane = memo(function BotsPane({ controller, groups: model, onOp
     void refreshRef.current().finally(() => setPulling(false));
   }, []);
   const pull = usePullRefresh({ refreshing: pulling || loading, onRefresh: onPull });
+  // the rows' faces stop painting for the length of a scroll: their SVG commits would contest the drag
+  const faceResume = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const holdFaces = useCallback(() => {
+    clearTimeout(faceResume.current);
+    setFacesPaused(true);
+  }, []);
+  const releaseFaces = useCallback(() => {
+    clearTimeout(faceResume.current);
+    faceResume.current = setTimeout(() => setFacesPaused(false), 240);
+  }, []);
+  useEffect(() => () => {
+    clearTimeout(faceResume.current);
+    setFacesPaused(false);
+  }, []);
   const latest = useRef({ onOpenBot, onBotActions, onSectionActions, onOpenGroup, onGroupActions });
   latest.current = { onOpenBot, onBotActions, onSectionActions, onOpenGroup, onGroupActions };
   const open = useCallback((bot: Bot) => latest.current.onOpenBot(bot), []);
@@ -216,6 +232,10 @@ export const BotsPane = memo(function BotsPane({ controller, groups: model, onOp
         keyboardDismissMode="on-drag"
         refreshControl={pull.refreshControl}
         onScroll={pull.track}
+        onScrollBeginDrag={holdFaces}
+        onScrollEndDrag={releaseFaces}
+        onMomentumScrollBegin={holdFaces}
+        onMomentumScrollEnd={releaseFaces}
         scrollEventThrottle={16}
       >
         {pull.header}

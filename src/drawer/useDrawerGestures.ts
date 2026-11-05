@@ -19,7 +19,12 @@ export const drawerEasing = Easing.out(Easing.cubic);
 
 /** horizontal travel before a swipe counts, and the vertical drift that hands the touch to a list */
 const ACTIVE_X = 16;
-const FAIL_Y = 14;
+/**
+ * The vertical drift that hands the touch to a list must stay well under the horizontal travel that
+ * takes it: at 14 against 16 a drag that started slightly diagonal could activate the swipe before the
+ * list began scrolling, which read as a list that froze and snapped back.
+ */
+const FAIL_Y = 10;
 
 export function useDrawerWidth(): number {
   const { width } = useWindowDimensions();

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { distanceFromBottom, jumpLabel, LiftPadding, messagesBelow, replacedTail, sentMessage, TailFollow, type RowFrame } from '../src/chat/scroll.ts';
+import { appendedSend, distanceFromBottom, JUMP_SHOW_DISTANCE, jumpLabel, LiftPadding, messagesBelow, openStep, PINNED_DISTANCE, replacedTail, sentMessage, TailFollow, type RowFrame } from '../src/chat/scroll.ts';
 
 const ids = ['a', 'b', 'c', 'd'];
 const frames = new Map<string, RowFrame>([
@@ -362,4 +362,117 @@ test('the lift padding only ever shrinks, to where the reader rests, and goes on
   assert.equal(top.minHeight(800), 800);
   top.release();
   assert.equal(top.minHeight(800), null);
+});
+
+test('a gesture whose end never arrived is released, so following cannot stay off', () => {
+  const follow = new TailFollow();
+  follow.dragStart(1000);
+  // the drawer swipe took the touch: no dragEnd, no fling, no rest
+  follow.scrolled(600);
+  assert.equal(follow.gesturing, true);
+  assert.equal(follow.follows, false);
+  // the touch's own end settles it from where the list stopped, and an upward drag still stops following
+  assert.equal(follow.release(800, 600), true);
+  assert.equal(follow.gesturing, false);
+  assert.equal(follow.follows, false);
+  // the next gesture that ends near the bottom follows again
+  follow.dragStart(600);
+  follow.dragEnd(980);
+  follow.rest(20, 980);
+  assert.equal(follow.follows, true);
+});
+
+test('releasing a gesture that is not in flight changes nothing', () => {
+  const follow = new TailFollow();
+  assert.equal(follow.release(0, 1000), false);
+  assert.equal(follow.follows, true);
+});
+
+test('a chat that opens keeps placing itself as the list lays out the batches below the first window', () => {
+  const beat = { tailMeasured: false, onTail: true, content: 2400, placed: 0, now: 100, deadline: 1000 };
+  // the first batch: the list reports its bottom, but that bottom is not the newest row
+  assert.equal(openStep(beat), 'place');
+  // the same height again: nothing changed, so nothing is re-commanded
+  assert.equal(openStep({ ...beat, placed: 2400 }), 'hold');
+  // the next batch arrives: place again
+  assert.equal(openStep({ ...beat, placed: 2400, content: 5200 }), 'place');
+  // the newest row is finally laid out and the list rests on it
+  assert.equal(openStep({ ...beat, placed: 5200, content: 5200, tailMeasured: true }), 'stop');
+});
+
+test('a chat already at its newest row is not commanded at all', () => {
+  // a short thread: the only batch holds the newest message, and the list rests on the bottom
+  assert.equal(openStep({ tailMeasured: true, onTail: true, content: 600, placed: 0, now: 0, deadline: 100 }), 'stop');
+});
+
+test('a list that never reports its tail stops being placed at the deadline', () => {
+  const stuck = { tailMeasured: false, onTail: true, content: 2400, placed: 2400, now: 99, deadline: 100 };
+  assert.equal(openStep(stuck), 'hold');
+  assert.equal(openStep({ ...stuck, now: 100 }), 'stop');
+});
+
+test('a send is recognised only as an append to the chat on screen', () => {
+  // the same chat: a user row appended at the tail
+  assert.equal(appendedSend('s1', 's1', 'm9'), true);
+  // a draft's first send re-keys the transcript after the user's row landed under the draft's own key
+  assert.equal(appendedSend('draft', 's2', 'm1'), true);
+  // leaving an empty draft for another chat is not a send, however lone or `sent` that chat's row is
+  assert.equal(appendedSend('draft', 's2', null), false);
+  // any other key change replaced the transcript
+  assert.equal(appendedSend('s1', 's2', 'm9'), false);
+});
+
+/** a virtualised thread: only the batches the list has laid out exist, and the tail is measured last */
+function thread(rows: number, rowHeight: number, viewport: number) {
+  const state = { rendered: 16, content: 16 * rowHeight, offset: 0, tailMeasured: false };
+  return {
+    state,
+    viewport,
+    total: rows * rowHeight,
+    /** lay out the next batch */
+    batch(step = 20) {
+      state.rendered = Math.min(rows, state.rendered + step);
+      state.content = state.rendered * rowHeight;
+      state.tailMeasured = state.rendered === rows;
+    },
+    distance: () => state.content - state.offset - viewport,
+  };
+}
+
+test('the library\'s one-shot initial scroll lands mid-thread, which is the reported bug', () => {
+  const t = thread(120, 100, 800);
+  // assistant-ui's initialize effect scrolls once, on the first content-size event: the end of the first
+  // rendered window, not the end of the thread
+  t.state.offset = Math.max(0, t.state.content - t.viewport);
+  assert.equal(t.state.offset, 800);
+  // the rendered window's bottom, which the list reports as `onTail`, is 10,400 px short of the thread's
+  assert.equal(t.distance(), 0);
+  assert.ok(t.total - t.state.offset - t.viewport > JUMP_SHOW_DISTANCE);
+});
+
+test('the open placement walks a long thread down to its true newest message', () => {
+  const t = thread(120, 100, 800);
+  let placed = 0;
+  let steps = 0;
+  for (;;) {
+    const step = openStep({
+      tailMeasured: t.state.tailMeasured,
+      onTail: t.distance() <= PINNED_DISTANCE,
+      content: t.state.content,
+      placed,
+      now: 0,
+      deadline: Number.POSITIVE_INFINITY,
+    });
+    if (step === 'stop') break;
+    if (step === 'place') {
+      placed = t.state.content;
+      t.state.offset = Math.max(0, t.state.content - t.viewport);
+      steps += 1;
+    }
+    t.batch();
+  }
+  assert.equal(t.state.content, t.total);
+  assert.equal(t.state.offset, t.total - t.viewport);
+  // one command per rendered batch (plus the first): the walk is bounded by the batch count, not by frames
+  assert.ok(steps <= Math.ceil(120 / 20) + 1, `took ${steps} placed steps`);
 });

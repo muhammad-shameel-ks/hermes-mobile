@@ -13,6 +13,7 @@ import Svg, { Circle, Ellipse, G, Path } from 'react-native-svg';
 
 import { useAppForeground } from '../ui/clock.ts';
 import { faceFrame, facePose, faceGeometry, settlePose, type FaceMood, type PoseTransition } from './face.ts';
+import { facesPaused } from './faceClock.ts';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
@@ -40,6 +41,7 @@ export const AnimatedFace = memo(function AnimatedFace({ shape, color, mood, siz
   }, [mood, moodValue]);
 
   const clock = useFrameCallback((info) => {
+    if (facesPaused.value) return;
     const t = info.timestamp / 1000;
     if (t - lastPaint.value < FRAME_S - 0.004) return;
     lastPaint.value = t;
@@ -51,10 +53,9 @@ export const AnimatedFace = memo(function AnimatedFace({ shape, color, mood, siz
 
   const foreground = useAppForeground();
   useEffect(() => {
-    if (foreground) return;
-    clock.setActive(false);
+    clock.setActive(foreground);
     return () => {
-      if (clock.callbackId !== -1) clock.setActive(true);
+      if (clock.callbackId !== -1) clock.setActive(false);
     };
   }, [clock, foreground]);
 
