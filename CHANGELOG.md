@@ -3,6 +3,10 @@
 All notable changes to Hermes Mobile are recorded here. Each section is
 generated from the commit subjects since the previous release tag.
 
+## [0.1.40] - 2026-11-05
+
+- Open chats at the newest message, and stop startup gating on the gateway (#50) ([2bee197](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/2bee197))
+
 ## [0.1.39] - 2026-10-31
 
 - Smooth streaming replies and chat switches, let a reader stop the follow, and fix downloads (#48) ([cc3097d](https://github.com/muhammad-shameel-ks/hermes-mobile/commit/cc3097d))
